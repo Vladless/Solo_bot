@@ -20,7 +20,7 @@ async def handle_edit_config_start(
 
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(user_id)),
+            menu_text("Подписка", "❌ Ключ не найден."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -29,7 +29,7 @@ async def handle_edit_config_start(
 
     if not key_obj.tariff_id:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ У ключа не назначен тариф.", markup=build_key_edit_kb(key_obj.__dict__, email)),
+            menu_text("Подписка", "❌ У ключа не назначен тариф."),
             reply_markup=build_key_edit_kb(key_obj.__dict__, email),
         )
         return
@@ -37,9 +37,7 @@ async def handle_edit_config_start(
     tariff = await get_tariff_by_id(session, key_obj.tariff_id)
     if not tariff or not tariff.get("configurable"):
         await callback_query.message.edit_text(
-            menu_text(
-                "Подписка", "❌ Тариф не поддерживает конфигурацию.", markup=build_key_edit_kb(key_obj.__dict__, email)
-            ),
+            menu_text("Подписка", "❌ Тариф не поддерживает конфигурацию."),
             reply_markup=build_key_edit_kb(key_obj.__dict__, email),
         )
         return
@@ -147,7 +145,7 @@ async def handle_cfg_edit_base(callback_query: CallbackQuery, state: FSMContext,
     builder.row(InlineKeyboardButton(text=BACK, callback_data="cfg_back_menu"))
 
     await callback_query.message.edit_text(
-        menu_text("База тарифа", "Что меняем?", markup=builder.as_markup()),
+        menu_text("База тарифа", "Что меняем?"),
         reply_markup=builder.as_markup(),
     )
 
@@ -167,7 +165,7 @@ async def handle_cfg_edit_addon(callback_query: CallbackQuery, state: FSMContext
     builder.row(InlineKeyboardButton(text=BACK, callback_data="cfg_back_menu"))
 
     await callback_query.message.edit_text(
-        menu_text("Докупка", "Что меняем?", markup=builder.as_markup()),
+        menu_text("Докупка", "Что меняем?"),
         reply_markup=builder.as_markup(),
     )
 
@@ -194,7 +192,7 @@ async def handle_cfg_base_devices(callback_query: CallbackQuery, state: FSMConte
     await state.set_state(UserEditorState.config_select_base)
     await state.update_data(cfg_param="devices")
     await callback_query.message.edit_text(
-        menu_text("База устройств", "Выберите значение.", markup=builder.as_markup()),
+        menu_text("База устройств", "Выберите значение."),
         reply_markup=builder.as_markup(),
     )
 
@@ -218,7 +216,7 @@ async def handle_cfg_base_traffic(callback_query: CallbackQuery, state: FSMConte
     await state.set_state(UserEditorState.config_select_base)
     await state.update_data(cfg_param="traffic")
     await callback_query.message.edit_text(
-        menu_text("База трафика", "Выберите значение.", markup=builder.as_markup()),
+        menu_text("База трафика", "Выберите значение."),
         reply_markup=builder.as_markup(),
     )
 
@@ -254,12 +252,7 @@ async def handle_cfg_addon_devices(callback_query: CallbackQuery, state: FSMCont
     builder.row(InlineKeyboardButton(text="🔙 Отмена", callback_data="cfg_cancel_input"))
 
     await callback_query.message.edit_text(
-        menu_text(
-            "Докупка устройств",
-            "Сколько устройств докуплено сверх тарифа?",
-            quote(f"Сейчас: {extra_devices}"),
-            markup=builder.as_markup(),
-        ),
+        menu_text("Докупка устройств", "Сколько устройств докуплено сверх тарифа?", quote(f"Сейчас: {extra_devices}")),
         reply_markup=builder.as_markup(),
     )
 
@@ -276,12 +269,7 @@ async def handle_cfg_addon_traffic(callback_query: CallbackQuery, state: FSMCont
     builder.row(InlineKeyboardButton(text="🔙 Отмена", callback_data="cfg_cancel_input"))
 
     await callback_query.message.edit_text(
-        menu_text(
-            "Докупка трафика",
-            "Сколько ГБ докуплено сверх тарифа?",
-            quote(f"Сейчас: {extra_traffic} ГБ"),
-            markup=builder.as_markup(),
-        ),
+        menu_text("Докупка трафика", "Сколько ГБ докуплено сверх тарифа?", quote(f"Сейчас: {extra_traffic} ГБ")),
         reply_markup=builder.as_markup(),
     )
 
@@ -392,7 +380,7 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
 
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(user_id)),
+            menu_text("Подписка", "❌ Ключ не найден."),
             reply_markup=build_editor_kb(user_id),
         )
         await state.clear()
@@ -436,9 +424,7 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
     except Exception as e:
         logger.error(f"[EditConfig] Ошибка при сохранении конфигурации: {e}")
         await callback_query.message.edit_text(
-            menu_text(
-                "Подписка", "❌ Не удалось сохранить конфигурацию. Попробуйте позже.", markup=build_editor_kb(user_id)
-            ),
+            menu_text("Подписка", "❌ Не удалось сохранить конфигурацию. Попробуйте позже."),
             reply_markup=build_editor_kb(user_id),
         )
         await state.clear()

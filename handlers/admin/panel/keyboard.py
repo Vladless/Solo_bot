@@ -100,17 +100,6 @@ async def build_panel_kb(
     return builder.as_markup()
 
 
-def build_restart_kb() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.button(
-        text="✅ Да, перезагрузить",
-        callback_data=AdminPanelCallback(action="restart_confirm").pack(),
-    )
-    builder.row(build_admin_back_btn())
-    builder.adjust(1)
-    return builder.as_markup()
-
-
 def build_admin_back_kb(action: str = "admin") -> InlineKeyboardMarkup:
     return build_admin_singleton_kb(BACK, action)
 

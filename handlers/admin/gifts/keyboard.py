@@ -1,8 +1,8 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database.models import Gift, Tariff
-from handlers.utils import format_days
+from database.models import Gift
+from services.formatting import format_days
 from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback
@@ -20,23 +20,11 @@ def build_admin_gifts_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_gift_tariffs_kb(tariffs: list[Tariff]) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    for tariff in tariffs:
-        builder.button(
-            text=f"{tariff.name} — {tariff.duration_days // 30} мес.",
-            callback_data=f"admin_gift_confirm|{tariff.id}",
-        )
-    builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
-    builder.adjust(1)
-    return builder.as_markup()
-
-
 def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     row = []
 
-    for i, gift in enumerate(gifts):
+    for _i, gift in enumerate(gifts):
         days = (gift.expiry_time.date() - gift.created_at.date()).days
         duration_text = format_days(days)
 

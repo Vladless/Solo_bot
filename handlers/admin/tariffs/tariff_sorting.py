@@ -48,7 +48,6 @@ async def show_tariff_arrangement_menu(callback: CallbackQuery, session: AsyncSe
                 "Клиент видит тарифы в этом порядке: чем меньше номер, тем выше в списке. Новые встают в конец, подгруппы — по сумме тарифов внутри."
             ),
             quote("Выберите группу."),
-            markup=build_tariff_arrangement_groups_kb(groups),
         ),
         reply_markup=build_tariff_arrangement_groups_kb(groups),
     )
@@ -90,7 +89,6 @@ async def show_tariffs_arrangement(callback: CallbackQuery, callback_data: Admin
         "Расположение тарифов",
         f"Группа <b>{group_code}</b> — порядок, как его видит клиент.",
         card(section("📦 Порядок", *rows), section("⏱ Обновлено", current_time)),
-        markup=markup,
     )
 
     await callback.message.edit_text(text, reply_markup=markup)
@@ -116,7 +114,7 @@ async def move_tariff_up(callback: CallbackQuery, callback_data: AdminTariffCall
         return
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=menu_text("Расположение тарифов", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Расположение тарифов", text), reply_markup=markup)
     await callback.answer(menu_text("Расположение тарифов", "✅ Тариф перемещен выше (-1)"))
 
 
@@ -140,7 +138,7 @@ async def move_tariff_down(callback: CallbackQuery, callback_data: AdminTariffCa
         return
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=menu_text("Расположение тарифов", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Расположение тарифов", text), reply_markup=markup)
     await callback.answer(menu_text("Расположение тарифов", "✅ Тариф перемещен ниже (+1)"))
 
 

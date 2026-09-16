@@ -1,8 +1,6 @@
-import base64
 import hashlib
 import hmac
 import secrets
-import time
 
 from urllib.parse import urlencode
 
@@ -19,6 +17,7 @@ from api.depends import (
     set_auth_cookie,
     set_is_admin_cookie,
 )
+from api.shared.oauth_state import STATE_TTL_SECONDS, make_state, verify_state
 from api.v2.routes.auth._common import _client_ip, safe_return_path
 
 
@@ -54,7 +53,6 @@ _YANDEX_STATE_SECRET = hashlib.sha256(b"oauth-state:yandex:v1:" + _YANDEX_STATE_
 YANDEX_AUTH_ENDPOINT = "https://oauth.yandex.ru/authorize"
 YANDEX_TOKEN_ENDPOINT = "https://oauth.yandex.ru/token"
 YANDEX_USERINFO_ENDPOINT = "https://login.yandex.ru/info"
-STATE_TTL_SECONDS = 600
 
 
 router = APIRouter()
@@ -62,45 +60,6 @@ router = APIRouter()
 
 def yandex_configured() -> bool:
     return bool(_YANDEX_CLIENT_ID and _YANDEX_CLIENT_SECRET and _YANDEX_REDIRECT_URI)
-
-
-def _sign_state(payload: str) -> str:
-    mac = hmac.new(str(_YANDEX_STATE_SECRET).encode(), payload.encode(), hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(mac).decode().rstrip("=")
-
-
-def _make_state(return_to: str) -> tuple[str, str]:
-    nonce = secrets.token_urlsafe(16)
-    ts = str(int(time.time()))
-    payload = f"{nonce}.{ts}.{return_to}"
-    sig = _sign_state(payload)
-    raw = f"{payload}.{sig}".encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("="), nonce
-
-
-def _verify_state(state: str) -> tuple[str, str] | None:
-    try:
-        padded = state + "=" * (-len(state) % 4)
-        raw = base64.urlsafe_b64decode(padded).decode()
-    except Exception:
-        return None
-    parts = raw.rsplit(".", 1)
-    if len(parts) != 2:
-        return None
-    payload, sig = parts
-    expected = _sign_state(payload)
-    if not hmac.compare_digest(sig, expected):
-        return None
-    chunks = payload.split(".", 2)
-    if len(chunks) != 3:
-        return None
-    _nonce, ts, return_to = chunks
-    try:
-        if int(time.time()) - int(ts) > STATE_TTL_SECONDS:
-            return None
-    except Exception:
-        return None
-    return (return_to or _OAUTH_SUCCESS_URI, _nonce)
 
 
 @router.get("/yandex/authorize")
@@ -112,7 +71,7 @@ async def yandex_authorize(
     if not yandex_configured():
         raise HTTPException(status_code=503, detail="Вход через Яндекс не настроен на этом сервере")
     safe_return = safe_return_path(return_to, _OAUTH_SUCCESS_URI)
-    state, nonce = _make_state(safe_return)
+    state, nonce = make_state(_YANDEX_STATE_SECRET, safe_return)
     params = {
         "client_id": _YANDEX_CLIENT_ID,
         "redirect_uri": _YANDEX_REDIRECT_URI,
@@ -152,7 +111,7 @@ async def yandex_callback(
         return RedirectResponse(f"/login?error=yandex_{error}", status_code=302)
     if not code or not state:
         raise HTTPException(status_code=400, detail="Отсутствует code или state")
-    verified = _verify_state(state)
+    verified = verify_state(_YANDEX_STATE_SECRET, state, _OAUTH_SUCCESS_URI)
     if verified is None:
         logger.warning("[Auth] Yandex callback: invalid/expired state ip={}", _client_ip(request))
         raise HTTPException(status_code=400, detail="Неверный или просроченный state")

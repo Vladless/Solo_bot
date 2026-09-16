@@ -207,15 +207,6 @@ async def create_tariff(session: AsyncSession, data: dict):
     return result.scalar_one()
 
 
-async def update_tariff(session: AsyncSession, tariff_id: int, updates: dict):
-    if not updates:
-        return False
-    updates["updated_at"] = datetime.utcnow()
-    await session.execute(update(Tariff).where(Tariff.id == tariff_id).values(**updates))
-    await _invalidate_tariff_cache(tariff_id)
-    return True
-
-
 async def delete_tariff(session: AsyncSession, tariff_id: int):
     await session.execute(delete(Tariff).where(Tariff.id == tariff_id))
     await _invalidate_tariff_cache(tariff_id)
@@ -340,21 +331,6 @@ async def move_subgroup(session: AsyncSession, group_code: str, subgroup_title: 
             for t in grouped[payload]:
                 t.sort_order = n
                 n += 1
-
-    await _invalidate_tariff_cache()
-    return True
-
-
-async def initialize_tariff_sort_orders(session: AsyncSession, group_code: str) -> bool:
-    result = await session.execute(select(Tariff).where(Tariff.group_code == group_code).order_by(Tariff.id))
-    tariffs = result.scalars().all()
-
-    if not tariffs:
-        return True
-
-    for i, tariff in enumerate(tariffs):
-        new_sort_order = 1 + i
-        await session.execute(update(Tariff).where(Tariff.id == tariff.id).values(sort_order=new_sort_order))
 
     await _invalidate_tariff_cache()
     return True

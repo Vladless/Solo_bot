@@ -1,4 +1,3 @@
-
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
@@ -8,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MODES_CONFIG
 from core.settings.tariffs_config import TARIFFS_CONFIG
 from database import get_tariff_by_id
-from handlers.utils import edit_or_send_message, get_plural_form
+from handlers.utils import edit_or_send_message
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_addons_menu
 from logger import logger
@@ -21,16 +20,16 @@ from settings.buttons import (
 )
 from settings.texts import (
     DOWNGRADE_INLINE_WARNING_TEXT,
-    UNLIMITED_DEVICES_LABEL,
-    UNLIMITED_TRAFFIC_LABEL,
 )
 
 from ....keys.utils import build_key_callback
 from ..utils import (
     build_addons_screen_text,
+    device_option_label,
     format_devices_label,
     format_traffic_label,
     is_not_downgrade,
+    traffic_option_label,
 )
 
 
@@ -212,16 +211,6 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
 
     builder = InlineKeyboardBuilder()
 
-    def _dev_label(v: int) -> str:
-        if int(v) == 0:
-            return UNLIMITED_DEVICES_LABEL.capitalize()
-        return f"{v} {get_plural_form(v, 'устройство', 'устройства', 'устройств')}"
-
-    def _traf_label(v: int) -> str:
-        if int(v) == 0:
-            return UNLIMITED_TRAFFIC_LABEL.capitalize()
-        return f"{v} ГБ"
-
     allowed_devices = (
         [v for v in device_int_options if allow_downgrade or is_not_downgrade(current_devices, v)]
         if has_device_choice
@@ -258,20 +247,25 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     use_pagination = bool((MODES_CONFIG or {}).get("TARIFF_OPTIONS_PAGINATION", True))
     if use_pagination:
         if allowed_devices:
-            builder.row(*_addon_stepper_row(allowed_devices, selected_devices, "key_addons_devices", _dev_label))
+            builder.row(
+                *_addon_stepper_row(allowed_devices, selected_devices, "key_addons_devices", device_option_label)
+            )
         if allowed_traffic:
-            builder.row(*_addon_stepper_row(allowed_traffic, selected_traffic_gb, "key_addons_traffic", _traf_label))
+            builder.row(
+                *_addon_stepper_row(allowed_traffic, selected_traffic_gb, "key_addons_traffic", traffic_option_label)
+            )
     else:
         device_buttons = [
             InlineKeyboardButton(
-                text=_dev_label(v) + (" ✅" if selected_devices is not None and int(v) == int(selected_devices) else ""),
+                text=device_option_label(v)
+                + (" ✅" if selected_devices is not None and int(v) == int(selected_devices) else ""),
                 callback_data=f"key_addons_devices|{email}|{v}",
             )
             for v in allowed_devices
         ]
         traffic_buttons = [
             InlineKeyboardButton(
-                text=_traf_label(v)
+                text=traffic_option_label(v)
                 + (" ✅" if selected_traffic_gb is not None and int(v) == int(selected_traffic_gb) else ""),
                 callback_data=f"key_addons_traffic|{email}|{v}",
             )

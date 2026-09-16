@@ -9,45 +9,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_admin_token
-
-
-try:
-    from modules.partner_program.settings import PARTNER_BONUS_PERCENTAGES
-except Exception:
-    PARTNER_BONUS_PERCENTAGES = {1: 0.0}
-
+from api.shared.partners import default_partner_percent, parse_percent, row_dt_iso
 from api.v2.routes.partners import ensure_partner_available
 
 
 router = APIRouter(dependencies=[Depends(ensure_partner_available)])
-
-
-def _parse_percent(value: float) -> float | None:
-    """Normalize percent input to 0-100 range."""
-    try:
-        val = float(value)
-    except (TypeError, ValueError):
-        return None
-
-    if 0.0 <= val <= 1.0:
-        val *= 100.0
-
-    if 0.0 <= val <= 100.0:
-        return val
-    return None
-
-
-def _default_partner_percent() -> float:
-    try:
-        return float(PARTNER_BONUS_PERCENTAGES.get(1, 0.0)) * 100.0
-    except Exception:
-        return 0.0
-
-
-def _row_dt_iso(value) -> str | None:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return None
 
 
 @router.get("/all")
@@ -108,7 +74,7 @@ async def get_all_partners(
     total = count_result.scalar() or 0
 
     partners_list = []
-    default_percent = _default_partner_percent()
+    default_percent = default_partner_percent()
     for partner in partners:
         percent_value = partner[2]
         percent_custom = bool(partner[3])
@@ -307,7 +273,7 @@ async def get_partner_data(
     invited_res = await session.execute(invited_sql, {"tg_id": tg_id})
     invited_rows = invited_res.fetchall()
 
-    default_percent = _default_partner_percent()
+    default_percent = default_partner_percent()
     percent = default_percent
     if meta_row:
         percent_value = meta_row[1]
@@ -458,7 +424,7 @@ async def update_partner_percent(
 ):
     """Обновляет персональный процент партнёра."""
 
-    normalized = _parse_percent(percent)
+    normalized = parse_percent(percent)
     if normalized is None:
         return ORJSONResponse(
             content={"success": False, "message": "Неверный процент. Допустимо 0-100 или 0.0-1.0"},
@@ -653,7 +619,7 @@ async def get_partner_payouts_pending(
             "tg_id": int(row[1]),
             "amount": float(row[2] or 0.0),
             "status": row[3] or "pending",
-            "created_at": _row_dt_iso(row[4]),
+            "created_at": row_dt_iso(row[4]),
             "method": row[5] or None,
             "destination": row[6] or None,
         })
@@ -705,7 +671,7 @@ async def get_partner_payouts_history(
             "tg_id": int(row[1]),
             "amount": float(row[2] or 0.0),
             "status": row[3] or "—",
-            "created_at": _row_dt_iso(row[4]),
+            "created_at": row_dt_iso(row[4]),
             "method": row[5] or None,
             "destination": row[6] or None,
         })

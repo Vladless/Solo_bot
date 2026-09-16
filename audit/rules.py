@@ -3,26 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 
-def _get_bot_webhook_path() -> str:
-    """Путь вебхука бота из конфига (для исключения из шага «успешная оплата»)."""
-    try:
-        from settings.config import WEBHOOK_PATH
-
-        return ((WEBHOOK_PATH or "").strip().lower()) or ""
-    except ImportError:
-        return ""
-
-
-def _is_bot_webhook_path(path: str) -> bool:
-    """True только если path — именно вебхук бота (точное совпадение сегмента пути), не касса."""
-    bot_path = _get_bot_webhook_path()
-    if not bot_path:
-        return False
-    p = (path or "").strip().lower()
-    path_segment = p.split(" ", 1)[1] if " " in p else p
-    return path_segment == bot_path or path_segment.rstrip("/") == bot_path.rstrip("/")
-
-
 AUDIT_STEP_LABELS: dict[str, str] = {
     "start": "Старт",
     "start_coupon": "Старт: купон",
@@ -331,12 +311,6 @@ def _is_ignored_analytics_event(path: str) -> bool:
         )
         is not None
     )
-
-
-def _message_command_step(path: str) -> str | None:
-    """Определяет шаг только по точной команде/первому токену сообщения."""
-    steps = _message_command_steps(path)
-    return steps[0] if steps else None
 
 
 def _message_command_steps(path: str) -> list[str]:

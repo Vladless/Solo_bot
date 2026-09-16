@@ -82,6 +82,7 @@ async def check_server_key_limit(
 async def check_server_availability(server_info: dict[str, Any], session: AsyncSession) -> ServerAvailability:
     """Проверяет доступность сервера (enabled + лимит + API ping)."""
     from panels.remnawave_runtime import remnawave_api
+
     server_name = server_info.get("server_name", "unknown")
     panel_type = (server_info.get("panel_type") or "3x-ui").lower()
     enabled = server_info.get("enabled", True)
@@ -183,44 +184,6 @@ async def select_cluster(
     )
 
 
-async def filter_servers_for_key(
-    session: AsyncSession,
-    cluster_servers: list[dict[str, Any]],
-    cluster_id: str,
-    tariff_id: int | None = None,
-    subgroup_title: str | None = None,
-    special_group: str | None = None,
-) -> list[dict[str, Any]]:
-    """Фильтрует серверы кластера по тарифу, подгруппе и special group.
-
-    Возвращает отфильтрованный список серверов.
-    """
-    enabled = [s for s in cluster_servers if s.get("enabled", True)]
-
-    if tariff_id:
-        filtered = await filter_cluster_by_tariff(session, enabled, tariff_id, cluster_id)
-        if filtered:
-            enabled = filtered
-
-    if subgroup_title:
-        filtered = await filter_cluster_by_subgroup(
-            session,
-            enabled,
-            subgroup_title,
-            cluster_id,
-            tariff_id=tariff_id,
-        )
-        if filtered:
-            enabled = filtered
-
-    if special_group and special_group in ALLOWED_GROUP_CODES:
-        bound = [s for s in enabled if special_group in (s.get("special_groups") or [])]
-        if bound:
-            enabled = bound
-
-    return enabled
-
-
 async def is_full_remnawave_cluster(cluster_id: str, session: AsyncSession) -> bool:
     """Проверяет, состоит ли кластер полностью из Remnawave-серверов."""
     panel_types = await get_panel_types_for_cluster(session, cluster_id)
@@ -228,14 +191,3 @@ async def is_full_remnawave_cluster(cluster_id: str, session: AsyncSession) -> b
         return all(pt.lower() == "remnawave" for pt in panel_types)
     pt = await get_panel_type_for_server(session, cluster_id)
     return bool(pt and pt.lower() == "remnawave")
-
-
-def resolve_special_group(tariff: dict[str, Any] | None, is_trial: bool = False) -> str | None:
-    """Определяет special group для фильтрации серверов."""
-    if is_trial:
-        return "trial"
-    if tariff:
-        gc = (tariff.get("group_code") or "").lower()
-        if gc in ALLOWED_GROUP_CODES:
-            return gc
-    return None

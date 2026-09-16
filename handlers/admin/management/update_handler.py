@@ -143,7 +143,6 @@ def _screen_text(state: dict, markup=None) -> str:
             "перед этим создаётся бэкап, при сбое откат автоматический",
             "бот выключится на время обновления и пришлёт отчёт после старта",
         ),
-        markup=markup,
     )
 
 
@@ -203,12 +202,7 @@ async def choose_tag(callback: CallbackQuery) -> None:
 
     markup = builder.as_markup()
     await callback.message.edit_text(
-        text=menu_text(
-            "Версии",
-            f"Установлено: <b>{_installed_version()}</b>",
-            quote("🟢 — релиз, 🩹 — патч."),
-            markup=markup,
-        ),
+        text=menu_text("Версии", f"Установлено: <b>{_installed_version()}</b>", quote("🟢 — релиз, 🩹 — патч.")),
         reply_markup=markup,
     )
     await callback.answer()
@@ -318,7 +312,6 @@ async def start_update(callback: CallbackQuery) -> None:
             "Обновление",
             "⏳ Обновление запущено.",
             quote("Бот сейчас выключится — это нормально.\nКогда он поднимется, пришлю отчёт сюда же."),
-            markup=markup,
         ),
         reply_markup=markup,
     )

@@ -1,12 +1,10 @@
+from api.shared.billing_actor import resolve_billing_user_id
+from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
+from core.client_origin import client_origin
+
 from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
 from .._common import (
     _key_actions_config,
-    _normalize_expiry_ms,
-    _resolve_available_location_servers,
-    _resolve_billing_user_id,
-    _resolve_default_web_payment_provider,
-    _resolve_public_base_url,
-    router,
     user_router,
 )
 
@@ -27,7 +25,7 @@ async def user_key_addons_preview(
     actions = _key_actions_config()
     if not force_web and not actions.addons_enabled:
         raise HTTPException(status_code=403, detail="Доп. опции отключены в настройках")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
@@ -247,7 +245,7 @@ async def user_key_apply_addons(
     actions = _key_actions_config()
     if not force_web and not actions.addons_enabled:
         raise HTTPException(status_code=403, detail="Доп. опции отключены в настройках")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
@@ -455,10 +453,10 @@ async def user_key_apply_addons(
     if not email or not server_id:
         raise HTTPException(status_code=400, detail="Некорректные данные подписки")
     if required_amount > 0:
-        provider_id = str(body.provider_id or _resolve_default_web_payment_provider() or "").strip().upper()
+        provider_id = str(body.provider_id or resolve_default_web_payment_provider() or "").strip().upper()
         if not provider_id:
             raise HTTPException(status_code=503, detail="Нет доступных провайдеров оплаты")
-        base_url = _resolve_public_base_url(request)
+        base_url = resolve_public_base_url(request)
         success_url = validate_redirect_url(str(body.success_url or ""), f"{base_url}/payment-success")
         failure_url = validate_redirect_url(str(body.failure_url or ""), f"{base_url}/payment-failure")
         payment_request = PaymentLinkRequest(
@@ -642,6 +640,22 @@ async def user_key_apply_addons(
         debited = await update_balance(session, int(billing_user_id), -int(final_extra_price_rub))
         if debited is None:
             raise HTTPException(status_code=402, detail="Недостаточно средств на балансе")
+        try:
+            from database.subscription_events import record_subscription_event
+
+            await record_subscription_event(
+                session,
+                event_type="addons",
+                user_id=int(billing_user_id),
+                client_id=str(getattr(db_key, "client_id", "") or ""),
+                tariff_id=int(tariff_id),
+                server_id=str(getattr(db_key, "server_id", "") or "") or None,
+                price_rub=float(final_extra_price_rub),
+                expiry_time=int(getattr(db_key, "expiry_time", 0) or 0) or None,
+                source=client_origin(),
+            )
+        except Exception as error:
+            logger.warning("[Addons] событие покупки допов не записано: {}", error)
     if coupon_id is not None:
         await mark_coupon_used(session, int(coupon_id), int(billing_user_id))
     return AccountKeyApplyAddonsResponse(

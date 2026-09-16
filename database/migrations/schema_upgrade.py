@@ -1272,7 +1272,3 @@ async def apply_all_migrations(conn: AsyncConnection) -> None:
         mig_out(f"[schema_upgrade] перенос данных старой базы выполнен: шагов {applied}", "green")
     else:
         logger.debug(f"[schema_upgrade] переносить нечего, версия схемы: {await _get_current_version(conn)}")
-
-
-async def apply_account_schema_if_needed(conn: AsyncConnection) -> None:
-    await apply_all_migrations(conn)

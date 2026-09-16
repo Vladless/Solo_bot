@@ -21,6 +21,8 @@ from api.depends import (
     verify_identity_admin,
     verify_identity_token,
 )
+from api.shared.billing_actor import resolve_billing_user_id
+from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from api.v2.base_crud import generate_crud_router
 from api.v2.routes.coupon_pricing import resolve_percent_coupon_pricing
 from api.v2.schemas import KeyBase, KeyCreateRequest, KeyResponse, KeyUpdate
@@ -64,13 +66,14 @@ from database.models import Key, Server, ServerSpecialgroup, Tariff
 from database.servers import cluster_name_exists, get_cluster_name_for_server_name
 from database.temporary_data import create_temporary_data
 from handlers.keys.view.payload import build_key_view_payload
-from services.addons import calc_pack_full_price_rub, get_pack_flags
 from handlers.tariffs.addons.utils import calc_remaining_ratio_seconds, is_not_downgrade
 from handlers.utils import ALLOWED_GROUP_CODES, is_full_remnawave_cluster
 from logger import logger
 from panels._3xui import delete_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
 from panels.remnawave_runtime import get_remnawave_profile, invalidate_remnawave_profile, with_remnawave_api
+from services.addons import calc_pack_full_price_rub, get_pack_flags
+from services.keys import normalize_expiry_ms
 from services.operations import (
     create_client_on_server,
     create_key_on_cluster,
@@ -315,48 +318,3 @@ async def resolve_user_squad_uuids(session: AsyncSession, billing_user_id: int) 
         if str(panel_type or "").lower() == "remnawave" and inbound_id:
             squads.add(str(inbound_id))
     return squads
-
-
-async def _resolve_billing_user_id(request: Request, identity, session: AsyncSession) -> int:
-    actor = get_request_actor(request)
-    billing_user_id = actor.billing_user_id if actor and actor.billing_user_id is not None else None
-    if billing_user_id is None:
-        billing_user_id = await idb.ensure_billing_user_for_identity(session, identity)
-    return int(billing_user_id)
-
-
-def _resolve_public_base_url(request: Request) -> str:
-    origin = str(request.headers.get("origin") or "").strip()
-    if origin.startswith(("http://", "https://")):
-        return origin.rstrip("/")
-    referer = str(request.headers.get("referer") or request.headers.get("referrer") or "").strip()
-    if referer.startswith(("http://", "https://")):
-        parsed = urlsplit(referer)
-        if parsed.scheme and parsed.netloc:
-            return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-    forwarded_host = str(request.headers.get("x-forwarded-host") or "").strip()
-    host = forwarded_host or str(request.headers.get("host") or "").strip()
-    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
-    scheme = forwarded_proto if forwarded_proto in {"http", "https"} else request.url.scheme
-    if host:
-        return f"{scheme}://{host}".rstrip("/")
-    return str(request.base_url).rstrip("/")
-
-
-def _resolve_default_web_payment_provider() -> str | None:
-    ids = get_web_link_provider_ids()
-    for provider_id in ids:
-        if bool(PAYMENTS_CONFIG.get(provider_id)):
-            return provider_id
-    return ids[0] if ids else None
-
-
-def _normalize_expiry_ms(raw_value: int | float | None) -> int:
-    if not raw_value:
-        return 0
-    value = int(raw_value)
-    if value > 10**13:
-        value //= 1000
-    elif value < 10**10:
-        value *= 1000
-    return value

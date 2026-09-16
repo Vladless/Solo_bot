@@ -26,7 +26,8 @@ def _local_upload(url: str) -> Path | None:
     return _UPLOAD_DIR / url[len(_UPLOAD_PREFIX) :]
 
 
-def _support_bot():
+def support_bot_instance():
+    """Экземпляр бота поддержки, если он поднят."""
     try:
         from support_bot import support_bot
 
@@ -62,7 +63,7 @@ async def notify_agents_new_ticket(session: AsyncSession, *, ticket: Ticket) -> 
         )
         return
 
-    bot = _support_bot()
+    bot = support_bot_instance()
     if bot is not None:
         text = f"🆕 <b>Новое обращение</b> <code>{short}</code>{cat}\nОткройте бота поддержки, чтобы ответить."
         for tg_id in rows:
@@ -84,7 +85,7 @@ async def notify_client_ticket_closed(session: AsyncSession, *, ticket: Ticket) 
     tg_id = client.tg_id or 0
     if tg_id <= 0:
         return
-    bot = _support_bot()
+    bot = support_bot_instance()
     if bot is None:
         return
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -128,9 +129,9 @@ async def _webpush_agents(session: AsyncSession, agent_tgs: list[int], title: st
 async def _client_ticket_href(session: AsyncSession, ticket_id: str) -> str:
     """Адрес переписки в кабинете: считается на месте, блок поддержки админ мог поставить куда угодно."""
     try:
-        from database.web_layout import SUPPORT_BLOCK_TYPES, block_location_href, find_block_locations
+        from database.web_layout import block_location_href, find_block_locations, support_block_types
 
-        locations = await find_block_locations(session, list(SUPPORT_BLOCK_TYPES))
+        locations = await find_block_locations(session, support_block_types())
         if locations:
             return block_location_href(locations[0], {"ticket": ticket_id})
     except Exception:
@@ -196,7 +197,7 @@ async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: 
     if tg_id <= 0:
         await _email_client_reply(client, ticket, body)
         return
-    support_bot = _support_bot()
+    support_bot = support_bot_instance()
     if support_bot is None:
         return
     try:

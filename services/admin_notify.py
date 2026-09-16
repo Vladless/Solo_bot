@@ -253,7 +253,6 @@ def build_new_client_text(
     origin: object,
     site_enabled: bool,
     attribution: dict[str, object] | None = None,
-    markup=None,
 ) -> str:
     """Экран уведомления о новом клиенте по дизайн-коду админки."""
     return menu_text(
@@ -262,7 +261,6 @@ def build_new_client_text(
         section("👤 Клиент", *_client_lines(card, site_enabled=site_enabled)),
         section("🧭 Откуда", *_origin_lines(card, origin=origin, attribution=attribution)),
         f"🕐 {_now_label()}",
-        markup=markup,
     )
 
 
@@ -275,7 +273,6 @@ def build_payment_text(
     site_enabled: bool,
     payment_id: str | None = None,
     internal_id: int | None = None,
-    markup=None,
 ) -> str:
     """Экран уведомления об оплате: сумма и касса первой секцией, ниже клиент и счёт."""
     return menu_text(
@@ -290,7 +287,6 @@ def build_payment_text(
         section("👤 Клиент", *_client_lines(card, site_enabled=site_enabled)),
         note("🧾 Счёт кассы", str(payment_id or "").strip() or "—"),
         f"🕐 {_now_label()}",
-        markup=markup,
     )
 
 
@@ -306,7 +302,6 @@ async def notify_new_client(session: AsyncSession, user_id: int) -> None:
         origin=card.get("signup_origin") or client_origin(),
         site_enabled=site_enabled,
         attribution=await resolve_attribution(session, card),
-        markup=markup,
     )
     spawn(_send_to_admins(text, markup))
 
@@ -335,6 +330,5 @@ async def notify_payment(
         site_enabled=site_enabled,
         payment_id=payment_id,
         internal_id=internal_id,
-        markup=markup,
     )
     spawn(_send_to_admins(text, markup))

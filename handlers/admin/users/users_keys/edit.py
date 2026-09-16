@@ -54,7 +54,7 @@ async def handle_key_edit(
 
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(callback_data.user_id),
         )
         return
@@ -212,7 +212,7 @@ async def handle_change_expiry(
     key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -238,7 +238,7 @@ async def handle_expiry_add(
     key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -249,7 +249,7 @@ async def handle_expiry_add(
 
     if not key_details:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -263,11 +263,7 @@ async def handle_expiry_add(
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
     await callback_query.message.edit_text(
-        text=menu_text(
-            "Подписка",
-            "✍️ На сколько дней продлить?",
-            markup=build_users_key_show_kb(user_id, key_ref),
-        ),
+        text=menu_text("Подписка", "✍️ На сколько дней продлить?"),
         reply_markup=build_users_key_show_kb(user_id, key_ref),
     )
 
@@ -287,7 +283,7 @@ async def handle_expiry_take(
     key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -297,11 +293,7 @@ async def handle_expiry_take(
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
     await callback_query.message.edit_text(
-        text=menu_text(
-            "Подписка",
-            "✍️ На сколько дней сократить?",
-            markup=build_users_key_show_kb(user_id, key_ref),
-        ),
+        text=menu_text("Подписка", "✍️ На сколько дней сократить?"),
         reply_markup=build_users_key_show_kb(user_id, key_ref),
     )
 
@@ -321,7 +313,7 @@ async def handle_expiry_set(
     key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -331,7 +323,7 @@ async def handle_expiry_set(
 
     if not key_details:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -373,7 +365,7 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
 
     if not key_details:
         await message.answer(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return

@@ -80,20 +80,3 @@ async def enforce_rate_limit(
 
     if count > max_per_window:
         raise HTTPException(status_code=429, detail="Слишком много запросов, подождите и попробуйте снова")
-
-
-def rate_limit_dependency(*, bucket: str, max_per_window: int, window_sec: int):
-    from fastapi import Depends
-
-    from api.depends import get_session
-
-    async def _dep(request: Request, session: AsyncSession = Depends(get_session)) -> None:
-        await enforce_rate_limit(
-            request,
-            session,
-            bucket=bucket,
-            max_per_window=max_per_window,
-            window_sec=window_sec,
-        )
-
-    return _dep

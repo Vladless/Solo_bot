@@ -182,6 +182,10 @@ async def security_and_cache_middleware(request: Request, call_next):
     content_type = response.headers.get("content-type", "")
     path = request.url.path
 
+    if path.startswith("/api/web/packs/files/") and request.method == "GET" and response.status_code == 200:
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
     if path.startswith("/api/web/uploads/") and request.method == "GET" and response.status_code == 200:
         response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
         response.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
@@ -196,7 +200,8 @@ async def security_and_cache_middleware(request: Request, call_next):
         except (TypeError, ValueError):
             cl = None
         if cl is not None and cl > _ETAG_MAX_BODY_BYTES:
-            response.headers.setdefault("Cache-Control", "no-cache")
+            response.headers.setdefault("Cache-Control", "private, no-cache")
+            response.headers.setdefault("Vary", "Cookie")
             return response
         chunks: list[bytes] = []
         total = 0
@@ -213,20 +218,27 @@ async def security_and_cache_middleware(request: Request, call_next):
         body = b"".join(chunks)
         if too_big:
             headers = dict(response.headers)
-            headers["Cache-Control"] = "no-cache"
+            headers["Cache-Control"] = "private, no-cache"
+            headers["Vary"] = "Cookie"
             headers.pop("content-length", None)
             return StarletteResponse(content=body, status_code=200, headers=headers, media_type=response.media_type)
         etag = '"' + hashlib.md5(body).hexdigest() + '"'
         if_none_match = request.headers.get("if-none-match", "")
         client_etags = [t.strip() for t in if_none_match.split(",") if t.strip()]
         if etag in client_etags or if_none_match.strip() == "*":
-            return StarletteResponse(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
+            return StarletteResponse(
+                status_code=304,
+                headers={"ETag": etag, "Cache-Control": "private, no-cache", "Vary": "Cookie"},
+            )
         headers = dict(response.headers)
         headers["ETag"] = etag
-        headers["Cache-Control"] = "no-cache"
+        headers["Cache-Control"] = "private, no-cache"
+        headers["Vary"] = "Cookie"
         return StarletteResponse(content=body, status_code=200, headers=headers, media_type=response.media_type)
 
     response.headers.setdefault("Cache-Control", "no-store")
+    # Ответ зависит от сессии: без этого общий кеш по пути к клиенту может отдать чужой.
+    response.headers.setdefault("Vary", "Cookie")
     return response
 
 

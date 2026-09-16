@@ -1,8 +1,6 @@
-import base64
 import hashlib
 import hmac
 import secrets
-import time
 
 from urllib.parse import urlencode
 
@@ -19,6 +17,7 @@ from api.depends import (
     set_auth_cookie,
     set_is_admin_cookie,
 )
+from api.shared.oauth_state import STATE_TTL_SECONDS, make_state, verify_state
 
 
 _GOOGLE_NONCE_COOKIE = "g_oauth_nonce"
@@ -54,7 +53,6 @@ _GOOGLE_STATE_SECRET = hashlib.sha256(b"oauth-state:google:v1:" + _GOOGLE_STATE_
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
-STATE_TTL_SECONDS = 600
 
 
 router = APIRouter()
@@ -62,45 +60,6 @@ router = APIRouter()
 
 def google_configured() -> bool:
     return bool(_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET and _GOOGLE_REDIRECT_URI)
-
-
-def _sign_state(payload: str) -> str:
-    mac = hmac.new(str(_GOOGLE_STATE_SECRET).encode(), payload.encode(), hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(mac).decode().rstrip("=")
-
-
-def _make_state(return_to: str) -> tuple[str, str]:
-    nonce = secrets.token_urlsafe(16)
-    ts = str(int(time.time()))
-    payload = f"{nonce}.{ts}.{return_to}"
-    sig = _sign_state(payload)
-    raw = f"{payload}.{sig}".encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("="), nonce
-
-
-def _verify_state(state: str) -> tuple[str, str] | None:
-    try:
-        padded = state + "=" * (-len(state) % 4)
-        raw = base64.urlsafe_b64decode(padded).decode()
-    except Exception:
-        return None
-    parts = raw.rsplit(".", 1)
-    if len(parts) != 2:
-        return None
-    payload, sig = parts
-    expected = _sign_state(payload)
-    if not hmac.compare_digest(sig, expected):
-        return None
-    chunks = payload.split(".", 2)
-    if len(chunks) != 3:
-        return None
-    _nonce, ts, return_to = chunks
-    try:
-        if int(time.time()) - int(ts) > STATE_TTL_SECONDS:
-            return None
-    except Exception:
-        return None
-    return (return_to or _OAUTH_SUCCESS_URI, _nonce)
 
 
 @router.get("/google/authorize")
@@ -112,7 +71,7 @@ async def google_authorize(
     if not google_configured():
         raise HTTPException(status_code=503, detail="Google Sign-In не настроен на этом сервере")
     safe_return = safe_return_path(return_to, _OAUTH_SUCCESS_URI)
-    state, nonce = _make_state(safe_return)
+    state, nonce = make_state(_GOOGLE_STATE_SECRET, safe_return)
     params = {
         "client_id": _GOOGLE_CLIENT_ID,
         "redirect_uri": _GOOGLE_REDIRECT_URI,
@@ -154,7 +113,7 @@ async def google_callback(
         return RedirectResponse(f"/login?error=google_{error}", status_code=302)
     if not code or not state:
         raise HTTPException(status_code=400, detail="Отсутствует code или state")
-    verified = _verify_state(state)
+    verified = verify_state(_GOOGLE_STATE_SECRET, state, _OAUTH_SUCCESS_URI)
     if verified is None:
         logger.warning("[Auth] Google callback: invalid/expired state ip={}", _client_ip(request))
         raise HTTPException(status_code=400, detail="Неверный или просроченный state")

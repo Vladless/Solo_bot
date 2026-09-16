@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Identity, User
@@ -21,12 +21,17 @@ class ResolvedActor:
     identity_id: str | None
 
 
+def public_tg_id(value: int | None) -> int | None:
+    """Telegram id для показа и ссылок: синтетический (отрицательный) наружу не отдаём."""
+    if value is None:
+        return None
+    tg = int(value)
+    return tg if tg > 0 else None
+
+
 def telegram_chat_id(user: User | None) -> int | None:
     """Адрес чата в Telegram; у синтетического tg_id чата нет."""
-    if user is None or user.tg_id is None:
-        return None
-    tg = int(user.tg_id)
-    return tg if tg > 0 else None
+    return public_tg_id(None if user is None else user.tg_id)
 
 
 async def user_id_from_legacy_ref(session: AsyncSession, ref: int) -> int | None:
@@ -85,6 +90,22 @@ async def resolve_uid_cached(session: AsyncSession, legacy_id: int) -> int | Non
     uid = int(u.id)
     await cache_set(cache_key("uref", legacy_id), uid, UREF_CACHE_TTL_SEC)
     return uid
+
+
+async def ensure_legacy_tg_ref(session: AsyncSession, user_id: int) -> int:
+    """Единственная точка, где рождается синтетический tg (-users.id).
+
+    Нужен только слою совместимости: модули на tg-ключах и уже выданные ссылки на подписку
+    (`subscription_owner_ref`). Расчёты ядра ведутся по `users.id` и его не используют.
+    """
+    from database.models import User as _User
+
+    current = await session.scalar(select(_User.tg_id).where(_User.id == int(user_id)))
+    if current is not None:
+        return int(current)
+    synthetic = -int(user_id)
+    await session.execute(update(_User).where(_User.id == int(user_id)).values(tg_id=synthetic))
+    return synthetic
 
 
 async def subscription_owner_ref(session: AsyncSession, legacy_ref: int) -> int:

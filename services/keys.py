@@ -739,7 +739,7 @@ async def _notify_web_renewal(
         expiry = datetime.fromtimestamp(new_expiry_time / 1000, tz=UTC).strftime("%d.%m.%Y")
         await notify_web(
             session,
-            tg_id=billing_user_id,
+            user_ref=billing_user_id,
             type="key_renewed",
             template_vars={"email": key_email, "expiry": expiry},
             data={

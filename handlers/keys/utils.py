@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_key_by_client_id, get_key_by_email, get_keys
 from database.models import Key
-from services.payments.currency_rates import format_for_user
 from handlers.utils import render_text
+from services.payments.currency_rates import format_for_user
 from settings.texts import (
     SUBGROUP_DESCRIPTION_TEXT,
     TARIFF_DESCRIPTIONS_HIDDEN,

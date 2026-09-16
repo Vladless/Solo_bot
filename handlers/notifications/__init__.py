@@ -1,4 +1,7 @@
-__all__ = ("router",)
+__all__ = (
+    "router",
+    "_task_lifecycle",
+)
 
 from aiogram import Router
 

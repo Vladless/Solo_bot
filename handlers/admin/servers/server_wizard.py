@@ -37,12 +37,7 @@ async def start_edit_server(callback: CallbackQuery, state: FSMContext, session:
         return
 
     await callback.message.edit_text(
-        menu_text(
-            "Сервер",
-            f"<b>{server_name}</b>",
-            quote("Выберите поле для редактирования:"),
-            markup=build_edit_server_fields_kb(server_name, server_data),
-        ),
+        menu_text("Сервер", f"<b>{server_name}</b>", quote("Выберите поле для редактирования:")),
         reply_markup=build_edit_server_fields_kb(server_name, server_data),
     )
 
@@ -70,11 +65,7 @@ async def ask_new_field_value(callback: CallbackQuery, state: FSMContext, sessio
     }
 
     await callback.message.edit_text(
-        menu_text(
-            "Сервер",
-            f"✏️ Новое значение для <b>{field_names.get(field, field)}</b>:",
-            markup=build_cancel_edit_kb(server_name),
-        ),
+        menu_text("Сервер", f"✏️ Новое значение для <b>{field_names.get(field, field)}</b>:"),
         reply_markup=build_cancel_edit_kb(server_name),
     )
 
@@ -84,11 +75,7 @@ async def select_panel_type(callback: CallbackQuery):
     server_name = callback.data.split("|")[1]
 
     await callback.message.edit_text(
-        menu_text(
-            "Сервер",
-            f"Тип панели для <b>{server_name}</b>.",
-            markup=build_panel_type_selection_kb(server_name),
-        ),
+        menu_text("Сервер", f"Тип панели для <b>{server_name}</b>."),
         reply_markup=build_panel_type_selection_kb(server_name),
     )
 
@@ -141,11 +128,7 @@ async def apply_field_edit(message: types.Message, state: FSMContext, session: A
     if field == "server_name":
         if len(value) > 12:
             await message.answer(
-                text=menu_text(
-                    "Сервер",
-                    "❌ Максимум 12 символов.",
-                    markup=build_admin_back_kb("clusters"),
-                ),
+                text=menu_text("Сервер", "❌ Максимум 12 символов."),
                 reply_markup=build_admin_back_kb("clusters"),
             )
             return

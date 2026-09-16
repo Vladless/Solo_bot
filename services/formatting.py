@@ -22,6 +22,18 @@ def format_days(days: int) -> str:
     return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
 
 
+def format_minutes(minutes: int) -> str:
+    if minutes <= 0:
+        return "0 минут"
+    return f"{minutes} {get_plural_form(minutes, 'минута', 'минуты', 'минут')}"
+
+
+def format_hours(hours: int) -> str:
+    if hours <= 0:
+        return "0 часов"
+    return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
+
+
 def format_duration_days(days: int) -> str:
     return format_months(days // 30) if days % 30 == 0 else format_days(days)
 

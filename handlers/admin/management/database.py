@@ -24,7 +24,7 @@ from settings.buttons import BACK
 from settings.config import BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_IN_DOCKER, PG_PORT
 from utils.backup import _find_docker_postgres_container
 
-from ..panel.headers import menu_text, quote, section, wrap_text
+from ..panel.headers import menu_text, quote, section
 
 
 _PG_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -319,7 +319,6 @@ async def handle_database_menu(callback: CallbackQuery):
             "База данных",
             "Копии, восстановление и импорт.",
             quote("Бэкап можно забрать в чат, а восстановить — из файла или с сервера."),
-            markup=build_database_kb(),
         ),
         reply_markup=build_database_kb(),
     )
@@ -332,7 +331,6 @@ async def prompt_restore_db(callback: CallbackQuery, state: FSMContext):
             "Восстановление из файла",
             "Пришлите файл резервной копии (.sql).",
             quote("⚠️ Все текущие данные будут перезаписаны."),
-            markup=build_back_to_db_menu(),
         ),
         reply_markup=build_back_to_db_menu(),
     )
@@ -387,7 +385,7 @@ async def restore_database(message: Message, state: FSMContext, bot: Bot):
 
         logger.info("[Restore] База восстановлена")
         await message.answer(
-            menu_text("База данных", "✅ База данных восстановлена.", markup=build_back_to_db_menu()),
+            menu_text("База данных", "✅ База данных восстановлена."),
             reply_markup=build_back_to_db_menu(),
         )
         logger.info("[Restore] Завершение для перезапуска")
@@ -422,12 +420,7 @@ async def prompt_restore_db_local(callback: CallbackQuery):
     backups = list_local_backups()
     if not backups:
         await callback.message.edit_text(
-            menu_text(
-                "База данных",
-                "На сервере нет резервных копий.",
-                section("📂 Папка копий", BACK_DIR),
-                markup=build_back_to_db_menu(),
-            ),
+            menu_text("База данных", "На сервере нет резервных копий.", section("📂 Папка копий", BACK_DIR)),
             reply_markup=build_back_to_db_menu(),
         )
         return
@@ -453,7 +446,6 @@ async def prompt_restore_db_local(callback: CallbackQuery):
                 "Форматы: <code>.tar.gz</code> (БД и медиа), <code>.sql</code>, <code>.sql.gz</code>.",
             ),
             quote("⚠️ Данные будут перезаписаны, бот перезапустится."),
-            markup=builder.as_markup(),
         ),
         reply_markup=builder.as_markup(),
     )
@@ -512,10 +504,7 @@ async def restore_db_local(callback: CallbackQuery):
 async def handle_export_db(callback: CallbackQuery):
     await callback.message.edit_text(
         menu_text(
-            "Импорт с панели",
-            "Выберите панель.",
-            quote("Бот подтянет с неё подписки и сохранит их в свою базу."),
-            markup=build_export_db_sources_kb(),
+            "Импорт с панели", "Выберите панель.", quote("Бот подтянет с неё подписки и сохранит их в свою базу.")
         ),
         reply_markup=build_export_db_sources_kb(),
     )
@@ -524,6 +513,6 @@ async def handle_export_db(callback: CallbackQuery):
 @router.callback_query(AdminPanelCallback.filter(F.action == "back_to_db_menu"), HasPermission(PERM_MANAGEMENT))
 async def back_to_database_menu(callback: CallbackQuery):
     await callback.message.edit_text(
-        menu_text("База данных", "📦 Управление базой данных:", markup=build_database_kb()),
+        menu_text("База данных", "📦 Управление базой данных:"),
         reply_markup=build_database_kb(),
     )

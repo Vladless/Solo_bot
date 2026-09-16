@@ -8,13 +8,11 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from core.client_origin import INVITE_REFERRAL, INVITE_UTM, set_client_invite
-from core.redis_cache import cache_get, cache_key, cache_set
 from database import (
     add_user,
     check_user_exists,

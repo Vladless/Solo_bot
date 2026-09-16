@@ -9,16 +9,20 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from settings.config import DONATIONS_ENABLE, TRIBUTE_LINK
 from core.bootstrap import BUTTONS_CONFIG, PAYMENTS_CONFIG
 from core.settings.money_config import get_currency_mode
 from database.access.resolution import resolve_user_optional
 from database.models import User
 from database.payments import get_balance_activity
-from settings import buttons as btn
 from handlers.payments.currency_flow import build_currency_choice_kb
 from handlers.payments.stars.handlers import process_callback_pay_stars
 from handlers.payments.tribute.handlers import process_callback_pay_tribute
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
+from services.payments.currency_rates import format_for_user
+from services.payments.providers import get_providers_with_hooks
+from settings import buttons as btn
+from settings.config import DONATIONS_ENABLE, TRIBUTE_LINK
 from settings.texts import (
     BALANCE_HISTORY_GIFT_LINE,
     BALANCE_HISTORY_HEADER,
@@ -26,10 +30,6 @@ from settings.texts import (
     FAST_PAY_CHOOSE_CURRENCY,
     PAYMENT_METHODS_MSG,
 )
-from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
-from services.payments.currency_rates import format_for_user
-from services.payments.providers import get_providers_with_hooks
 
 from ..utils import edit_or_send_message
 

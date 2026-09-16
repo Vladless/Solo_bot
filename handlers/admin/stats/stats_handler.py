@@ -158,7 +158,9 @@ def _render_stats_segment(index: int, ctx: dict) -> str:
                 f"Горячие лиды: {ctx['hot_leads_count']}",
             )
         )
-        forecast = _stats_forecast("📈 Прогноз выручки", ctx["total_payments_month"], ctx["total_payments_last_month"], " ₽", now)
+        forecast = _stats_forecast(
+            "📈 Прогноз выручки", ctx["total_payments_month"], ctx["total_payments_last_month"], " ₽", now
+        )
     elif key == "clients":
         blocks.append(
             section(
@@ -189,7 +191,9 @@ def _render_stats_segment(index: int, ctx: dict) -> str:
                 f"Доля платящих: {conversion}%",
             )
         )
-        forecast = _stats_forecast("📈 Прогноз регистраций", ctx["registrations_month"], ctx["registrations_last_month"], "", now)
+        forecast = _stats_forecast(
+            "📈 Прогноз регистраций", ctx["registrations_month"], ctx["registrations_last_month"], "", now
+        )
     elif key == "subs":
         blocks.append(
             section(
@@ -224,7 +228,9 @@ def _render_stats_segment(index: int, ctx: dict) -> str:
                 f"Trial → платно: {ctx['trial_rate']}%",
             )
         )
-        forecast = _stats_forecast("📈 Прогноз новых подписок", ctx["new_subs_month"], ctx["new_subs_last_month"], "", now)
+        forecast = _stats_forecast(
+            "📈 Прогноз новых подписок", ctx["new_subs_month"], ctx["new_subs_last_month"], "", now
+        )
     elif key == "payments":
         blocks.append(
             section(
@@ -244,11 +250,17 @@ def _render_stats_segment(index: int, ctx: dict) -> str:
                 f"Средний чек: {_fmt_num(ctx['avg_check_month'])} ₽",
             )
         )
-        forecast = _stats_forecast("📈 Прогноз выручки", ctx["total_payments_month"], ctx["total_payments_last_month"], " ₽", now)
+        forecast = _stats_forecast(
+            "📈 Прогноз выручки", ctx["total_payments_month"], ctx["total_payments_last_month"], " ₽", now
+        )
     elif key == "tariffs":
         rows = ctx["tariff_rows"]
-        blocks.append(section("📦 По тарифам", *rows) if rows else note("📦 По тарифам", "Пока нет распределения по тарифам."))
-        forecast = _stats_forecast("📈 Прогноз новых подписок", ctx["new_subs_month"], ctx["new_subs_last_month"], "", now)
+        blocks.append(
+            section("📦 По тарифам", *rows) if rows else note("📦 По тарифам", "Пока нет распределения по тарифам.")
+        )
+        forecast = _stats_forecast(
+            "📈 Прогноз новых подписок", ctx["new_subs_month"], ctx["new_subs_last_month"], "", now
+        )
     elif key == "leads":
         blocks.append(
             section(
@@ -271,7 +283,9 @@ def _render_stats_segment(index: int, ctx: dict) -> str:
                 "Потенциал — горячие лиды × средний чек за месяц.",
             )
         )
-        forecast = _stats_forecast("📈 Прогноз конверсий", ctx["payments_count_month"], ctx["payments_count_last_month"], "", now)
+        forecast = _stats_forecast(
+            "📈 Прогноз конверсий", ctx["payments_count_month"], ctx["payments_count_last_month"], "", now
+        )
     elif key == "modules":
         hook_blocks = ctx["hook_blocks"]
         if hook_blocks:
@@ -428,7 +442,9 @@ async def handle_stats(callback_query: CallbackQuery, callback_data: AdminPanelC
 
         from database.statistics import count_payments_between
 
-        payments_count_month = await count_payments_between(session, month_start.replace(tzinfo=None), now.replace(tzinfo=None))
+        payments_count_month = await count_payments_between(
+            session, month_start.replace(tzinfo=None), now.replace(tzinfo=None)
+        )
         payments_count_last_month = await count_payments_between(
             session, last_month_start.replace(tzinfo=None), last_month_end.replace(tzinfo=None)
         )
@@ -842,9 +858,7 @@ async def handle_export_users_csv(callback_query: CallbackQuery, session: AsyncS
         await callback_query.message.answer_document(document=export, caption="📅 Экспорт пользователей в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте пользователей: {e}")
-        await callback_query.message.edit_text(
-            text=menu_text("Статистика", f"❌ Ошибка: {e}", markup=kb), reply_markup=kb
-        )
+        await callback_query.message.edit_text(text=menu_text("Статистика", f"❌ Ошибка: {e}"), reply_markup=kb)
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_payments_csv"), IsAdminFilter())
@@ -855,9 +869,7 @@ async def handle_export_payments_csv(callback_query: CallbackQuery, session: Asy
         await callback_query.message.answer_document(document=export, caption="📅 Экспорт платежей в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте платежей: {e}")
-        await callback_query.message.edit_text(
-            text=menu_text("Статистика", f"❌ Ошибка: {e}", markup=kb), reply_markup=kb
-        )
+        await callback_query.message.edit_text(text=menu_text("Статистика", f"❌ Ошибка: {e}"), reply_markup=kb)
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_hot_leads_csv"), IsAdminFilter())
@@ -868,9 +880,7 @@ async def handle_export_hot_leads_csv(callback_query: CallbackQuery, session: As
         await callback_query.message.answer_document(document=export, caption="📅 Экспорт горящих лидов")
     except Exception as e:
         logger.error(f"Ошибка при экспорте горящих лидов: {e}")
-        await callback_query.message.edit_text(
-            text=menu_text("Статистика", f"❌ Ошибка: {e}", markup=kb), reply_markup=kb
-        )
+        await callback_query.message.edit_text(text=menu_text("Статистика", f"❌ Ошибка: {e}"), reply_markup=kb)
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_keys_csv"), IsAdminFilter())
@@ -881,9 +891,7 @@ async def handle_export_keys_csv(callback_query: CallbackQuery, session: AsyncSe
         await callback_query.message.answer_document(document=export, caption="📅 Экспорт подписок в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте подписок: {e}")
-        await callback_query.message.edit_text(
-            text=menu_text("Статистика", f"❌ Ошибка: {e}", markup=kb), reply_markup=kb
-        )
+        await callback_query.message.edit_text(text=menu_text("Статистика", f"❌ Ошибка: {e}"), reply_markup=kb)
 
 
 def _moscow_day_window(report_date: date, moscow_tz) -> tuple[datetime, datetime]:

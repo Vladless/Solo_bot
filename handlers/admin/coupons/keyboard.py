@@ -2,7 +2,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from handlers.utils import format_days
+from services.formatting import format_days
 from settings.buttons import BACK
 
 from ..panel.headers import card, section

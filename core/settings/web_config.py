@@ -83,7 +83,23 @@ def is_email_binding_enabled() -> bool:
     return bool(WEB_CONFIG.get("EMAIL_BINDING_ENABLED", False))
 
 
+def get_site_mode() -> str:
+    """Режим сайта: full — с лендингом, cabinet_only — только кабинет, webapp_only — только веб-апп."""
+    return str(WEB_CONFIG.get("SITE_MODE", "full")).strip() or "full"
+
+
+def is_cabinet_only() -> bool:
+    return get_site_mode() == "cabinet_only"
+
+
+def is_webapp_only() -> bool:
+    """Сайт живёт только внутри Telegram: браузерная витрина и вход по почте не нужны."""
+    return get_site_mode() == "webapp_only"
+
+
 def is_web_open_in_browser() -> bool:
+    if is_webapp_only():
+        return False
     return bool(WEB_CONFIG.get("WEB_OPEN_IN_BROWSER", False))
 
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.depends import get_session, verify_identity_token
 from api.v2.routes.auth._common import _client_ip
 from mail import send_email_verify_code_email, smtp_configured
-from utils import web_email_verify_code as verify_util
+from utils.web_email_codes import email_verify_codes as verify_util
 
 
 router = APIRouter()
@@ -37,11 +37,11 @@ async def send_email_verify_code(
     if not await verify_util.redis_ready():
         raise HTTPException(status_code=503, detail="Сервис временно недоступен")
     ip = _client_ip(request)
-    if not await verify_util.try_consume_ip_send_budget(ip):
+    if not await verify_util.try_consume_ip_budget(ip):
         raise HTTPException(status_code=429, detail="Слишком много запросов, попробуйте позже")
     if not await verify_util.try_consume_email_send_budget(email):
         raise HTTPException(status_code=429, detail="Слишком много запросов на этот email")
-    if not await verify_util.try_acquire_resend_cooldown(email):
+    if not await verify_util.try_acquire_cooldown(email):
         raise HTTPException(status_code=429, detail="Подождите минуту перед повторной отправкой")
     code = f"{secrets.randbelow(900000) + 100000}"
     await verify_util.store_code(email, code)

@@ -11,33 +11,6 @@ async def _invalidate_servers_cache() -> None:
     await cache_delete_pattern("servers:*")
 
 
-async def create_server(
-    session: AsyncSession,
-    cluster_name: str,
-    server_name: str,
-    api_url: str,
-    subscription_url: str,
-    inbound_id: str,
-):
-    stmt = insert(Server).values(
-        cluster_name=cluster_name,
-        server_name=server_name,
-        api_url=api_url,
-        subscription_url=subscription_url,
-        inbound_id=inbound_id,
-    )
-    await session.execute(stmt)
-    await _invalidate_servers_cache()
-    logger.info(f"✅ Сервер {server_name} добавлен в кластер {cluster_name}")
-
-
-async def delete_server(session: AsyncSession, server_name: str):
-    stmt = delete(Server).where(Server.server_name == server_name)
-    await session.execute(stmt)
-    await _invalidate_servers_cache()
-    logger.info(f"🗑 Сервер {server_name} удалён")
-
-
 async def get_servers(session: AsyncSession, include_enabled: bool = False) -> dict:
     from handlers.utils import ALLOWED_GROUP_CODES
 
@@ -160,18 +133,6 @@ async def get_cluster_name_for_server_name(session: AsyncSession, server_name: s
     """Возвращает cluster_name для указанного server_name (строго по server_name)."""
     result = await session.execute(select(Server.cluster_name).where(Server.server_name == server_name).limit(1))
     return result.scalar()
-
-
-async def get_cluster_name_by_server(session: AsyncSession, server_id_or_name: str) -> str | None:
-    stmt = (
-        select(Server.cluster_name)
-        .where((Server.id == server_id_or_name) | (Server.server_name == server_id_or_name))
-        .limit(1)
-    )
-
-    result = await session.execute(stmt)
-    row = result.scalar_one_or_none()
-    return row
 
 
 async def get_server_by_name(session: AsyncSession, server_name: str) -> dict | None:

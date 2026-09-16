@@ -1,12 +1,6 @@
 from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
 from .._common import (
     _key_actions_config,
-    _normalize_expiry_ms,
-    _resolve_available_location_servers,
-    _resolve_billing_user_id,
-    _resolve_default_web_payment_provider,
-    _resolve_public_base_url,
-    router,
     user_router,
 )
 
@@ -22,7 +16,7 @@ async def user_key_reset_hwid(
     actions = _key_actions_config()
     if not force_web and not actions.hwid_reset_enabled:
         raise HTTPException(status_code=403, detail="Сброс устройств отключен в настройках")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
@@ -92,7 +86,7 @@ async def user_key_devices(
     from core.redis_cache import cache_get, cache_key, cache_set
     from database import get_keys
 
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = next(
         (k for k in await get_keys(session, billing_user_id) if str(getattr(k, "client_id", "")) == client_id),
         None,
@@ -154,7 +148,7 @@ async def user_key_delete_device(
         raise HTTPException(status_code=403, detail="Управление устройствами отключено в настройках")
     if not hwid.strip():
         raise HTTPException(status_code=400, detail="Не указано устройство")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()

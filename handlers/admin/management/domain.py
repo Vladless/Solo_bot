@@ -37,11 +37,7 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
     if not re.fullmatch(r"[a-zA-Z0-9.-]+", new_domain) or " " in new_domain:
         logger.warning("[DomainChange] Некорректный домен")
         await message.answer(
-            menu_text(
-                "Домен",
-                "❌ Домен без http:// и без пробелов.",
-                markup=build_admin_back_kb("admin"),
-            ),
+            menu_text("Домен", "❌ Домен без http:// и без пробелов."),
             reply_markup=build_admin_back_kb("admin"),
         )
         return
@@ -65,7 +61,7 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
     except Exception as e:
         logger.error(f"[DomainChange] Ошибка при выполнении запроса: {e}")
         await message.answer(
-            menu_text("Домен", f"❌ Ошибка при обновлении домена: {e}", markup=build_admin_back_kb("admin")),
+            menu_text("Домен", f"❌ Ошибка при обновлении домена: {e}"),
             reply_markup=build_admin_back_kb("admin"),
         )
         return
@@ -78,7 +74,7 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
         logger.error(f"[DomainChange] Ошибка при выборке обновленной записи: {e}")
 
     await message.answer(
-        menu_text("Домен", f"✅ Домен теперь <code>{new_domain}</code>.", markup=build_admin_back_kb("admin")),
+        menu_text("Домен", f"✅ Домен теперь <code>{new_domain}</code>."),
         reply_markup=build_admin_back_kb("admin"),
     )
     await state.clear()

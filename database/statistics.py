@@ -60,12 +60,7 @@ async def count_keys_created_between(session: AsyncSession, start_ms: int, end_m
 
 async def count_keys_expiring_between(session: AsyncSession, start_ms: int, end_ms: int) -> int:
     """Число активных подписок, у которых срок истекает в интервале (риск невозобновления)."""
-    stmt = (
-        select(func.count())
-        .select_from(Key)
-        .where(Key.expiry_time >= start_ms)
-        .where(Key.expiry_time < end_ms)
-    )
+    stmt = select(func.count()).select_from(Key).where(Key.expiry_time >= start_ms).where(Key.expiry_time < end_ms)
     return await session.scalar(stmt) or 0
 
 
@@ -126,35 +121,11 @@ async def get_tariff_distribution(
     return tariff_counts, no_tariff_keys
 
 
-async def get_tariff_names(session: AsyncSession, tariff_ids: list[int]) -> dict[int, str]:
-    if not tariff_ids:
-        return {}
-
-    result = await session.execute(select(Tariff.id, Tariff.name).where(Tariff.id.in_(tariff_ids)))
-    return dict(result.all())
-
-
 async def get_tariff_groups(session: AsyncSession, tariff_ids: list[int]) -> dict[int, str]:
     if not tariff_ids:
         return {}
 
     result = await session.execute(select(Tariff.id, Tariff.group_code).where(Tariff.id.in_(tariff_ids)))
-    return dict(result.all())
-
-
-async def get_tariff_durations(session: AsyncSession, tariff_ids: list[int]) -> dict[int, int]:
-    if not tariff_ids:
-        return {}
-
-    result = await session.execute(select(Tariff.id, Tariff.duration_days).where(Tariff.id.in_(tariff_ids)))
-    return dict(result.all())
-
-
-async def get_tariff_subgroups(session: AsyncSession, tariff_ids: list[int]) -> dict[int, str | None]:
-    if not tariff_ids:
-        return {}
-
-    result = await session.execute(select(Tariff.id, Tariff.subgroup_title).where(Tariff.id.in_(tariff_ids)))
     return dict(result.all())
 
 

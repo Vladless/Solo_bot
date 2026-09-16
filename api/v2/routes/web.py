@@ -2198,7 +2198,9 @@ async def install_default_design(
 _PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 
-_BUILTIN_PACK_IDS = {"core", "cyber-mono", "capybara", "default"}
+_BUILTIN_PACK_IDS = {"core", "default"}
+
+_BUILTIN_DESIGN_PACK_IDS = ()
 
 
 @router.get("/api/web/packs/available")
@@ -2249,14 +2251,130 @@ async def install_pack_route(payload: dict, _identity=Depends(verify_identity_de
 
 
 @router.post("/api/web/packs/uninstall")
-async def uninstall_pack_route(payload: dict, _identity=Depends(verify_identity_designer)):
-    """Удаляет установленный набор с этого бота."""
-    from services.web_packs import remove_pack
+async def uninstall_pack_route(
+    payload: dict,
+    session: AsyncSession = Depends(get_session),
+    _identity=Depends(verify_identity_designer),
+):
+    """Удаляет установленный набор. Пока его блоки стоят на страницах, удаление требует подтверждения:
+    без блоков набора страницы покажут заглушку «Неизвестный тип»."""
+    from database.web_default_seed import pack_block_usage
+    from services.web_packs import list_installed_packs, remove_pack
 
     pack_id = str((payload or {}).get("pack_id") or "").strip()
+    force = bool((payload or {}).get("force"))
+
+    manifest = next((m for m in list_installed_packs() if str(m.get("id") or "") == pack_id), None)
+    usage = {"blocks": 0, "pages": []}
+    if manifest is not None:
+        types = [str(item.get("type") or "") for item in (manifest.get("elements") or [])]
+        usage = await pack_block_usage(session, types)
+    if usage["blocks"] > 0 and not force:
+        return {
+            "ok": False,
+            "pack_id": pack_id,
+            "needsConfirm": True,
+            "usage": usage,
+        }
+
     if not remove_pack(pack_id):
         raise HTTPException(status_code=404, detail="Набор не установлен")
-    return {"ok": True, "pack_id": pack_id}
+    return {"ok": True, "pack_id": pack_id, "usage": usage}
+
+
+@router.get("/api/web/packs/{pack}/settings")
+async def get_pack_settings(
+    pack: str,
+    session: AsyncSession = Depends(get_session),
+    _identity=Depends(verify_identity_designer),
+):
+    """Значения собственных настроек набора: живут в теме лендинга, поэтому уезжают вместе с дизайном."""
+    if not _PACK_ID_RE.match(pack):
+        raise HTTPException(status_code=400, detail="Некорректный id набора")
+    current, _ = await _resolve_variant(session, "landing", None)
+    tokens = dict(current.theme_tokens or {})
+    bucket = tokens.get("packSettings")
+    values = bucket.get(pack) if isinstance(bucket, dict) and isinstance(bucket.get(pack), dict) else {}
+    return {"pack": pack, "values": values}
+
+
+# Настройки набора едут в теме витрины, а она уходит каждому посетителю: держим их маленькими.
+_PACK_SETTINGS_MAX_KEYS = 64
+_PACK_SETTINGS_MAX_VALUE_LEN = 2000
+
+
+@router.post("/api/web/packs/{pack}/settings")
+async def save_pack_settings(
+    pack: str,
+    payload: dict,
+    session: AsyncSession = Depends(get_session),
+    _identity=Depends(verify_identity_designer),
+):
+    """Пишет настройки набора в тему лендинга. Значения — только скаляры: набор объявляет поля сам."""
+    if not _PACK_ID_RE.match(pack):
+        raise HTTPException(status_code=400, detail="Некорректный id набора")
+    raw = (payload or {}).get("values")
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=400, detail="Нужен объект values")
+    if len(raw) > _PACK_SETTINGS_MAX_KEYS:
+        raise HTTPException(status_code=400, detail=f"Не больше {_PACK_SETTINGS_MAX_KEYS} настроек у набора")
+    values: dict[str, object] = {}
+    for key, value in raw.items():
+        if not isinstance(value, str | int | float | bool) and value is not None:
+            continue
+        if isinstance(value, str) and len(value) > _PACK_SETTINGS_MAX_VALUE_LEN:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Значение «{str(key)[:32]}» длиннее {_PACK_SETTINGS_MAX_VALUE_LEN} символов",
+            )
+        values[str(key)[:64]] = value
+    current, _ = await _resolve_variant(session, "landing", None)
+    tokens = dict(current.theme_tokens or {})
+    bucket = dict(tokens.get("packSettings") or {}) if isinstance(tokens.get("packSettings"), dict) else {}
+    bucket[pack] = values
+    tokens["packSettings"] = bucket
+    current.theme_tokens = tokens
+    await session.flush()
+    await bump_site_revision(session)
+    await _audit_web_admin(session, _identity, "design.pack_settings", entity_type="pack", entity_id=pack)
+    return {"ok": True, "pack": pack, "values": values}
+
+
+@router.get("/api/web/design/snapshot")
+async def design_snapshot_state(
+    session: AsyncSession = Depends(get_session),
+    _identity=Depends(verify_identity_designer),
+):
+    """Есть ли снимок сайта, снятый перед установкой дизайна, и когда он снят."""
+    from database.web_default_seed import load_site_snapshot
+
+    payload = await load_site_snapshot(session)
+    if not payload:
+        return {"exists": False}
+    site = payload.get("site") if isinstance(payload.get("site"), dict) else {}
+    return {
+        "exists": True,
+        "takenAt": payload.get("taken_at"),
+        "reason": payload.get("reason"),
+        "pages": sum(1 for k, v in site.items() if not k.startswith("_") and isinstance(v, list)),
+    }
+
+
+@router.post("/api/web/design/rollback")
+async def design_rollback(
+    session: AsyncSession = Depends(get_session),
+    _identity=Depends(verify_identity_designer),
+):
+    """Возвращает сайт к снимку, снятому перед последней установкой дизайна."""
+    from database.web_default_seed import restore_site_snapshot
+
+    restored = await restore_site_snapshot(session)
+    if not restored:
+        raise HTTPException(status_code=404, detail="Снимка сайта нет")
+    await session.flush()
+    await bump_site_revision(session)
+    await _audit_web_admin(session, _identity, "design.rollback", entity_type="design", entity_id="snapshot")
+    return {"ok": True}
 
 
 @router.get("/api/web/packs/installed")
@@ -2280,7 +2398,7 @@ async def list_packs(
     entitled = set(await refresh_entitled_packs())
     custom = await list_custom_pack_designs(session, _BUILTIN_PACK_IDS)
     builtin_saved: dict[str, bool] = {}
-    for pid in ("cyber-mono", "capybara"):
+    for pid in _BUILTIN_DESIGN_PACK_IDS:
         builtin_saved[pid] = bool(await load_pack_design(session, pid)) or has_builtin_pack_file(pid) or pid in entitled
     return {"custom": custom, "builtinSaved": builtin_saved}
 
@@ -2431,6 +2549,101 @@ async def _merge_blueprints_into_landing(session: AsyncSession, blueprints: list
     return added, len(by_slug)
 
 
+async def _merge_wiring_into_landing(session: AsyncSession, wiring: dict) -> tuple[int, int]:
+    """Экраны и слоты обвязки из файла набора: экраны добавляются по адресу, слоты — если элемент приехал."""
+    screens = wiring.get("screens")
+    screens = (
+        [s for s in screens if isinstance(s, dict) and str(s.get("id") or "").strip()]
+        if isinstance(screens, list)
+        else []
+    )
+    chrome = wiring.get("chrome") if isinstance(wiring.get("chrome"), dict) else {}
+
+    current, _ = await _resolve_variant(session, "landing", None)
+    tokens = dict(current.theme_tokens or {})
+    stored = tokens.get("customPackWiring")
+    stored = stored if isinstance(stored, dict) else {}
+
+    by_id: dict = {}
+    for item in stored.get("screens") if isinstance(stored.get("screens"), list) else []:
+        if isinstance(item, dict) and str(item.get("id") or "").strip():
+            by_id[str(item["id"]).strip()] = item
+    added = 0
+    for item in screens:
+        key = str(item["id"]).strip()
+        if key not in by_id:
+            added += 1
+        by_id[key] = item
+
+    known = {
+        str(b.get("slug") or "").strip()
+        for b in (
+            tokens.get("customElementBlueprints") if isinstance(tokens.get("customElementBlueprints"), list) else []
+        )
+        if isinstance(b, dict)
+    }
+    slots = stored.get("chrome") if isinstance(stored.get("chrome"), dict) else {}
+    next_chrome = {"header": str(slots.get("header") or ""), "footer": str(slots.get("footer") or "")}
+    linked = 0
+    for slot in ("header", "footer"):
+        wanted = str(chrome.get(slot) or "").strip()
+        if wanted and wanted in known:
+            next_chrome[slot] = wanted
+            linked += 1
+
+    tokens["customPackWiring"] = {"screens": list(by_id.values()), "chrome": next_chrome}
+    current.theme_tokens = tokens
+    await session.flush()
+    return added, linked
+
+
+def _reject_supplied_pack_blocks(design: dict) -> None:
+    """Набор, поставляемый с сайтом, не передаётся: его блоки не уезжают ни в файл, ни в чужой дизайн."""
+    from services.web_packs import installed_pack_block_types
+
+    used: set[str] = set()
+    for slug, blocks in design.items():
+        if str(slug).startswith("_") or not isinstance(blocks, list):
+            continue
+        for block in blocks:
+            if isinstance(block, dict):
+                kind = str(block.get("type") or "").strip()
+                if kind:
+                    used.add(kind)
+    themes = [design.get("_theme"), design.get("_global_theme")]
+    page_themes = design.get("_page_themes")
+    if isinstance(page_themes, dict):
+        themes.extend(page_themes.values())
+    referenced: set[str] = set()
+    for tokens in themes:
+        if not isinstance(tokens, dict):
+            continue
+        chrome = str(tokens.get("chromePack") or "").strip()
+        if chrome:
+            referenced.add(chrome)
+        bucket = tokens.get("packSettings")
+        if isinstance(bucket, dict):
+            referenced.update(str(key).strip() for key in bucket if str(key).strip())
+
+    if not used and not referenced:
+        return
+    blocked = [
+        info["name"]
+        for pack_id, info in installed_pack_block_types().items()
+        if pack_id in referenced or any(kind in used for kind in info["types"])
+    ]
+    if blocked:
+        names = ", ".join(f"«{name}»" for name in sorted(blocked))
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Сайт держится на наборе {names}, который поставляется с сайтом. "
+                "Такой набор передавать нельзя: уберите его блоки и оформление со страниц "
+                "или соберите набор из своих элементов в мастерской."
+            ),
+        )
+
+
 @router.get("/api/web/packs/export-current.zip")
 async def export_current_as_pack_zip(
     name: str = Query(default="Набор"),
@@ -2447,6 +2660,7 @@ async def export_current_as_pack_zip(
     from database.web_default_seed import capture_current_site
 
     design = await capture_current_site(session)
+    _reject_supplied_pack_blocks(design)
     current, _ = await _resolve_variant(session, "landing", None)
     tokens = dict(current.theme_tokens or {})
     blueprints = tokens.get("customElementBlueprints")
@@ -2460,6 +2674,73 @@ async def export_current_as_pack_zip(
         )
         zf.writestr("blocks.json", _json.dumps({"blueprints": blueprints}, ensure_ascii=False, indent=2))
         zf.writestr("design.json", _json.dumps(design, ensure_ascii=False, indent=2))
+        stored_wiring = tokens.get("customPackWiring")
+        if isinstance(stored_wiring, dict) and stored_wiring:
+            zf.writestr("wiring.json", _json.dumps(stored_wiring, ensure_ascii=False, indent=2))
+    buf.seek(0)
+    fallback = "".join(c for c in safe_name if c.isalnum() or c in "-_") or "pack"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{fallback}.solopack.zip"'},
+    )
+
+
+@router.get("/api/web/packs/export-elements.zip")
+async def export_elements_as_pack_zip(
+    name: str = Query(default="Набор"),
+    description: str = Query(default=""),
+    slugs: str = Query(default=""),
+    session: AsyncSession = Depends(get_session),
+    _identity=Depends(verify_identity_designer),
+):
+    """Собирает выбранные свои элементы в zip-набор для передачи другому админу: meta.json + blocks.json."""
+    import io
+    import json as _json
+    import zipfile
+
+    from fastapi.responses import Response
+
+    current, _ = await _resolve_variant(session, "landing", None)
+    tokens = dict(current.theme_tokens or {})
+    stored = tokens.get("customElementBlueprints")
+    stored = stored if isinstance(stored, list) else []
+
+    wanted = {part.strip() for part in str(slugs or "").split(",") if part.strip()}
+    blueprints = [
+        item
+        for item in stored
+        if isinstance(item, dict) and (not wanted or str(item.get("slug") or "").strip() in wanted)
+    ]
+    if not blueprints:
+        raise HTTPException(status_code=400, detail="Нет элементов для набора")
+
+    safe_name = str(name or "Набор").strip() or "Набор"
+    meta = {
+        "name": safe_name,
+        "description": str(description or "").strip(),
+        "version": 1,
+        "kind": "solo-pack",
+        "elements": len(blueprints),
+    }
+    taken = {str(item.get("slug") or "").strip() for item in blueprints}
+    stored = tokens.get("customPackWiring")
+    stored = stored if isinstance(stored, dict) else {}
+    screens = [s for s in (stored.get("screens") or []) if isinstance(s, dict)]
+    slots = stored.get("chrome") if isinstance(stored.get("chrome"), dict) else {}
+    wiring = {
+        "screens": screens,
+        "chrome": {
+            slot: str(slots.get(slot) or "") for slot in ("header", "footer") if str(slots.get(slot) or "") in taken
+        },
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("meta.json", _json.dumps(meta, ensure_ascii=False, indent=2))
+        zf.writestr("blocks.json", _json.dumps({"blueprints": blueprints}, ensure_ascii=False, indent=2))
+        if wiring["screens"] or wiring["chrome"]:
+            zf.writestr("wiring.json", _json.dumps(wiring, ensure_ascii=False, indent=2))
     buf.seek(0)
     fallback = "".join(c for c in safe_name if c.isalnum() or c in "-_") or "pack"
     return Response(
@@ -2503,6 +2784,8 @@ async def import_pack_zip(
 
     meta = _read(["meta.json", "pack.json"])
     meta = meta if isinstance(meta, dict) else {}
+    wiring = _read(["wiring.json"])
+    wiring = wiring if isinstance(wiring, dict) else {}
     blocks_doc = _read(["blocks.json", "blueprints.json"])
     design = _read(["design.json", "site.json", "install.json"])
     design = design if isinstance(design, dict) else {}
@@ -2522,6 +2805,10 @@ async def import_pack_zip(
     if blueprints:
         added_blocks, _total = await _merge_blueprints_into_landing(session, blueprints)
 
+    added_screens = 0
+    if wiring:
+        added_screens, _linked = await _merge_wiring_into_landing(session, wiring)
+
     pack_id = ""
     pages_count = 0
     has_design = any(not k.startswith("_") and isinstance(v, list) for k, v in design.items())
@@ -2532,7 +2819,7 @@ async def import_pack_zip(
         )
         pages_count = sum(1 for k, v in design.items() if not k.startswith("_") and isinstance(v, list))
 
-    if not blueprints and not has_design:
+    if not blueprints and not has_design and not wiring:
         raise HTTPException(status_code=400, detail="В архиве нет ни blocks.json, ни design.json")
 
     await session.flush()
@@ -2540,7 +2827,14 @@ async def import_pack_zip(
     await _audit_web_admin(
         session, _identity, "design.import_pack_zip", entity_type="pack", entity_id=pack_id or "blocks"
     )
-    return {"ok": True, "id": pack_id, "name": name, "addedBlocks": added_blocks, "pages": pages_count}
+    return {
+        "ok": True,
+        "id": pack_id,
+        "name": name,
+        "addedBlocks": added_blocks,
+        "pages": pages_count,
+        "screens": added_screens,
+    }
 
 
 @router.post("/api/web/packs/import-file")
@@ -2881,7 +3175,8 @@ async def web_node_status(request: Request, session: AsyncSession = Depends(get_
         bind_identity_actor,
         hash_token,
     )
-    from api.v2.routes.keys._common import _resolve_billing_user_id, resolve_user_squad_uuids
+    from api.shared.billing_actor import resolve_billing_user_id
+    from api.v2.routes.keys._common import resolve_user_squad_uuids
     from core.redis_cache import cache_get, cache_key, cache_set
     from services.remnawave_monitor import get_client_node_statuses
 
@@ -2896,7 +3191,7 @@ async def web_node_status(request: Request, session: AsyncSession = Depends(get_
             return {"nodes": []}
         actor = await bind_identity_actor(request, session, identity)
         await _store_auth_cache(request, token_hash, identity, actor)
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
 
     squads_key = cache_key("user_squads", billing_user_id)
     cached_squads = await cache_get(squads_key)

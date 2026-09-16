@@ -1,24 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.depends import get_request_actor, get_session, verify_identity_token
+from api.depends import get_session, verify_identity_token
+from api.shared.billing_actor import resolve_billing_actor
 from api.v2.schemas.web_public import DailyBonusClaimResponse, DailyBonusStateResponse
-from database import identities as idb
 from database.web_layout import DAILY_BONUS_BLOCK_TYPES, find_block_locations
 from services.daily_bonus import DailyBonusState, claim_daily_bonus, get_daily_bonus_state
 from services.errors import ServiceError
 
 
 router = APIRouter()
-
-
-async def _resolve_bonus_user(session: AsyncSession, request: Request, identity) -> tuple[int, int | None]:
-    actor = get_request_actor(request)
-    billing_user_id = actor.billing_user_id if actor and actor.billing_user_id is not None else None
-    if billing_user_id is None:
-        billing_user_id = await idb.ensure_billing_user_for_identity(session, identity)
-    tg_id = actor.telegram_chat_id if actor else None
-    return int(billing_user_id), tg_id
 
 
 def _state_payload(state: DailyBonusState, placement: dict[str, object] | None = None) -> DailyBonusStateResponse:
@@ -47,7 +38,7 @@ async def get_my_daily_bonus(
     identity=Depends(verify_identity_token),
 ):
     """Состояние ежедневного бонуса текущего пользователя."""
-    user_id, _ = await _resolve_bonus_user(session, request, identity)
+    user_id, _ = await resolve_billing_actor(request, identity, session)
     state = await get_daily_bonus_state(session, user_id)
     return _state_payload(state, await _bonus_block_placement(session))
 
@@ -62,7 +53,7 @@ async def claim_my_daily_bonus(
     from api.ratelimit import enforce_rate_limit
 
     await enforce_rate_limit(request, session, bucket="daily_bonus_claim", max_per_window=10, window_sec=60)
-    user_id, tg_id = await _resolve_bonus_user(session, request, identity)
+    user_id, tg_id = await resolve_billing_actor(request, identity, session)
     try:
         result = await claim_daily_bonus(session, user_id, tg_id, source="web")
     except ServiceError as e:

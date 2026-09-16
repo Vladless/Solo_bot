@@ -108,12 +108,7 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, user_id
         )
 
     await message.edit_text(
-        text=menu_text(
-            "Подарки клиента",
-            f"Клиент <code>{user_id}</code>",
-            card(*blocks),
-            markup=build_user_gifts_kb(user_id, gifts, page),
-        ),
+        text=menu_text("Подарки клиента", f"Клиент <code>{user_id}</code>", card(*blocks)),
         reply_markup=build_user_gifts_kb(user_id, gifts, page),
     )
 
@@ -172,7 +167,6 @@ async def handle_gift_delete(
                 "❓ <b>Удалить подарок?</b>",
                 quote(f"📆 Длительность: {gift.selected_months} мес.\n📅 Создан: {created_str}\n📊 Статус: {status}"),
                 quote("⚠️ Отменить будет нельзя."),
-                markup=build_gift_delete_confirm_kb(user_id, gift_id, page),
             )
         ),
         reply_markup=build_gift_delete_confirm_kb(user_id, gift_id, page),

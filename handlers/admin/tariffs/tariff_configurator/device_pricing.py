@@ -48,11 +48,7 @@ async def save_device_step(message: Message, state: FSMContext, session: AsyncSe
             raise ValueError
     except ValueError:
         await message.answer(
-            menu_text(
-                "Конфигуратор",
-                "❌ Нужно число от нуля.",
-                markup=build_cancel_config_kb(tariff_id),
-            ),
+            menu_text("Конфигуратор", "❌ Нужно число от нуля."),
             reply_markup=build_cancel_config_kb(tariff_id),
         )
         return
@@ -90,7 +86,6 @@ async def open_device_overrides_menu(callback: CallbackQuery, state: FSMContext,
                 "Доплаты за устройства",
                 "Сначала задайте варианты устройств.",
                 quote("Кнопка «Варианты устройств» в конфигураторе."),
-                markup=build_config_menu_kb(tariff_id),
             ),
             reply_markup=build_config_menu_kb(tariff_id),
         )
@@ -100,7 +95,7 @@ async def open_device_overrides_menu(callback: CallbackQuery, state: FSMContext,
     await state.update_data(tariff_id=tariff_id, devices_override=None)
 
     text, markup = build_device_overrides_screen(tariff)
-    await callback.message.edit_text(text=menu_text("Конфигуратор", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Конфигуратор", text), reply_markup=markup)
 
 
 @router.callback_query(
@@ -162,7 +157,7 @@ async def clear_device_overrides(callback: CallbackQuery, state: FSMContext, ses
     tariff.updated_at = datetime.utcnow()
 
     text, markup = build_device_overrides_screen(tariff)
-    await callback.message.edit_text(text=menu_text("Конфигуратор", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Конфигуратор", text), reply_markup=markup)
 
 
 @router.message(TariffConfigState.entering_device_overrides, IsAdminFilter())
@@ -209,4 +204,4 @@ async def save_device_override_price(message: Message, state: FSMContext, sessio
     await state.update_data(devices_override=None)
 
     text, markup = build_device_overrides_screen(tariff)
-    await message.answer(text=menu_text("Конфигуратор", text, markup=markup), reply_markup=markup)
+    await message.answer(text=menu_text("Конфигуратор", text), reply_markup=markup)

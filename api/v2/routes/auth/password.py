@@ -34,24 +34,14 @@ from mail import (
     send_password_reset_code_email,
     smtp_configured,
 )
-from utils import (
-    web_email_verify_code as email_verify,
-    web_password_reset_code as pwd_reset,
-)
 from utils.disposable_emails import is_disposable_email
 from utils.referral_codes import decode_referral_code
 from utils.turnstile import turnstile_enabled, verify_turnstile_token
-from utils.web_login_code import (
-    delete_code,
-    normalize_login_email,
-    redis_ready_for_login_codes,
-    release_resend_cooldown,
-    store_code,
-    try_acquire_resend_cooldown,
-    try_consume_email_send_budget,
-    try_consume_email_verify_budget,
-    try_consume_ip_send_budget,
-    verify_and_consume_code,
+from utils.web_email_codes import (
+    email_verify_codes as email_verify,
+    login_codes,
+    normalize_email,
+    password_reset_codes as pwd_reset,
 )
 
 
@@ -125,20 +115,19 @@ async def register_by_email(
     billing_user_id = await idb.ensure_billing_user_for_identity(session, identity)
     if referrer_user is not None and not await get_referral_by_referred_id(session, billing_user_id):
         await add_referral(session, billing_user_id, referrer_user.id)
-        if referrer_user.tg_id is not None:
-            try:
-                from database.web_notifications import notify_web
+        try:
+            from database.web_notifications import notify_web
 
-                await notify_web(
-                    session,
-                    tg_id=int(referrer_user.tg_id),
-                    type="referral_joined",
-                    title="Ваш реферал присоединился",
-                    message="Новый пользователь зарегистрировался по вашей реферальной ссылке.",
-                    data={"referred_user_id": int(billing_user_id)},
-                )
-            except Exception:
-                pass
+            await notify_web(
+                session,
+                user_ref=int(referrer_user.id),
+                type="referral_joined",
+                title="Ваш реферал присоединился",
+                message="Новый пользователь зарегистрировался по вашей реферальной ссылке.",
+                data={"referred_user_id": int(billing_user_id)},
+            )
+        except Exception:
+            pass
     if smtp_configured():
         try:
             code = f"{secrets.randbelow(900000) + 100000}"
@@ -245,7 +234,7 @@ async def send_login_code(
     if turnstile_enabled():
         if not await verify_turnstile_token(body.turnstile_token, ip):
             raise HTTPException(status_code=400, detail="Проверка CAPTCHA не пройдена")
-    email_norm = normalize_login_email(body.email)
+    email_norm = normalize_email(body.email)
     if not email_norm:
         raise HTTPException(status_code=400, detail="Email обязателен")
     if is_disposable_email(email_norm):
@@ -255,7 +244,7 @@ async def send_login_code(
             status_code=503,
             detail="Отправка кода недоступна: почта не настроена на сервере",
         )
-    if not await redis_ready_for_login_codes():
+    if not await login_codes.redis_ready():
         raise HTTPException(
             status_code=503,
             detail="Сервис временно недоступен. Попробуйте позже.",
@@ -266,24 +255,24 @@ async def send_login_code(
             return {"ok": True, "message": "Код отправлен на почту"}
         identity = await idb.create_identity(session, email=email_norm)
     ip = _client_ip(request)
-    if not await try_consume_ip_send_budget(ip):
+    if not await login_codes.try_consume_ip_budget(ip):
         raise HTTPException(
             status_code=429,
             detail="Слишком много запросов с вашего адреса. Попробуйте позже.",
         )
-    if not await try_consume_email_send_budget(email_norm):
+    if not await login_codes.try_consume_email_send_budget(email_norm):
         raise HTTPException(
             status_code=429,
             detail="Слишком много запросов для этого адреса. Попробуйте позже.",
         )
-    if not await try_acquire_resend_cooldown(email_norm):
+    if not await login_codes.try_acquire_cooldown(email_norm):
         raise HTTPException(
             status_code=429,
             detail="Код уже отправлен. Подождите перед повторной отправкой.",
         )
     code = "".join(secrets.choice("0123456789") for _ in range(6))
-    if not await store_code(email_norm, code):
-        await release_resend_cooldown(email_norm)
+    if not await login_codes.store_code(email_norm, code):
+        await login_codes.release_cooldown(email_norm)
         raise HTTPException(
             status_code=503,
             detail="Не удалось сохранить код. Попробуйте позже.",
@@ -291,8 +280,8 @@ async def send_login_code(
     try:
         await send_login_code_email(email_norm, code)
     except Exception:
-        await release_resend_cooldown(email_norm)
-        await delete_code(email_norm)
+        await login_codes.release_cooldown(email_norm)
+        await login_codes.delete_code(email_norm)
         raise HTTPException(
             status_code=503,
             detail="Не удалось отправить письмо. Попробуйте позже.",
@@ -308,20 +297,20 @@ async def login_by_code(
     session: AsyncSession = Depends(get_session),
 ):
     """Вход по email и коду из письма."""
-    email_norm = normalize_login_email(body.email)
+    email_norm = normalize_email(body.email)
     if not email_norm or not body.code or not body.code.strip():
         raise HTTPException(status_code=400, detail="Email и код обязательны")
-    if not await redis_ready_for_login_codes():
+    if not await login_codes.redis_ready():
         raise HTTPException(
             status_code=503,
             detail="Сервис временно недоступен. Попробуйте позже.",
         )
-    if not await try_consume_email_verify_budget(email_norm):
+    if not await login_codes.try_consume_verify_budget(email_norm):
         raise HTTPException(
             status_code=429,
             detail="Слишком много попыток. Запросите новый код.",
         )
-    if not await verify_and_consume_code(email_norm, body.code.strip()):
+    if not await login_codes.verify_and_consume_code(email_norm, body.code.strip()):
         raise HTTPException(status_code=401, detail="Неверный код или срок действия истёк")
     identity = await idb.get_identity_by_email(session, email_norm)
     if not identity:
@@ -352,7 +341,7 @@ async def request_password_reset(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    email_norm = normalize_login_email(body.email)
+    email_norm = normalize_email(body.email)
     if not email_norm:
         raise HTTPException(status_code=400, detail="Email обязателен")
     if not smtp_configured() or not await pwd_reset.redis_ready():
@@ -402,7 +391,7 @@ async def confirm_password_reset(
     response: Response,
     session: AsyncSession = Depends(get_session),
 ):
-    email_norm = normalize_login_email(body.email)
+    email_norm = normalize_email(body.email)
     if not email_norm or not body.code or not body.code.strip():
         raise HTTPException(status_code=400, detail="Email и код обязательны")
     if body.password != body.password_confirm:
@@ -414,7 +403,7 @@ async def confirm_password_reset(
             status_code=503,
             detail="Сервис временно недоступен. Попробуйте позже.",
         )
-    if not await pwd_reset.try_consume_email_verify_budget(email_norm):
+    if not await pwd_reset.try_consume_verify_budget(email_norm):
         raise HTTPException(
             status_code=429,
             detail="Слишком много попыток. Запросите новый код.",

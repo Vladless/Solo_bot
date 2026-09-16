@@ -12,30 +12,14 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from settings.config import (
-    KASSAI_API_KEY,
-    KASSAI_DOMAIN,
-    KASSAI_FAILURE_URL,
-    KASSAI_IP,
-    KASSAI_SHOP_ID,
-    KASSAI_SUCCESS_URL,
-    PROVIDERS_ENABLED,
-)
-from database import async_session_maker, register_pending_payment
+from database import register_pending_payment
 from database.models import User
-from settings.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
     parse_amount_from_callback,
     pay_keyboard,
     payment_options_for_user,
-)
-from settings.texts import (
-    ENTER_SUM,
-    KASSAI_CARDS_DESCRIPTION,
-    KASSAI_PAYMENT_MESSAGE,
-    KASSAI_SBP_DESCRIPTION,
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
@@ -45,7 +29,21 @@ from services.payments.currency_rates import (
     to_rub,
 )
 from services.payments.payment_links import register_payment_creator
-from services.payments.providers import get_providers
+from settings.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
+from settings.config import (
+    KASSAI_API_KEY,
+    KASSAI_DOMAIN,
+    KASSAI_FAILURE_URL,
+    KASSAI_IP,
+    KASSAI_SHOP_ID,
+    KASSAI_SUCCESS_URL,
+    PROVIDERS_ENABLED,
+)
+from settings.texts import (
+    KASSAI_CARDS_DESCRIPTION,
+    KASSAI_PAYMENT_MESSAGE,
+    KASSAI_SBP_DESCRIPTION,
+)
 
 
 router = Router()

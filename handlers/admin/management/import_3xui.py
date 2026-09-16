@@ -31,7 +31,6 @@ async def prompt_for_3xui_file(callback: CallbackQuery, state: FSMContext):
                 "⚠️ У всех подписок в панели должен быть прописан <code>telegram_id</code>.",
                 "После импорта обязательно синхронизируйте серверы.",
             ),
-            markup=build_back_to_db_menu(),
         ),
         reply_markup=build_back_to_db_menu(),
     )
@@ -61,7 +60,6 @@ async def handle_3xui_db_upload(message: Message, state: FSMContext, session: As
                 "Импорт из 3x-ui",
                 "✅ Импорт завершён.",
                 section("🔐 Подписки", f"Добавлено: {imported}", f"Пропущено: {skipped}"),
-                markup=build_post_import_kb(),
             ),
             reply_markup=build_post_import_kb(),
         )
@@ -70,9 +68,7 @@ async def handle_3xui_db_upload(message: Message, state: FSMContext, session: As
         logger.error(f"[Import 3x-ui] Ошибка: {e}")
         await processing_message.edit_text(
             menu_text(
-                "Импорт из 3x-ui",
-                "❌ Не удалось импортировать. Убедись, что это валидный файл <code>x-ui.db</code>",
-                markup=build_back_to_db_menu(),
+                "Импорт из 3x-ui", "❌ Не удалось импортировать. Убедись, что это валидный файл <code>x-ui.db</code>"
             ),
             reply_markup=build_back_to_db_menu(),
         )
@@ -84,9 +80,7 @@ async def handle_3xui_db_upload(message: Message, state: FSMContext, session: As
 async def handle_resync_after_import(callback: CallbackQuery, session: AsyncSession):
     await callback.answer(menu_text("Импорт из 3x-ui", "🔁 Начинаю перевыпуск подписок..."))
 
-    result = await session.execute(
-        select(Key.user_id, Key.email).select_from(Key).join(User, Key.user_id == User.id)
-    )
+    result = await session.execute(select(Key.user_id, Key.email).select_from(Key).join(User, Key.user_id == User.id))
     keys = result.all()
 
     success = 0
@@ -105,7 +99,6 @@ async def handle_resync_after_import(callback: CallbackQuery, session: AsyncSess
             "Импорт из 3x-ui",
             "✅ Перевыпуск завершён.",
             section("🔄 Итог", f"Удачно: {success}", f"С ошибкой: {failed}"),
-            markup=build_back_to_db_menu(),
         ),
         reply_markup=build_back_to_db_menu(),
     )

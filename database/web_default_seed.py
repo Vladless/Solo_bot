@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,6 +88,18 @@ def _apply_runtime_links(theme_tokens: dict) -> dict:
     return theme_tokens
 
 
+def merge_theme_tokens(base: dict, overlay: dict) -> dict:
+    """Накладывает токены поверх существующих, сохраняя содержимое вложенных секций вроде header и footer."""
+    out = dict(base)
+    for key, value in overlay.items():
+        current = out.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            out[key] = merge_theme_tokens(current, value)
+        else:
+            out[key] = value
+    return out
+
+
 def _apply_support_links_to_pages(pages: dict) -> None:
     try:
         from settings.config import SUPPORT_CHAT_URL, USERNAME_BOT
@@ -127,6 +141,8 @@ async def seed_default_site(session: AsyncSession, force: bool = False) -> bool:
         return False
     theme_tokens = theme or BLACK_ORANGE_THEME
     theme_tokens = _apply_runtime_links(theme_tokens)
+    if force:
+        await store_site_snapshot(session, reason="установка дефолтного дизайна")
     return await _apply_site(session, theme_tokens, pages, flows, force, page_themes=None)
 
 
@@ -214,7 +230,7 @@ async def _apply_site(
             .all()
         )
         for variant in rest:
-            variant.theme_tokens = {**dict(variant.theme_tokens or {}), **global_theme}
+            variant.theme_tokens = merge_theme_tokens(dict(variant.theme_tokens or {}), global_theme)
             seeded = True
 
     for flow in flows:
@@ -292,6 +308,7 @@ async def capture_current_site(session: AsyncSession) -> dict:
         out[page.slug] = [{"type": b.type, "data": dict(b.data or {})} for b in blocks]
     out["_theme"] = global_theme or (next(iter(page_themes.values()), {}) if page_themes else {})
     out["_page_themes"] = page_themes
+    out["_global_theme"] = dict(out["_theme"])
     flows = (await session.execute(select(WebFlow))).scalars().all()
     out["_flows"] = [
         {
@@ -317,6 +334,70 @@ async def store_pack_design(session: AsyncSession, pack_id: str, site: dict, met
     else:
         setting.value = payload
     await session.flush()
+
+
+SITE_SNAPSHOT_SETTING_KEY = "site_snapshot:before_design"
+
+
+async def store_site_snapshot(session: AsyncSession, reason: str) -> dict:
+    """Снимает текущий сайт перед разрушительной установкой дизайна — чтобы было куда вернуться."""
+    site = await capture_current_site(session)
+    payload = {
+        "site": site,
+        "reason": reason,
+        "taken_at": datetime.utcnow().isoformat(timespec="seconds"),
+    }
+    setting = (
+        await session.execute(select(Setting).where(Setting.key == SITE_SNAPSHOT_SETTING_KEY))
+    ).scalar_one_or_none()
+    if setting is None:
+        session.add(
+            Setting(
+                key=SITE_SNAPSHOT_SETTING_KEY,
+                value=payload,
+                description="Снимок сайта перед установкой дизайна набора",
+            )
+        )
+    else:
+        setting.value = payload
+    await session.flush()
+    return payload
+
+
+async def load_site_snapshot(session: AsyncSession) -> dict | None:
+    setting = (
+        await session.execute(select(Setting).where(Setting.key == SITE_SNAPSHOT_SETTING_KEY))
+    ).scalar_one_or_none()
+    value = setting.value if setting is not None else None
+    return value if isinstance(value, dict) else None
+
+
+async def restore_site_snapshot(session: AsyncSession) -> bool:
+    """Возвращает сайт к снимку, снятому перед установкой дизайна."""
+    payload = await load_site_snapshot(session)
+    site = (payload or {}).get("site")
+    if not isinstance(site, dict) or not site:
+        return False
+    return await _apply_captured_site(session, site)
+
+
+async def pack_block_usage(session: AsyncSession, block_types: list[str]) -> dict:
+    """Сколько блоков набора стоит на сайте и на каких страницах — чтобы удаление не выпотрошило страницы."""
+    types = [t for t in {str(t).strip() for t in block_types} if t]
+    if not types:
+        return {"blocks": 0, "pages": []}
+    rows = (
+        await session.execute(
+            select(WebPageVariant.page_slug, func.count(WebPageVariantBlock.id))
+            .join(WebPageVariant, WebPageVariant.id == WebPageVariantBlock.variant_id)
+            .where(WebPageVariantBlock.type.in_(types))
+            .group_by(WebPageVariant.page_slug)
+        )
+    ).all()
+    return {
+        "blocks": sum(int(count) for _, count in rows),
+        "pages": sorted(str(slug) for slug, _ in rows),
+    }
 
 
 async def delete_pack_design(session: AsyncSession, pack_id: str) -> bool:
@@ -390,4 +471,5 @@ async def install_pack_design(session: AsyncSession, pack_id: str) -> bool:
         site = await _ensure_pack_seed(pack_id)
     if not site:
         return False
+    await store_site_snapshot(session, reason=f"установка набора {pack_id}")
     return await _apply_captured_site(session, site)

@@ -103,10 +103,7 @@ async def handle_custom_emoji_id(message: Message, state: FSMContext):
     if not emoji_ids:
         await message.answer(
             menu_text(
-                "Эмоджи",
-                "❌ Не вижу кастомных эмоджи.",
-                quote("Отправьте именно <b>кастомный эмоджи</b> из набора."),
-                markup=_build_back_to_emoji_menu().as_markup(),
+                "Эмоджи", "❌ Не вижу кастомных эмоджи.", quote("Отправьте именно <b>кастомный эмоджи</b> из набора.")
             ),
             reply_markup=_build_back_to_emoji_menu().as_markup(),
         )

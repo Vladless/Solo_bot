@@ -19,8 +19,8 @@ from database import async_session_maker
 from database.bans import save_blocked_user_ids
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
 from handlers.notifications.webapp_only import webapp_only_markup
-from handlers.utils import format_hours, format_minutes
 from logger import logger
+from services.formatting import format_hours, format_minutes
 from services.tariffs.tariff_display import get_key_tariff_display
 from utils.custom_emojis import _process_text
 
@@ -439,3 +439,19 @@ async def prepare_key_expiry_data(key, session, current_time: int) -> dict:
         "traffic": traffic_text,
         "devices": devices_text,
     }
+
+
+async def chat_ids_for_user_ids(session, user_ids: list[int], batch_size: int = 5000) -> dict[int, int]:
+    """Telegram-чаты клиентов по их номерам: без чата клиент в выборку не попадает."""
+    from sqlalchemy import select
+
+    from database.models import User
+
+    out: dict[int, int] = {}
+    for i in range(0, len(user_ids), batch_size):
+        batch = user_ids[i : i + batch_size]
+        result = await session.execute(select(User.id, User.tg_id).where(User.id.in_(batch)))
+        for uid, tg_id in result.all():
+            if is_telegram_chat_id(tg_id):
+                out[int(uid)] = int(tg_id)
+    return out

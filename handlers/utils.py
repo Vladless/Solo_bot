@@ -19,15 +19,14 @@ from aiogram.types import (
     InputMediaVideo,
     Message,
 )
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from database import get_servers
 from database.access.resolution import resolve_user_optional
-from database.models import Key, Notification, Server
-from hooks.processors import process_cluster_balancer
+from database.models import Key, Notification
 from logger import logger
+from services.formatting import format_days, format_hours, format_minutes
 from settings.config import ADMIN_ID
 
 
@@ -242,44 +241,6 @@ def join_blocks(*blocks: str) -> str:
     return "\n".join(block for block in blocks if block)
 
 
-def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:
-    """Универсальная функция для получения правильной формы множественного числа"""
-    n = abs(num) % 100
-    if 10 < n < 20:
-        return form3
-    return {1: form1, 2: form2, 3: form2, 4: form2}.get(n % 10, form3)
-
-
-def format_months(months: int) -> str:
-    """Форматирует количество месяцев с правильным склонением"""
-    if months <= 0:
-        return "0 месяцев"
-    return f"{months} {get_plural_form(months, 'месяц', 'месяца', 'месяцев')}"
-
-
-def format_days(days: int) -> str:
-    """
-    Форматирует количество дней с правильным склонением.
-    """
-    if days <= 0:
-        return "0 дней"
-    return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
-
-
-def format_minutes(minutes: int) -> str:
-    """Форматирует количество минут с правильным склонением"""
-    if minutes <= 0:
-        return "0 минут"
-    return f"{minutes} {get_plural_form(minutes, 'минута', 'минуты', 'минут')}"
-
-
-def format_hours(hours: int) -> str:
-    """Форматирует количество часов с правильным склонением"""
-    if hours <= 0:
-        return "0 часов"
-    return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
-
-
 def get_media_type(media_path: str) -> str:
     if not media_path:
         return "photo"
@@ -488,19 +449,6 @@ async def is_full_remnawave_cluster(cluster_id: str, session: AsyncSession) -> b
     from services.clusters import is_full_remnawave_cluster as _svc
 
     return await _svc(cluster_id, session)
-
-
-def sanitize_key_name(key_name: str) -> str:
-    """
-    Очищает название ключа, оставляя только допустимые символы.
-
-    Args:
-        key_name (str): Исходное название ключа.
-
-    Returns:
-        str: Очищенное название ключа в нижнем регистре.
-    """
-    return re.sub(r"[^a-z0-9@._-]", "", key_name.lower())
 
 
 RUSSIAN_MONTHS = {

@@ -1,40 +1,25 @@
 from __future__ import annotations
 
 from aiogram import Bot
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import check_notification_time_bulk, get_cold_lead_notification_flags, get_cold_leads
-from database.models import User
 from database.notifications import bulk_add_notifications
-from handlers.admin.sender.sender_utils import is_telegram_chat_id
 from handlers.notifications.keyboards import build_cold_lead_discount_kb
-from handlers.notifications.sender import send_messages_with_limit
+from handlers.notifications.sender import chat_ids_for_user_ids, send_messages_with_limit
 from logger import logger
 from settings.texts import COLD_LEAD_FINAL_MESSAGE, COLD_LEAD_MESSAGE
 
 
 _DEFAULT_INTERVAL_HOURS = 48
-_USER_ID_BATCH_SIZE = 5000
 _MESSAGES_PER_SECOND = 30
-
-
-async def _chat_ids_for_user_ids(session: AsyncSession, user_ids: list[int]) -> dict[int, int]:
-    out: dict[int, int] = {}
-    for i in range(0, len(user_ids), _USER_ID_BATCH_SIZE):
-        batch = user_ids[i : i + _USER_ID_BATCH_SIZE]
-        result = await session.execute(select(User.id, User.tg_id).where(User.id.in_(batch)))
-        for uid, tg_id in result.all():
-            if is_telegram_chat_id(tg_id):
-                out[int(uid)] = int(tg_id)
-    return out
 
 
 async def _bulk_send(bot: Bot, session: AsyncSession, messages: list[dict]) -> int:
     if not messages:
         return 0
-    chat_ids = await _chat_ids_for_user_ids(session, [m["user_id"] for m in messages])
+    chat_ids = await chat_ids_for_user_ids(session, [m["user_id"] for m in messages])
     outbound = [
         {"tg_id": chat_ids[m["user_id"]], "text": m["text"], "keyboard": m["keyboard"]}
         for m in messages

@@ -10,7 +10,7 @@ from handlers.support_triage import TriageCallback
 from handlers.utils import build_support_button
 from hooks.hooks import run_hooks
 from logger import logger
-from settings.buttons import HAVE_PROBLEM, MAIN_MENU, SUPPORT
+from settings.buttons import HAVE_PROBLEM, MAIN_MENU
 from settings.texts import FALLBACK_MESSAGE
 
 

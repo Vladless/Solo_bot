@@ -12,7 +12,7 @@ from filters.admin import IsAdminFilter, get_admin_context
 from logger import logger
 from utils.versioning import get_version
 
-from .headers import render_panel_text, wrap_text
+from .headers import render_panel_text
 from .keyboard import AdminPanelCallback, build_panel_kb
 
 

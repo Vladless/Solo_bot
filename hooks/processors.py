@@ -157,6 +157,7 @@ async def process_get_cryptolink_after_renewal(
 ) -> str | None:
     """Получает криптоссылку из Remnawave после продления подписки."""
     from panels.remnawave_runtime import remnawave_api
+
     if not remnawave_nodes:
         return None
 
@@ -381,27 +382,6 @@ async def process_admin_key_edit_menu(
         **kwargs,
     )
     return results if results else []
-
-
-async def process_after_hwid_reset(
-    chat_id: int,
-    session: Any,
-    key_name: str,
-    admin: bool = False,
-    **kwargs,
-) -> bool:
-    """Обрабатывает хук after_hwid_reset и решает, вести ли в профиль."""
-    results = await run_hooks(
-        "after_hwid_reset",
-        chat_id=chat_id,
-        admin=admin,
-        session=session,
-        key_name=key_name,
-        **kwargs,
-    )
-    if not results:
-        return False
-    return any("redirect_to_profile" in str(result) for result in results)
 
 
 async def process_tariff_menu(

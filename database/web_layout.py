@@ -32,7 +32,27 @@ KNOWN_PAGE_SLUGS: tuple[str, ...] = (
     "info",
 )
 
-SUPPORT_BLOCK_TYPES = ("defaultSupport", "cyberMonoSupport", "capybaraSupport")
+CORE_SUPPORT_BLOCK_TYPES = ("defaultSupport",)
+
+
+def support_block_types() -> list[str]:
+    """Типы блоков поддержки: ядро плюс те, что объявили роль support установленные наборы."""
+    from services.web_packs import list_installed_packs
+
+    types = list(CORE_SUPPORT_BLOCK_TYPES)
+    try:
+        packs = list_installed_packs()
+    except Exception:
+        return types
+    for manifest in packs:
+        for element in manifest.get("elements") or []:
+            if "support" in (element.get("roles") or []):
+                block_type = str(element.get("type") or "").strip()
+                if block_type and block_type not in types:
+                    types.append(block_type)
+    return types
+
+
 DAILY_BONUS_BLOCK_TYPES = ("defaultDailyBonus",)
 
 

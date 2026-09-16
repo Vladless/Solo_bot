@@ -69,7 +69,7 @@ async def start_subgrouping(callback: CallbackQuery, state: FSMContext, session:
     )
 
     await callback.message.edit_text(
-        menu_text("Подгруппы", "Выберите тарифы, которые нужно объединить в подгруппу:", markup=builder.as_markup()),
+        menu_text("Подгруппы", "Выберите тарифы, которые нужно объединить в подгруппу:"),
         reply_markup=builder.as_markup(),
     )
 
@@ -126,7 +126,7 @@ async def ask_subgroup_title(callback: CallbackQuery, state: FSMContext):
     )
 
     await callback.message.edit_text(
-        menu_text("Подгруппы", "📁 Название подгруппы.", markup=keyboard),
+        menu_text("Подгруппы", "📁 Название подгруппы."),
         reply_markup=keyboard,
     )
 
@@ -159,11 +159,7 @@ async def apply_subgroup_title(message: Message, state: FSMContext, session: Asy
     await state.clear()
 
     await message.answer(
-        menu_text(
-            "Подгруппы",
-            f"✅ {len(selected_ids)} тарифов сгруппированы в подгруппу: <b>{title}</b>.",
-            markup=build_tariff_menu_kb(),
-        ),
+        menu_text("Подгруппы", f"✅ {len(selected_ids)} тарифов сгруппированы в подгруппу: <b>{title}</b>."),
         reply_markup=build_tariff_menu_kb(),
     )
 
@@ -172,7 +168,7 @@ async def apply_subgroup_title(message: Message, state: FSMContext, session: Asy
 async def cancel_subgrouping(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
-        menu_text("Подгруппы", "❌ Группировка в подгруппу отменена.", markup=build_tariff_menu_kb()),
+        menu_text("Подгруппы", "❌ Группировка в подгруппу отменена."),
         reply_markup=build_tariff_menu_kb(),
     )
 
@@ -223,7 +219,7 @@ async def view_subgroup_tariffs(callback: CallbackQuery, session: AsyncSession):
     )
 
     await callback.message.edit_text(
-        menu_text("Подгруппа", f"<b>{subgroup_title}</b>", markup=builder.as_markup()),
+        menu_text("Подгруппа", f"<b>{subgroup_title}</b>"),
         reply_markup=builder.as_markup(),
     )
 
@@ -478,7 +474,6 @@ async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext
             "Состав подгруппы",
             f"<b>{subgroup_title}</b>",
             quote("Нажмите на тариф, чтобы добавить его или убрать. Галочкой отмечены те, что уже внутри."),
-            markup=builder.as_markup(),
         ),
         reply_markup=builder.as_markup(),
     )

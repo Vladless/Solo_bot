@@ -3,7 +3,8 @@ from typing import Any
 
 from aiogram.fsm.state import State, StatesGroup
 
-from handlers.utils import get_plural_form, render_text
+from handlers.utils import render_text
+from services.formatting import get_plural_form
 from settings.texts import (
     ADDONS_HINT_BOTH_OPTIONS_TEXT,
     ADDONS_HINT_SINGLE_OPTION_TEXT,
@@ -37,6 +38,20 @@ def format_traffic_label(value, default_text: str = "по умолчанию") -
     if value_int <= 0:
         return UNLIMITED_TRAFFIC_LABEL
     return f"{value_int} ГБ"
+
+
+def device_option_label(value: int) -> str:
+    """Подпись кнопки выбора устройств: ноль означает безлимит."""
+    if int(value) == 0:
+        return UNLIMITED_DEVICES_LABEL.capitalize()
+    return f"{value} {get_plural_form(value, 'устройство', 'устройства', 'устройств')}"
+
+
+def traffic_option_label(value: int) -> str:
+    """Подпись кнопки выбора трафика: ноль означает безлимит."""
+    if int(value) == 0:
+        return UNLIMITED_TRAFFIC_LABEL.capitalize()
+    return f"{value} ГБ"
 
 
 def is_not_downgrade(current_value, new_value) -> bool:

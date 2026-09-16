@@ -31,7 +31,7 @@ async def handle_user_ban(callback: CallbackQuery, callback_data: AdminUserEdito
     await state.update_data(user_id=callback_data.user_id)
 
     await callback.message.edit_text(
-        text=menu_text("Блокировка", "Выберите тип блокировки.", markup=build_user_ban_type_kb(callback_data.user_id)),
+        text=menu_text("Блокировка", "Выберите тип блокировки."),
         reply_markup=build_user_ban_type_kb(callback_data.user_id),
     )
 
@@ -49,9 +49,7 @@ async def handle_ban_forever_start(callback: CallbackQuery, callback_data: Admin
 
     await callback.message.edit_text(
         text=menu_text(
-            "Блокировка",
-            "✏️ Введите причину <b>постоянной блокировки</b> (или <code>-</code>, чтобы пропустить):",
-            markup=kb.as_markup(),
+            "Блокировка", "✏️ Введите причину <b>постоянной блокировки</b> (или <code>-</code>, чтобы пропустить):"
         ),
         reply_markup=kb.as_markup(),
     )
@@ -104,7 +102,6 @@ async def handle_ban_forever_reason_input(message: Message, state: FSMContext, s
             menu_text(
                 "Блокировка",
                 f"✅ Клиент <code>{user_id}</code> забанен навсегда.{(f'\n📄 Причина: {reason}' if reason else '')}",
-                markup=build_editor_kb(user_id, edit=True),
             )
         ),
         reply_markup=build_editor_kb(user_id, edit=True),
@@ -124,9 +121,7 @@ async def handle_ban_temporary(callback: CallbackQuery, callback_data: AdminUser
 
     await callback.message.edit_text(
         text=menu_text(
-            "Блокировка",
-            "✏️ Введите причину <b>временной блокировки</b> (или <code>-</code>, чтобы пропустить):",
-            markup=kb.as_markup(),
+            "Блокировка", "✏️ Введите причину <b>временной блокировки</b> (или <code>-</code>, чтобы пропустить):"
         ),
         reply_markup=kb.as_markup(),
     )
@@ -144,7 +139,7 @@ async def handle_ban_reason_input(message: Message, state: FSMContext):
     kb.row(build_editor_btn(BACK, user_id=user_id, edit=True))
 
     await message.answer(
-        menu_text("Блокировка", "⏳ Срок блокировки в днях. 0 — навсегда.", markup=kb.as_markup()),
+        menu_text("Блокировка", "⏳ Срок блокировки в днях. 0 — навсегда."),
         reply_markup=kb.as_markup(),
     )
 
@@ -246,11 +241,7 @@ async def handle_ban_shadow(callback: CallbackQuery, callback_data: AdminUserEdi
         await invalidate_ban_cache(u.tg_id)
 
     await callback.message.edit_text(
-        text=menu_text(
-            "Блокировка",
-            f"👻 Клиент <code>{callback_data.user_id}</code> получил теневой бан.",
-            markup=build_editor_kb(callback_data.user_id, edit=True),
-        ),
+        text=menu_text("Блокировка", f"👻 Клиент <code>{callback_data.user_id}</code> получил теневой бан."),
         reply_markup=build_editor_kb(callback_data.user_id, edit=True),
     )
 

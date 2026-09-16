@@ -17,8 +17,8 @@ from handlers.notifications.context import NotificationContext
 from handlers.notifications.keyboards import build_notification_expired_kb, build_notification_kb
 from handlers.notifications.renewal import RenewalStatus, try_auto_renew
 from handlers.notifications.sender import send_messages_with_limit
-from handlers.utils import format_hours, format_minutes
 from logger import logger
+from services.formatting import format_hours, format_minutes
 from services.operations import delete_key_from_cluster
 from settings.texts import KEY_DELETED_MSG, KEY_EXPIRED_DELAY_MSG, KEY_EXPIRED_NO_DELAY_MSG
 
@@ -191,7 +191,7 @@ async def _get_blocked_expired_keys(session, current_time: int) -> list:
         or_(
             exists().where(BlockedUser.tg_id == Key.tg_id),
             exists().where(
-                ManualBan.tg_id == Key.tg_id,
+                ManualBan.user_id == Key.user_id,
                 or_(ManualBan.until.is_(None), ManualBan.until > datetime.now(timezone.utc)),
             ),
         ),

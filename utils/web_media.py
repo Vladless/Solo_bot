@@ -3,8 +3,8 @@ import uuid
 
 from pathlib import Path
 
-from logger import logger
 from core.executor import run_io
+from logger import logger
 
 
 WEB_UPLOAD_DIR = Path("static/web_uploads")

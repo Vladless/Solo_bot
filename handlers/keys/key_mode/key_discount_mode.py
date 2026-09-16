@@ -21,21 +21,21 @@ from settings.config import DISCOUNT_ACTIVE_HOURS
 from settings.texts import (
     COLD_DISCOUNT_EXPIRED,
     COLD_DISCOUNT_FINAL_EXPIRED,
+    COLD_DISCOUNT_OFFER_FINAL_TEXT,
+    COLD_DISCOUNT_OFFER_PERSONAL_TEXT,
     COLD_DISCOUNT_TARIFF,
     COLD_DISCOUNT_TARIFFS_UNAVAILABLE,
     COLD_DISCOUNT_TARIFF_MAX,
     COLD_DISCOUNT_UNAVAILABLE,
     DISCOUNT_EXPIRED,
     DISCOUNT_FINAL_EXPIRED,
+    DISCOUNT_OFFER_FINAL_TEXT,
+    DISCOUNT_OFFER_PERSONAL_TEXT,
     DISCOUNT_TARIFF,
     DISCOUNT_TARIFFS_UNAVAILABLE,
     DISCOUNT_TARIFF_MAX,
     DISCOUNT_TARIFF_SELECT_ERROR,
     DISCOUNT_UNAVAILABLE,
-    COLD_DISCOUNT_OFFER_FINAL_TEXT,
-    COLD_DISCOUNT_OFFER_PERSONAL_TEXT,
-    DISCOUNT_OFFER_FINAL_TEXT,
-    DISCOUNT_OFFER_PERSONAL_TEXT,
 )
 
 
@@ -240,7 +240,9 @@ async def handle_cold_discount_entry(callback: CallbackQuery, session: AsyncSess
 
         expires_at = last_time + timedelta(hours=discount_active_hours)
         await callback.message.edit_text(
-            COLD_DISCOUNT_OFFER_PERSONAL_TEXT.format(time_left=format_discount_time_left(expires_at, discount_active_hours)),
+            COLD_DISCOUNT_OFFER_PERSONAL_TEXT.format(
+                time_left=format_discount_time_left(expires_at, discount_active_hours)
+            ),
             reply_markup=builder.as_markup(),
         )
     else:
@@ -310,7 +312,9 @@ async def handle_cold_ultra_discount(callback: CallbackQuery, session: AsyncSess
 
         expires_at = last_time + timedelta(hours=discount_active_hours)
         await callback.message.edit_text(
-            COLD_DISCOUNT_OFFER_FINAL_TEXT.format(time_left=format_discount_time_left(expires_at, discount_active_hours)),
+            COLD_DISCOUNT_OFFER_FINAL_TEXT.format(
+                time_left=format_discount_time_left(expires_at, discount_active_hours)
+            ),
             reply_markup=builder.as_markup(),
         )
     else:

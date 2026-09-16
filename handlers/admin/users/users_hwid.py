@@ -51,7 +51,7 @@ async def _render_admin_devices(
     key_obj = await resolve_admin_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Устройства", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            menu_text("Устройства", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -61,7 +61,7 @@ async def _render_admin_devices(
     remna_api_url = await resolve_remnawave_api_url(session, "", fallback_any=True)
     if not remna_api_url:
         await callback_query.message.edit_text(
-            menu_text("Устройства", "❌ Нет доступного сервера Remnawave.", markup=build_editor_kb(user_id)),
+            menu_text("Устройства", "❌ Нет доступного сервера Remnawave."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -114,9 +114,7 @@ async def _render_admin_devices(
     if total == 0:
         text = card(header, quote("Привязанных устройств нет"))
         await callback_query.message.edit_text(
-            menu_text(
-                "Устройства", text, markup=build_hwid_menu_kb(key_ref, user_id, page=0, total_pages=0, devices_on_page=0)
-            ),
+            menu_text("Устройства", text),
             reply_markup=build_hwid_menu_kb(key_ref, user_id, page=0, total_pages=0, devices_on_page=0),
         )
         return

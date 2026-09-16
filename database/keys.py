@@ -535,20 +535,6 @@ async def update_key_expiry(
         pass
 
 
-async def get_client_id_by_email(session: AsyncSession, email: str):
-    result = await session.execute(select(Key.client_id).where(Key.email == email))
-    return result.scalar_one_or_none()
-
-
-async def update_key_notified(session: AsyncSession, legacy_user_ref: int, client_id: str):
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
-        return
-    await session.execute(update(Key).where(Key.user_id == u.id, Key.client_id == client_id).values(notified=True))
-    await invalidate_keys_list(session, u.id)
-    await invalidate_key_details_by_client_id(session, client_id)
-
-
 async def mark_key_as_frozen(session: AsyncSession, legacy_user_ref: int, client_id: str, time_left: int):
     u = await resolve_user_optional(session, legacy_user_ref)
     if u is None:

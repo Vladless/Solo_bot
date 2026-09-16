@@ -1,14 +1,13 @@
+from api.shared.billing_actor import resolve_billing_user_id
+from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
+from services.keys import normalize_expiry_ms
+from services.tariffs import ConfigOptionRejected, ensure_allowed_config
+
 from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
 from .._common import (
     _is_renew_available,
     _key_actions_config,
-    _normalize_expiry_ms,
     _renew_available_from_ms,
-    _resolve_available_location_servers,
-    _resolve_billing_user_id,
-    _resolve_default_web_payment_provider,
-    _resolve_public_base_url,
-    router,
     user_router,
 )
 
@@ -37,7 +36,7 @@ async def user_key_renew(
     actions = _key_actions_config()
     if not force_web and not actions.renew_enabled:
         raise HTTPException(status_code=403, detail="Продление подписки отключено в настройках")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
@@ -96,6 +95,13 @@ async def user_key_renew(
             )
         effective_tariff_id = int(tariff_id)
 
+    renew_tariff = await get_tariff_by_id(session, effective_tariff_id)
+    if renew_tariff:
+        try:
+            ensure_allowed_config(renew_tariff, body.selected_device_limit, body.selected_traffic_limit)
+        except ConfigOptionRejected as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
+
     try:
         pricing = await calculate_renewal_pricing(
             session=session,
@@ -118,7 +124,7 @@ async def user_key_renew(
         current_tariff_id=getattr(db_key, "tariff_id", None),
         current_selected_device=getattr(db_key, "selected_device_limit", None),
         current_selected_traffic=getattr(db_key, "selected_traffic_limit", None),
-        current_expiry_ms=_normalize_expiry_ms(getattr(db_key, "expiry_time", None)),
+        current_expiry_ms=normalize_expiry_ms(getattr(db_key, "expiry_time", None)),
         now_ms=int(datetime.utcnow().timestamp() * 1000),
         new_tariff_id=effective_tariff_id,
         new_selected_device=body.selected_device_limit,
@@ -159,10 +165,10 @@ async def user_key_renew(
         )
 
     if payment_required:
-        provider_id = str(body.provider_id or _resolve_default_web_payment_provider() or "").strip().upper()
+        provider_id = str(body.provider_id or resolve_default_web_payment_provider() or "").strip().upper()
         if not provider_id:
             raise HTTPException(status_code=503, detail="Нет доступных провайдеров оплаты")
-        base_url = _resolve_public_base_url(request)
+        base_url = resolve_public_base_url(request)
         success_url = validate_redirect_url(str(body.success_url or ""), f"{base_url}/payment-success")
         failure_url = validate_redirect_url(str(body.failure_url or ""), f"{base_url}/payment-failure")
         payment_request = PaymentLinkRequest(

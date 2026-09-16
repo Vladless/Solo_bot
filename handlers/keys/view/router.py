@@ -14,13 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_key_details, get_keys
 from database.access.resolution import resolve_user_optional
 from database.models import Key
+from handlers.keys.utils import build_key_ref, key_owned_by_user, resolve_key
 from handlers.keys.view.payload import (
     DEVICES_PER_PAGE,
     _render_my_devices,
     build_keys_response,
     render_key_info,
 )
-from handlers.keys.utils import build_key_ref, key_owned_by_user, resolve_key
 from handlers.utils import (
     edit_or_send_message,
     safe_answer_callback,

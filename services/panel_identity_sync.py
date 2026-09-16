@@ -17,6 +17,7 @@ async def push_identity_to_panel(session: AsyncSession, legacy_ref: int) -> None
     единой идентичности, не дожидаясь продления.
     """
     from panels.remnawave_runtime import remnawave_api
+
     tg, email = await panel_identity_fields(session, legacy_ref)
     if tg is None and not email:
         return
@@ -39,13 +40,10 @@ async def push_identity_to_panel(session: AsyncSession, legacy_ref: int) -> None
                 continue
             api_url = s.get("api_url")
             if api_url:
-                by_api_url.setdefault(api_url, set()).add(
-                    (str(client_id), str(getattr(key, "email", "") or ""))
-                )
+                by_api_url.setdefault(api_url, set()).add((str(client_id), str(getattr(key, "email", "") or "")))
 
     if not by_api_url:
         return
-
 
     for api_url, client_ids in by_api_url.items():
         try:

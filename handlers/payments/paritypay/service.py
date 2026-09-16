@@ -13,6 +13,20 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import register_pending_payment
+from database.models import User
+from handlers.payments.keyboards import (
+    balance_fallback_kb,
+    build_amounts_keyboard,
+    parse_amount_from_callback,
+    pay_keyboard,
+    payment_options_for_user,
+)
+from handlers.utils import edit_or_send_message
+from logger import logger
+from services.payments.currency_rates import format_for_user
+from services.payments.payment_links import register_payment_creator
+from settings.buttons import BACK, PARITYPAY_SBP, PAY_2
 from settings.config import (
     PARITYPAY_API_SECRET_KEY,
     PARITYPAY_API_URL,
@@ -22,24 +36,10 @@ from settings.config import (
     PARITYPAY_SUCCESS_URL,
     PROVIDERS_ENABLED,
 )
-from database import register_pending_payment
-from database.models import User
-from settings.buttons import BACK, PARITYPAY_SBP, PAY_2
-from handlers.payments.keyboards import (
-    balance_fallback_kb,
-    build_amounts_keyboard,
-    parse_amount_from_callback,
-    pay_keyboard,
-    payment_options_for_user,
-)
 from settings.texts import (
     PARITYPAY_PAYMENT_MESSAGE,
     PARITYPAY_SBP_DESCRIPTION,
 )
-from handlers.utils import edit_or_send_message
-from logger import logger
-from services.payments.currency_rates import format_for_user
-from services.payments.payment_links import register_payment_creator
 
 
 router = Router()

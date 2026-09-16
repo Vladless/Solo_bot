@@ -1,6 +1,5 @@
 import hashlib
 
-from datetime import datetime, timedelta
 from typing import Any
 
 from aiogram import F, Router, types
@@ -11,35 +10,30 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from settings.config import (
-    FREEKASSA_SECRET1,
-    FREEKASSA_SECRET2,
-    FREEKASSA_SHOP_ID,
-)
 from core.webhook_abuse import (
     get_webhook_client_ip,
     is_webhook_ip_blocked,
     record_webhook_signature_failure,
 )
 from database import (
-    add_payment,
     add_user,
     async_session_maker,
     check_user_exists,
     clear_temporary_data,
     get_key_count,
-    get_payment_by_payment_id,
     get_temporary_data,
-    invalidate_payment_cache,
     register_pending_payment,
-    update_balance,
 )
-from settings.buttons import BACK, PAY_2
-from handlers.payments.utils import send_payment_success_notification
-from settings.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
 from handlers.utils import edit_or_send_message
 from logger import logger
 from services.payments.payment_links import register_payment_creator
+from settings.buttons import BACK, PAY_2
+from settings.config import (
+    FREEKASSA_SECRET1,
+    FREEKASSA_SECRET2,
+    FREEKASSA_SHOP_ID,
+)
+from settings.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
 
 
 router = Router()

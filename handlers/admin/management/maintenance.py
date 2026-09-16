@@ -35,7 +35,6 @@ async def handle_management(callback_query: CallbackQuery, session: AsyncSession
             "Управление ботом",
             "Обслуживание и сервисные действия.",
             quote("База и бэкапы, файлы бота, админы и их права, домен, тех. работы."),
-            markup=build_management_kb(admin.role, permissions=perms),
         ),
         reply_markup=build_management_kb(admin.role, permissions=perms),
     )

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Identity, Ticket
 from logger import logger
+from services.tickets.delivery import support_bot_instance
 from settings import config
 
 
@@ -22,17 +23,8 @@ def forum_chat_id() -> int | None:
         return None
 
 
-def _bot():
-    try:
-        from support_bot import support_bot
-
-        return support_bot
-    except Exception:
-        return None
-
-
 def forum_enabled() -> bool:
-    return forum_chat_id() is not None and _bot() is not None
+    return forum_chat_id() is not None and support_bot_instance() is not None
 
 
 def _client_bot_link(admin_ref: int | None):
@@ -82,7 +74,7 @@ def agent_controls_kb(ticket: Ticket, admin_ref: int | None = None):
 
 
 async def _post(topic_id: int, text: str | None = None, attachments: list | None = None, reply_markup=None) -> None:
-    bot = _bot()
+    bot = support_bot_instance()
     chat_id = forum_chat_id()
     if bot is None or chat_id is None or not topic_id:
         return
@@ -146,7 +138,7 @@ async def ensure_topic(
     if ticket.topic_id:
         return ticket.topic_id
     chat_id = forum_chat_id()
-    bot = _bot()
+    bot = support_bot_instance()
     if chat_id is None:
         logger.info("[Forum] SUPPORT_FORUM_CHAT_ID не задан — тема не создаётся")
         return None
@@ -175,8 +167,7 @@ async def ensure_topic(
         if ctx_text:
             header += "\n" + ctx_text
     header += (
-        "\n\nОтвечайте в этой теме — сообщение уйдёт клиенту."
-        "\nДоп. команды: /note заметка · /assign [id] · /tag метка"
+        "\n\nОтвечайте в этой теме — сообщение уйдёт клиенту.\nДоп. команды: /note заметка · /assign [id] · /tag метка"
     )
     admin_ref = None
     if client is not None:
@@ -185,9 +176,7 @@ async def ensure_topic(
         admin_ref = await resolve_billing_user_ref(session, client)
     await _post(ticket.topic_id, text=header, reply_markup=agent_controls_kb(ticket, admin_ref))
     if first_body or first_attachments:
-        await _post(
-            ticket.topic_id, text=(first_body or "").strip() or None, attachments=first_attachments
-        )
+        await _post(ticket.topic_id, text=(first_body or "").strip() or None, attachments=first_attachments)
     return ticket.topic_id
 
 
@@ -206,7 +195,7 @@ async def post_system(ticket: Ticket, text: str) -> None:
 async def set_topic_state(ticket: Ticket, *, closed: bool) -> None:
     if not forum_enabled() or not ticket.topic_id:
         return
-    bot = _bot()
+    bot = support_bot_instance()
     chat_id = forum_chat_id()
     try:
         if closed:
@@ -220,7 +209,7 @@ async def set_topic_state(ticket: Ticket, *, closed: bool) -> None:
 async def delete_topic(ticket: Ticket) -> None:
     if not forum_enabled() or not ticket.topic_id:
         return
-    bot = _bot()
+    bot = support_bot_instance()
     chat_id = forum_chat_id()
     try:
         await bot.delete_forum_topic(chat_id, ticket.topic_id)

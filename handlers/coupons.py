@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
-    add_payment,
     add_user,
     check_coupon_usage,
     claim_coupon_slot,
@@ -23,14 +22,14 @@ from database import (
     get_keys,
     get_tariff_by_id,
     release_coupon_slot,
-    update_balance,
     update_key_expiry,
 )
 from handlers.admin.panel.headers import section
 from handlers.profile import process_callback_view_profile
-from handlers.utils import edit_or_send_message, format_days
+from handlers.utils import edit_or_send_message
 from logger import logger
 from middlewares.session import release_session_early
+from services.formatting import format_days
 from services.operations import renew_key_in_cluster
 from services.payments.currency_rates import format_for_user
 from settings.buttons import MAIN_MENU

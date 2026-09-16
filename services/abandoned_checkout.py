@@ -131,7 +131,7 @@ async def send_abandoned_checkout_reminders(session: AsyncSession) -> int:
         try:
             await notify_web(
                 session,
-                tg_id=tg_id,
+                user_ref=tg_id,
                 type="payment_pending",
                 title=title,
                 message=body,

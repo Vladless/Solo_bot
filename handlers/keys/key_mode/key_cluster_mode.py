@@ -53,7 +53,6 @@ from settings.buttons import (
     MAIN_MENU,
     MY_SUB,
     ROUTER_BUTTON,
-    SUPPORT,
     TV_BUTTON,
 )
 from settings.config import REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER

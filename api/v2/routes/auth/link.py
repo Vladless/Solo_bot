@@ -17,7 +17,10 @@ from api.v2.schemas.identities import (
 )
 from database import identities as idb
 from mail import send_email_link_code_email, smtp_configured
-from utils import web_email_link_code as email_link_code
+from utils.web_email_codes import (
+    email_link_codes as email_link_code,
+    normalize_email,
+)
 
 
 router = APIRouter()
@@ -30,7 +33,7 @@ async def link_email_send_code(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
-    email_norm = email_link_code.normalize_email(body.email)
+    email_norm = normalize_email(body.email)
     if not email_norm:
         raise HTTPException(status_code=400, detail="Укажите корректный email")
     if identity.email and str(identity.email).strip().lower() == email_norm:
@@ -98,7 +101,7 @@ async def link_email_confirm(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
-    email_norm = email_link_code.normalize_email(body.email)
+    email_norm = normalize_email(body.email)
     if not email_norm or not body.code or not str(body.code).strip():
         raise HTTPException(status_code=400, detail="Email и код обязательны")
     if not await email_link_code.redis_ready():
@@ -106,7 +109,7 @@ async def link_email_confirm(
             status_code=503,
             detail="Сервис временно недоступен. Попробуйте позже.",
         )
-    if not await email_link_code.try_consume_email_verify_budget(email_norm):
+    if not await email_link_code.try_consume_verify_budget(email_norm):
         raise HTTPException(
             status_code=429,
             detail="Слишком много попыток. Запросите новый код.",

@@ -50,12 +50,6 @@ def strip_tags(text: str) -> str:
     return _TAG_RE.sub("", text)
 
 
-def content_width(*blocks: str) -> float:
-    """Возвращает ширину самой длинной строки содержимого в em."""
-    lines = [line for block in blocks if block for line in block.split("\n")]
-    return max((text_width(line) for line in lines), default=0.0)
-
-
 def wrap_text(text: str, width: float = MENU_TEXT_EM) -> str:
     """Переносит текст в колонку заданной ширины, не разрывая теги и моноширинные блоки."""
     if _PRE_RE.search(text):
@@ -87,13 +81,6 @@ def wrap_text(text: str, width: float = MENU_TEXT_EM) -> str:
             line.append(word)
         result.append(" ".join(line))
     return _MASK_RE.sub(lambda m: tags[int(m.group(1))], "\n".join(result))
-
-
-def keyboard_width(markup) -> float:
-    """Возвращает ширину клавиатуры в em."""
-    rows = getattr(markup, "inline_keyboard", None) or []
-    widths = [len(row) * max(text_width(button.text) for button in row) for row in rows if row]
-    return max(widths, default=0.0)
 
 
 RULE_CHAR_EM = 0.52
@@ -164,8 +151,7 @@ def align_screen(text: str) -> str:
 
     def cells_of(rows: list[str]) -> list[tuple[str, str]]:
         return [
-            (branch(_split_pair(row)[0], index == len(rows) - 1), _split_pair(row)[1])
-            for index, row in enumerate(rows)
+            (branch(_split_pair(row)[0], index == len(rows) - 1), _split_pair(row)[1]) for index, row in enumerate(rows)
         ]
 
     aligned = [rows for rows in blocks if rows]
@@ -241,7 +227,7 @@ def card(*sections: str) -> str:
     return align_screen("\n".join(block for block in sections if block))
 
 
-def menu_text(title: str, *paragraphs: str, markup=None, wide: bool = False) -> str:
+def menu_text(title: str, *paragraphs: str, wide: bool = False) -> str:
     """Собирает текст экрана: заголовок и абзацы. Значения таблиц выравниваются по одной вертикали.
 
     wide — экран-редактор: подчёркивание длиннее, поэтому пузырь и клавиатура шире,

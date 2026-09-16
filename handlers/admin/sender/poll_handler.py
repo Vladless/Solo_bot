@@ -91,7 +91,7 @@ async def _render_menu(session: AsyncSession):
 async def open_polls_menu(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     await state.clear()
     text, kb = await _render_menu(session)
-    await callback.message.edit_text(menu_text("Опросы", text, markup=kb), reply_markup=kb)
+    await callback.message.edit_text(menu_text("Опросы", text), reply_markup=kb)
     await callback.answer()
 
 
@@ -99,11 +99,7 @@ async def open_polls_menu(callback: CallbackQuery, state: FSMContext, session: A
 async def poll_create(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AdminPoll.waiting_for_question)
     await callback.message.edit_text(
-        menu_text(
-            "Опросы",
-            f"✍️ Введите <b>вопрос</b> опроса (до {MAX_QUESTION} символов):",
-            markup=build_admin_back_kb("sender"),
-        ),
+        menu_text("Опросы", f"✍️ Введите <b>вопрос</b> опроса (до {MAX_QUESTION} символов):"),
         reply_markup=build_admin_back_kb("sender"),
     )
     await callback.answer()
@@ -181,7 +177,7 @@ async def poll_back_preview(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(AdminPollCallback.filter(F.action == "audience"), AdminPoll.preview, IsAdminFilter())
 async def poll_audience(callback: CallbackQuery) -> None:
     await callback.message.edit_text(
-        menu_text("Опросы", "📤 Кому отправить опрос?", markup=build_poll_audience_kb()),
+        menu_text("Опросы", "📤 Кому отправить опрос?"),
         reply_markup=build_poll_audience_kb(),
     )
     await callback.answer()
@@ -217,7 +213,7 @@ async def poll_send(
 
     if not tg_ids:
         await callback.message.edit_text(
-            menu_text("Опросы", "⚠️ Нет получателей для рассылки.", markup=build_admin_back_kb("sender")),
+            menu_text("Опросы", "⚠️ Нет получателей для рассылки."),
             reply_markup=build_admin_back_kb("sender"),
         )
         await callback.answer()
@@ -299,7 +295,7 @@ async def poll_close(callback: CallbackQuery, callback_data: AdminPollCallback, 
     poll.status = "closed"
     stats = await get_poll_stats(session, poll.id)
     await callback.message.edit_text(
-        menu_text("Опросы", _stats_text(poll, stats), markup=build_poll_detail_kb(poll.id, False)),
+        menu_text("Опросы", _stats_text(poll, stats)),
         reply_markup=build_poll_detail_kb(poll.id, False),
     )
     await callback.answer(menu_text("Опросы", "Опрос закрыт — новые голоса не учитываются"))
@@ -320,7 +316,6 @@ async def poll_delete_ask(callback: CallbackQuery, callback_data: AdminPollCallb
                 "Опрос и вся статистика удалятся безвозвратно.",
                 "Уже разосланные сообщения останутся в чатах клиентов.",
             ),
-            markup=build_poll_delete_confirm_kb(poll.id),
         ),
         reply_markup=build_poll_delete_confirm_kb(poll.id),
     )
@@ -337,4 +332,4 @@ async def poll_delete(callback: CallbackQuery, callback_data: AdminPollCallback,
         await session.flush()
         await callback.answer(menu_text("Опросы", "Опрос удалён"))
     text, kb = await _render_menu(session)
-    await callback.message.edit_text(menu_text("Опросы", text, markup=kb), reply_markup=kb)
+    await callback.message.edit_text(menu_text("Опросы", text), reply_markup=kb)

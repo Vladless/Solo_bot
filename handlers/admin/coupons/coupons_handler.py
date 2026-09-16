@@ -17,8 +17,9 @@ from core.bootstrap import MODES_CONFIG
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_COUPONS
-from handlers.utils import format_days, safe_answer_inline_query
+from handlers.utils import safe_answer_inline_query
 from logger import logger
+from services.formatting import format_days
 from settings.buttons import BACK
 from settings.config import INLINE_MODE, USERNAME_BOT
 
@@ -206,7 +207,7 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
         )
         if not ok:
             await message.answer(
-                menu_text("Купоны", "❌ Купон с таким кодом уже существует.", markup=kb.as_markup()),
+                menu_text("Купоны", "❌ Купон с таким кодом уже существует."),
                 reply_markup=kb.as_markup(),
             )
             return
@@ -232,7 +233,7 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
         await message.answer(
-            menu_text("Купоны", "❌ Не удалось создать купон.", markup=kb.as_markup()),
+            menu_text("Купоны", "❌ Не удалось создать купон."),
             reply_markup=kb.as_markup(),
         )
 
@@ -279,7 +280,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
         )
         if not ok:
             await message.answer(
-                menu_text("Купоны", "❌ Купон с таким кодом уже существует.", markup=kb.as_markup()),
+                menu_text("Купоны", "❌ Купон с таким кодом уже существует."),
                 reply_markup=kb.as_markup(),
             )
             return
@@ -304,7 +305,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
         await message.answer(
-            menu_text("Купоны", "❌ Не удалось создать купон.", markup=kb.as_markup()),
+            menu_text("Купоны", "❌ Не удалось создать купон."),
             reply_markup=kb.as_markup(),
         )
 
@@ -351,7 +352,7 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
         )
         if not ok:
             await message.answer(
-                menu_text("Купоны", "❌ Купон с таким кодом уже существует.", markup=kb.as_markup()),
+                menu_text("Купоны", "❌ Купон с таким кодом уже существует."),
                 reply_markup=kb.as_markup(),
             )
             return
@@ -371,7 +372,7 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
         await message.answer(
-            menu_text("Купоны", "❌ Не удалось создать купон.", markup=kb.as_markup()),
+            menu_text("Купоны", "❌ Не удалось создать купон."),
             reply_markup=kb.as_markup(),
         )
 
@@ -409,7 +410,7 @@ async def handle_coupon_delete(
     kb.adjust(1)
 
     await callback_query.message.edit_text(
-        menu_text("Купоны", f"Удалить купон <b>{coupon_code}</b>?", markup=kb.as_markup()),
+        menu_text("Купоны", f"Удалить купон <b>{coupon_code}</b>?"),
         reply_markup=kb.as_markup(),
     )
 
@@ -428,16 +429,14 @@ async def confirm_coupon_delete(
             result = await delete_coupon(session, coupon_code)
             if not result:
                 await callback_query.message.edit_text(
-                    menu_text(
-                        "Купоны", f"❌ Купон с кодом {coupon_code} не найден.", markup=build_admin_back_kb("coupons")
-                    ),
+                    menu_text("Купоны", f"❌ Купон с кодом {coupon_code} не найден."),
                     reply_markup=build_admin_back_kb("coupons"),
                 )
                 return
         except Exception as e:
             logger.error(f"Ошибка при удалении купона: {e}")
             await callback_query.message.edit_text(
-                menu_text("Купоны", "Не удалось удалить купон.", markup=build_admin_back_kb("coupons")),
+                menu_text("Купоны", "Не удалось удалить купон."),
                 reply_markup=build_admin_back_kb("coupons"),
             )
             return
@@ -452,16 +451,14 @@ async def update_coupons_list(message, session: Any, page: int = 1):
 
     if not coupons:
         await message.edit_text(
-            text=menu_text("Купоны", "Купонов пока нет.", markup=build_admin_back_kb("coupons")),
+            text=menu_text("Купоны", "Купонов пока нет."),
             reply_markup=build_admin_back_kb("coupons"),
         )
         return
 
     kb = build_coupons_list_kb(coupons, result["current_page"], result["pages"])
     body = format_coupons_list(coupons, USERNAME_BOT)
-    await message.edit_text(
-        text=menu_text("Купоны", f"На странице: <b>{len(coupons)}</b>", body, markup=kb), reply_markup=kb
-    )
+    await message.edit_text(text=menu_text("Купоны", f"На странице: <b>{len(coupons)}</b>", body), reply_markup=kb)
 
 
 @router.inline_query(F.query.startswith("coupon_"))

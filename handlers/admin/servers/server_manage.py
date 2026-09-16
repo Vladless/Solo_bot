@@ -56,12 +56,7 @@ async def handle_server_manage(
         )
 
         await callback_query.message.edit_text(
-            text=menu_text(
-                "Сервер",
-                server_name,
-                body,
-                markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True)),
-            ),
+            text=menu_text("Сервер", server_name, body),
             reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True)),
         )
     else:
@@ -96,11 +91,7 @@ async def process_callback_delete_server(
 
     if not cluster_name:
         await callback_query.message.edit_text(
-            text=menu_text(
-                "Сервер",
-                f"❌ Кластер сервера не найден: '{server_name}'.",
-                markup=build_admin_back_kb("clusters"),
-            ),
+            text=menu_text("Сервер", f"❌ Кластер сервера не найден: '{server_name}'."),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -136,7 +127,6 @@ async def process_callback_delete_server(
                                 "Сервер",
                                 f"❌ Ошибка: название сервера '{s_name}' слишком длинное.",
                                 quote("Дайте серверу имя покороче."),
-                                markup=build_admin_back_kb("clusters"),
                             )
                         ),
                         reply_markup=build_admin_back_kb("clusters"),
@@ -160,7 +150,6 @@ async def process_callback_delete_server(
                 text=menu_text(
                     "Сервер",
                     f"⚠️ На сервере '{server_name}' есть {keys_count} ключей. Выберите сервер для переноса ключей:",
-                    markup=builder.as_markup(),
                 ),
                 reply_markup=builder.as_markup(),
             )
@@ -210,7 +199,6 @@ async def process_callback_delete_server(
                                     "Сервер",
                                     f"❌ Ошибка: название сервера '{server_name}' или кластера '{cl_name}' слишком длинное.",
                                     quote("Дайте серверу имя покороче."),
-                                    markup=build_admin_back_kb("clusters"),
                                 )
                             ),
                             reply_markup=build_admin_back_kb("clusters"),
@@ -235,7 +223,6 @@ async def process_callback_delete_server(
                         menu_text(
                             "Сервер",
                             f"⚠️ Это последний сервер в кластере '{cluster_name}'. На кластере есть {cluster_keys_count} ключей. Выберите кластер для переноса ключей:",
-                            markup=builder.as_markup(),
                         )
                     ),
                     reply_markup=builder.as_markup(),
@@ -252,7 +239,6 @@ async def process_callback_delete_server(
                 menu_text(
                     "Сервер",
                     f"✅ Сервер '{server_name}' удален. Кластер '{cluster_name}' также удален, так как в нем не осталось серверов.",
-                    markup=build_admin_back_kb("clusters"),
                 )
             ),
             reply_markup=build_admin_back_kb("clusters"),
@@ -263,7 +249,7 @@ async def process_callback_delete_server(
         )
         await session.execute(stmt_delete)
         await callback_query.message.edit_text(
-            text=menu_text("Сервер", f"✅ Сервер '{server_name}' удален.", markup=build_admin_back_kb("clusters")),
+            text=menu_text("Сервер", f"✅ Сервер '{server_name}' удален."),
             reply_markup=build_admin_back_kb("clusters"),
         )
 

@@ -22,22 +22,6 @@ def is_plan_vless(plan) -> bool:
     return bool(getattr(plan, "vless", False))
 
 
-def score_vless_url(url: str) -> int:
-    u = url.lower()
-    if not u.startswith("vless://"):
-        return -1
-    s = 0
-    if "security=reality" in u and "type=tcp" in u:
-        s += 4
-    if "type=ws" in u and "security=tls" in u:
-        s += 3
-    if "security=tls" in u and "type=tcp" in u:
-        s += 2
-    if "type=ws" in u:
-        s += 1
-    return s
-
-
 def norm_name(x: str | None) -> str:
     return (x or "").strip().lower()
 

@@ -72,6 +72,36 @@ def filter_config_options(tariff: dict[str, Any]) -> tuple[list[int], list[int]]
     return devices, traffic
 
 
+class ConfigOptionRejected(ValueError):
+    """Выбранного варианта нет в конфигураторе тарифа."""
+
+
+def ensure_allowed_config(
+    tariff: dict[str, Any],
+    selected_device_limit: int | None = None,
+    selected_traffic_gb: int | None = None,
+) -> tuple[int | None, int | None]:
+    """Сверяет выбор клиента со списком вариантов тарифа: цену считают по варианту, а не по числу из запроса."""
+    devices, traffic = filter_config_options(tariff)
+    base_device_limit, base_traffic_gb = resolve_config_base_limits(tariff)
+
+    def check(value: int | None, allowed: list[int], base: int | None, what: str) -> int | None:
+        if value is None:
+            return None
+        value = int(value)
+        # Конфигуратора у тарифа нет — выбор клиента ни на что не влияет, лимит берётся из тарифа.
+        if not allowed:
+            return None
+        if value in allowed or (base is not None and value == base):
+            return value
+        raise ConfigOptionRejected(f"Недоступный вариант: {what}")
+
+    return (
+        check(selected_device_limit, devices, base_device_limit, "устройства"),
+        check(selected_traffic_gb, traffic, base_traffic_gb, "трафик"),
+    )
+
+
 def calculate_config_price(
     tariff: dict[str, Any],
     selected_device_limit: int | None = None,

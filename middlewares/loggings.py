@@ -22,8 +22,8 @@ try:
 except ImportError:
     AUDIT_REDIS_BUFFER_ENABLED = False
 
-from logger import logger
 from core.executor import spawn
+from logger import logger
 
 
 class UserInfo(TypedDict):

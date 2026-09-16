@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_token
+from api.shared.http import resolve_public_base_url
 from api.v2.schemas.web_public import (
     ReferralApplyRequest,
     ReferralApplyResponse,
@@ -26,7 +27,7 @@ from database import (
     get_user_referral_count,
     identities as idb,
 )
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import public_tg_id, resolve_user_optional
 from database.models import Referral
 from database.referrals import get_referral_position, get_top_referrals
 from settings.config import (
@@ -58,24 +59,6 @@ def _normalize_referrer_code(value: str | None, fallback_tg_id: int | None) -> i
     return None
 
 
-def _resolve_public_base_url(request: Request) -> str:
-    origin = str(request.headers.get("origin") or "").strip()
-    if origin.startswith(("http://", "https://")):
-        return origin.rstrip("/")
-    referer = str(request.headers.get("referer") or request.headers.get("referrer") or "").strip()
-    if referer.startswith(("http://", "https://")):
-        parsed = urlsplit(referer)
-        if parsed.scheme and parsed.netloc:
-            return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-    forwarded_host = str(request.headers.get("x-forwarded-host") or "").strip()
-    host = forwarded_host or str(request.headers.get("host") or "").strip()
-    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
-    scheme = forwarded_proto if forwarded_proto in {"http", "https"} else request.url.scheme
-    if host:
-        return f"{scheme}://{host}".rstrip("/")
-    return str(request.base_url).rstrip("/")
-
-
 @router.post("/apply", response_model=ReferralApplyResponse, tags=["Referrals"])
 async def apply_referral(
     body: ReferralApplyRequest,
@@ -97,31 +80,30 @@ async def apply_referral(
         raise HTTPException(status_code=409, detail="Реферальная связь уже сохранена")
     await add_referral(session, billing_uid, referrer_u.id)
     referred_u = await resolve_user_optional(session, billing_uid)
-    if referrer_u.tg_id is not None:
-        try:
-            from database.web_notifications import notify_web
+    try:
+        from database.web_notifications import notify_web
 
-            await notify_web(
-                session,
-                tg_id=int(referrer_u.tg_id),
-                type="referral_joined",
-                title="Ваш реферал присоединился",
-                message="Новый пользователь зарегистрировался по вашей реферальной ссылке.",
-                data={
-                    "referred_tg_id": int(referred_u.tg_id) if referred_u and referred_u.tg_id else None,
-                    "referred_user_id": int(billing_uid),
-                },
-            )
-        except Exception:
-            pass
+        await notify_web(
+            session,
+            user_ref=int(referrer_u.id),
+            type="referral_joined",
+            title="Ваш реферал присоединился",
+            message="Новый пользователь зарегистрировался по вашей реферальной ссылке.",
+            data={
+                "referred_user_id": int(billing_uid),
+                "referred_tg_id": public_tg_id(referred_u.tg_id if referred_u else None),
+            },
+        )
+    except Exception:
+        pass
     return ReferralApplyResponse(
         ok=True,
         message="Приглашение применено",
         referrer_code=str(referrer_u.id),
         referrer_user_id=int(referrer_u.id),
-        referrer_tg_id=referrer_u.tg_id,
+        referrer_tg_id=public_tg_id(referrer_u.tg_id),
         referred_user_id=int(billing_uid),
-        referred_tg_id=referred_u.tg_id if referred_u is not None else None,
+        referred_tg_id=public_tg_id(referred_u.tg_id if referred_u is not None else None),
     )
 
 
@@ -174,7 +156,7 @@ async def referral_list(
     items = [
         ReferralListEntry(
             referred_user_id=int(r.referred_user_id),
-            referred_tg_id=int(r.referred_tg_id) if r.referred_tg_id is not None else None,
+            referred_tg_id=public_tg_id(r.referred_tg_id),
             display_id=encode_referral_code(int(r.referred_user_id)),
             reward_issued=bool(r.reward_issued),
         )
@@ -194,7 +176,7 @@ async def referral_qr(
     if not bool(BUTTONS_CONFIG.get("REFERRAL_QR_BUTTON_ENABLE", REFERRAL_QR)):
         raise HTTPException(status_code=403, detail="QR реферальной ссылки отключен в настройках")
     billing_uid = await idb.ensure_billing_user_for_identity(session, identity)
-    base_url = _resolve_public_base_url(request)
+    base_url = resolve_public_base_url(request)
     referral_link = f"{base_url}/referral/{encode_referral_code(int(billing_uid))}"
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(referral_link)

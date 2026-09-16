@@ -4,12 +4,6 @@ from .._common import *  # noqa: F401,F403 — подтягиваем все и�
 from .._common import (
     _is_renew_available,
     _key_actions_config,
-    _normalize_expiry_ms,
-    _resolve_available_location_servers,
-    _resolve_billing_user_id,
-    _resolve_default_web_payment_provider,
-    _resolve_public_base_url,
-    router,
     user_router,
 )
 
@@ -22,7 +16,7 @@ async def user_keys(
 ):
     from core.redis_cache import cache_get, cache_key, cache_set
 
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     keys = await get_keys(session, billing_user_id)
     result: list[AccountKeyResponse] = []
     for key in keys:
@@ -39,7 +33,8 @@ async def user_keys(
             try:
                 _, markup, _ = await build_key_view_payload(session, int(billing_user_id), key_ref)
                 key_actions = _extract_key_actions_from_markup(markup)
-                await cache_set(actions_key, key_actions.model_dump(), 60)
+                """Действия ключа меняются только вместе с самим ключом, а тот чистит кеш сам."""
+                await cache_set(actions_key, key_actions.model_dump(), 600)
             except Exception:
                 key_actions = AccountKeyActionsAvailability()
         if key_actions.can_renew and not _is_renew_available(int(getattr(key, "expiry_time", 0) or 0)):
@@ -78,7 +73,7 @@ async def user_key_connection(
     identity=Depends(verify_identity_token),
 ):
     """Лёгкая инфо о текущей подписке: онлайн/offline, сервер, протокол, дни до окончания."""
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = next(
         (k for k in await get_keys(session, billing_user_id) if str(getattr(k, "client_id", "")) == client_id),
         None,
@@ -168,7 +163,7 @@ async def user_key_traffic_history(
     from api.ratelimit import enforce_rate_limit
 
     await enforce_rate_limit(request, session, bucket="traffic_history", max_per_window=60, window_sec=60)
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     owns = (
         await session.execute(
             select(Key.client_id).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1)
@@ -196,7 +191,7 @@ async def user_key_details(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
@@ -283,7 +278,7 @@ async def user_key_qr(
     actions = _key_actions_config()
     if not force_web and not actions.qr_enabled:
         raise HTTPException(status_code=403, detail="QR для подписок отключен в настройках")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
@@ -325,7 +320,7 @@ async def user_key_update_alias(
         raise HTTPException(status_code=400, detail="Alias должен быть не длиннее 10 символов")
     if not re.match(r"^[a-zA-Zа-яА-ЯёЁ0-9@._-]+$", alias):
         raise HTTPException(status_code=400, detail="Alias содержит недопустимые символы")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
@@ -365,7 +360,7 @@ async def user_key_delete(
     actions = _key_actions_config()
     if not force_web and not actions.delete_enabled:
         raise HTTPException(status_code=403, detail="Удаление подписки отключено в настройках")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()

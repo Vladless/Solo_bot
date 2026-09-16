@@ -310,7 +310,7 @@ async def create_key_on_cluster(
 
                 await notify_web(
                     session,
-                    tg_id=tg_id,
+                    user_ref=tg_id,
                     type="key_created",
                     template_vars={"email": email},
                     data={"email": email, "client_id": client_id},

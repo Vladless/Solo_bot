@@ -13,7 +13,7 @@ from api.v2.schemas import (
     TrackingSourceResponse,
 )
 from database import get_tracking_source_stats
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import public_tg_id, resolve_user_optional
 from database.models import (
     BlockedUser,
     ManualBan,
@@ -66,7 +66,7 @@ async def list_payments_admin(
     items = [
         {
             "id": p.id,
-            "tg_id": p.tg_id if p.tg_id is not None else tg,
+            "tg_id": public_tg_id(p.tg_id if p.tg_id is not None else tg),
             "amount": float(p.amount or 0),
             "currency": p.currency,
             "payment_system": p.payment_system,

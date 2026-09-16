@@ -167,23 +167,6 @@ def build_select_subgroup_servers_kb(
     return builder.as_markup()
 
 
-def build_tariff_subgroup_selection_kb(cluster_name: str, subgroups: list[str]) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    for i, title in enumerate(subgroups):
-        builder.button(
-            text=title,
-            callback_data=AdminClusterCallback(action="apply_tariff_subgroup", data=f"{cluster_name}|{i}").pack(),
-        )
-    builder.row(
-        InlineKeyboardButton(
-            text="⬅️ К серверам",
-            callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
-        )
-    )
-    builder.adjust(1)
-    return builder.as_markup()
-
-
 def build_tariff_selection_kb(cluster_name: str, tariffs: list, selected: set[int]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 

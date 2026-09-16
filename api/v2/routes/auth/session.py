@@ -36,7 +36,16 @@ from database import (
     identities as idb,
     identity_sessions as idsess,
 )
-from database.models import CouponUsage, Gift, GiftUsage, IdentityNotifPref, Key, Payment, SubscriptionEvent, WebNotification
+from database.models import (
+    CouponUsage,
+    Gift,
+    GiftUsage,
+    IdentityNotifPref,
+    Key,
+    Payment,
+    SubscriptionEvent,
+    WebNotification,
+)
 from database.referrals import get_referral_stats
 from database.web_notifications import count_unread_for_identity
 from logger import logger

@@ -107,29 +107,6 @@ async def cache_get(key: str) -> Any | None:
         return None
 
 
-async def cache_mget(keys: list[str]) -> list[Any | None]:
-    """Возвращает значения для ключей (None для отсутствующих). Один round-trip в Redis."""
-    if not keys:
-        return []
-    client = await _get_redis()
-    if client is None:
-        return [None] * len(keys)
-    try:
-        raw_list = await client.mget(keys)
-        result = []
-        for raw in raw_list:
-            if raw is None:
-                result.append(None)
-            else:
-                try:
-                    result.append(json.loads(raw))
-                except Exception:
-                    result.append(None)
-        return result
-    except Exception:
-        return [None] * len(keys)
-
-
 async def cache_set(key: str, value: Any, ttl_sec: float) -> bool:
     client = await _get_redis()
     if client is None:

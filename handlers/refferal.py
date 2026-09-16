@@ -25,7 +25,7 @@ from database import (
 from database.access.resolution import resolve_user_optional
 from database.tariffs import get_tariffs
 from logger import logger
-from services.formatting import get_referral_link
+from services.formatting import format_days, get_referral_link
 from services.payments.currency_rates import format_for_user
 from settings.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
 from settings.config import (
@@ -49,7 +49,7 @@ from settings.texts import (
     TOP_REFERRALS_TEXT,
 )
 
-from .utils import edit_or_send_message, format_days, render_text, safe_answer_inline_query
+from .utils import edit_or_send_message, render_text, safe_answer_inline_query
 
 
 router = Router()

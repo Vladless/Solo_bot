@@ -73,7 +73,6 @@ async def save_devices_config(message: Message, state: FSMContext, session: Asyn
                     "Некорректные значения",
                     "Нужны числа 0 и больше через пробел или запятую.",
                     quote("Например: <code>1 3 5</code>"),
-                    markup=build_cancel_config_kb(tariff_id),
                 ),
                 reply_markup=build_cancel_config_kb(tariff_id),
             )
@@ -139,7 +138,6 @@ async def save_traffic_config(message: Message, state: FSMContext, session: Asyn
                     "Некорректные значения",
                     "Нужны числа 0 и больше через пробел или запятую.",
                     quote("Например: <code>100 200 500</code>"),
-                    markup=build_cancel_config_kb(tariff_id),
                 ),
                 reply_markup=build_cancel_config_kb(tariff_id),
             )

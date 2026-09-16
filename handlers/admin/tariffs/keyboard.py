@@ -40,7 +40,7 @@ def build_tariff_arrangement_groups_kb(groups: list[str]) -> InlineKeyboardMarku
     builder = InlineKeyboardBuilder()
     row = []
 
-    for i, group in enumerate(groups):
+    for _i, group in enumerate(groups):
         row.append(
             InlineKeyboardButton(
                 text=group,
@@ -123,7 +123,7 @@ def build_tariff_groups_kb(groups: list[str]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     row = []
 
-    for i, group in enumerate(groups):
+    for _i, group in enumerate(groups):
         row.append(
             InlineKeyboardButton(
                 text=group,

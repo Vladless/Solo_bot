@@ -10,13 +10,13 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_admin, verify_identity_agent, verify_identity_token
+from core.executor import run_io
 from core.settings.modes_config import MODES_CONFIG
 from database import async_session_maker
 from database.models import Admin, Identity, Ticket, TicketMessage, User
 from services import tickets as svc
 from services.tickets.events import TICKETS_EVENTS_CHANNEL, tickets_client_channel
 from settings.config import REDIS_URL
-from core.executor import run_io
 
 
 async def require_tickets_enabled() -> None:
@@ -71,7 +71,7 @@ def _clean_attachments(items: list[str] | None) -> list[str] | None:
         url = x.strip()
         if not url.startswith(_ATTACHMENT_URL_PREFIX):
             continue
-        name = url[len(_ATTACHMENT_URL_PREFIX):]
+        name = url[len(_ATTACHMENT_URL_PREFIX) :]
         if not name or "/" in name or ".." in name:
             continue
         out.append(url)
@@ -139,7 +139,9 @@ async def upload_ticket_attachment(
         raise HTTPException(status_code=400, detail="Файл должен иметь расширение")
     ext = FsPath(file.filename).suffix.lower()
     if ext not in _UPLOAD_IMAGE_EXT:
-        raise HTTPException(status_code=400, detail=f"Разрешены только картинки: {', '.join(sorted(_UPLOAD_IMAGE_EXT))}")
+        raise HTTPException(
+            status_code=400, detail=f"Разрешены только картинки: {', '.join(sorted(_UPLOAD_IMAGE_EXT))}"
+        )
     if file.content_type and file.content_type.lower() not in _UPLOAD_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Файл не похож на картинку")
     data = await file.read()
@@ -355,7 +357,7 @@ def _sse_response(request: Request, channel: str) -> StreamingResponse:
             pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
             await pubsub.subscribe(channel)
             yield "retry: 3000\n\n"
-            yield "data: changed\n\n"
+            yield ": connected\n\n"
             while True:
                 if await request.is_disconnected():
                     break

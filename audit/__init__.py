@@ -198,15 +198,6 @@ def ensure_api_context(request: Request) -> AuditContext:
     return context
 
 
-def get_api_context(request: Request | None) -> AuditContext | None:
-    if request is None:
-        return None
-    context = getattr(request.state, "audit_context", None)
-    if isinstance(context, AuditContext):
-        return context
-    return None
-
-
 def set_api_actor(
     request: Request,
     *,
@@ -627,70 +618,6 @@ async def record_telegram_access_event_background(
         )
 
 
-async def safe_record_api_event(
-    session: AsyncSession,
-    request: Request,
-    *,
-    event_type: str,
-    entity_type: str | None = None,
-    entity_id: str | int | None = None,
-    result: str = "success",
-    reason: str | None = None,
-    metadata: dict[str, Any] | None = None,
-    actor_identity_id: str | None = None,
-    actor_tg_id: int | None = None,
-    path_or_handler: str | None = None,
-) -> AuditEvent | None:
-    context = ensure_api_context(request)
-    return await safe_record_audit_event(
-        session,
-        event_type=event_type,
-        channel="api",
-        path_or_handler=path_or_handler or context.path_or_handler,
-        actor_identity_id=actor_identity_id if actor_identity_id is not None else context.actor_identity_id,
-        actor_tg_id=actor_tg_id if actor_tg_id is not None else context.actor_tg_id,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        result=result,
-        reason=reason,
-        metadata=metadata,
-        request_id=context.request_id,
-    )
-
-
-async def safe_record_telegram_event(
-    session: AsyncSession,
-    audit_context: AuditContext | dict[str, Any] | None,
-    *,
-    event_type: str,
-    entity_type: str | None = None,
-    entity_id: str | int | None = None,
-    result: str = "success",
-    reason: str | None = None,
-    metadata: dict[str, Any] | None = None,
-    actor_identity_id: str | None = None,
-    actor_tg_id: int | None = None,
-    path_or_handler: str | None = None,
-) -> AuditEvent | None:
-    context = get_telegram_context(audit_context)
-    return await safe_record_audit_event(
-        session,
-        event_type=event_type,
-        channel="telegram",
-        path_or_handler=path_or_handler or (context.path_or_handler if context else "telegram"),
-        actor_identity_id=actor_identity_id
-        if actor_identity_id is not None
-        else (context.actor_identity_id if context else None),
-        actor_tg_id=actor_tg_id if actor_tg_id is not None else (context.actor_tg_id if context else None),
-        entity_type=entity_type,
-        entity_id=entity_id,
-        result=result,
-        reason=reason,
-        metadata=metadata,
-        request_id=context.request_id if context else None,
-    )
-
-
 def _redis_record_to_event_like(rec: dict[str, Any]) -> SimpleNamespace:
     created = rec.get("created_at")
     if isinstance(created, str):
@@ -954,34 +881,6 @@ async def get_audit_stats_from_redis(max_events: int = 5000) -> dict[str, Any] |
     }
 
 
-async def get_audit_stats_from_redis_since(
-    *,
-    date_from: datetime | None = None,
-    max_events: int = 5000,
-) -> dict[str, Any] | None:
-    if not AUDIT_REDIS_BUFFER_ENABLED:
-        return None
-    events = await list_audit_events_from_redis_buffer(max_events=max_events)
-    filtered_events = events
-    if date_from is not None:
-        threshold = date_from.astimezone(timezone.utc) if date_from.tzinfo else date_from.replace(tzinfo=timezone.utc)
-        filtered_events = [e for e in events if getattr(e, "created_at", None) and e.created_at >= threshold]
-    rows = [(e.path_or_handler, e.result, e.actor_tg_id, e.actor_identity_id) for e in filtered_events]
-    _by_step, by_path_list, all_actors = _aggregate_audit_rows(rows)
-    raw_total_events = sum(1 for row in rows if not _is_ignored_analytics_event(row[0] or ""))
-    analytics_total_events = sum(row["total"] for row in by_path_list)
-    return {
-        "summary": {
-            "source": "redis",
-            "total_events": raw_total_events,
-            "raw_total_events": raw_total_events,
-            "analytics_total_events": analytics_total_events,
-            "unique_users": len(all_actors),
-        },
-        "by_path": by_path_list,
-    }
-
-
 async def get_audit_funnel(
     session: AsyncSession,
     *,
@@ -1048,23 +947,6 @@ async def get_audit_funnel_from_redis(
         return None
     events = await list_audit_events_from_redis_buffer(max_events=max_events)
     rows = [(e.path_or_handler, e.result, e.actor_tg_id, e.actor_identity_id) for e in events]
-    return _funnel_from_rows(rows, steps_ordered)
-
-
-async def get_audit_funnel_from_redis_since(
-    *,
-    date_from: datetime | None = None,
-    max_events: int = 5000,
-    steps_ordered: tuple[str, ...] | None = None,
-) -> list[dict[str, Any]] | None:
-    if not AUDIT_REDIS_BUFFER_ENABLED:
-        return None
-    events = await list_audit_events_from_redis_buffer(max_events=max_events)
-    filtered_events = events
-    if date_from is not None:
-        threshold = date_from.astimezone(timezone.utc) if date_from.tzinfo else date_from.replace(tzinfo=timezone.utc)
-        filtered_events = [e for e in events if getattr(e, "created_at", None) and e.created_at >= threshold]
-    rows = [(e.path_or_handler, e.result, e.actor_tg_id, e.actor_identity_id) for e in filtered_events]
     return _funnel_from_rows(rows, steps_ordered)
 
 

@@ -43,9 +43,7 @@ def channels_to_str(channels) -> str:
 
 
 def _email_exists(identity_col):
-    return exists(
-        select(1).select_from(Identity).where(and_(Identity.id == identity_col, Identity.email.isnot(None)))
-    )
+    return exists(select(1).select_from(Identity).where(and_(Identity.id == identity_col, Identity.email.isnot(None))))
 
 
 def _reachability_filters(tg_col, identity_col, *, channel: str | None, telegram_only: bool):
@@ -192,13 +190,6 @@ async def get_recipients(
     result = await session.execute(query)
     tg_ids = [row[0] for row in result.all()]
     return tg_ids, len(tg_ids)
-
-
-def strip_html_tags(text: str) -> str:
-    text = re.sub(r'<tg-emoji emoji-id="[^"]*">([^<]*)</tg-emoji>', r"\1", text)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
-    return text.strip()
 
 
 def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:

@@ -72,7 +72,6 @@ async def open_settings_notifications_admin_menu(callback: CallbackQuery, sessio
             "переход: в бот и на сайт",
         ),
         quote("Нажмите на уведомление, чтобы включить или выключить его."),
-        markup=markup,
     )
     await callback.message.edit_text(text=text, reply_markup=markup)
     await callback.answer()
@@ -190,8 +189,6 @@ async def notification_interval_value_input(message: Message, state: FSMContext,
 
     notifications_state = await load_notification_settings()
     await message.answer(
-        menu_text(
-            "Уведомления", "Интервал обновлён.", markup=build_settings_notifications_intervals_kb(notifications_state)
-        ),
+        menu_text("Уведомления", "Интервал обновлён."),
         reply_markup=build_settings_notifications_intervals_kb(notifications_state),
     )

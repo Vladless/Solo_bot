@@ -50,8 +50,6 @@ from settings.texts import (
     SUBGROUP_TITLE_TEMPLATE,
 )
 
-from .flow import _finalize_renewal, complete_key_renewal, normalize_expiry_ms
-from .switch import _maybe_show_switch_confirm
 from ..utils import (
     add_tariff_button_generic,
     build_key_callback,
@@ -61,6 +59,8 @@ from ..utils import (
     order_tariff_items,
     resolve_key,
 )
+from .flow import _finalize_renewal, complete_key_renewal, normalize_expiry_ms
+from .switch import _maybe_show_switch_confirm
 
 
 router = Router()

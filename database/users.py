@@ -232,24 +232,6 @@ async def get_trial(session: AsyncSession, legacy_user_ref: int) -> int:
     return int(trial or 0)
 
 
-async def get_balance_and_trial(session: AsyncSession, legacy_user_ref: int) -> tuple[float, int]:
-    """Один запрос к БД для баланса и триала (профиль при промахе кэша)."""
-    uid = await resolve_uid_cached(session, legacy_user_ref)
-    if uid is None:
-        return 0.0, 0
-    result = await session.execute(
-        select(
-            func.coalesce(User.balance, 0.0),
-            func.coalesce(User.trial, 0),
-        ).where(User.id == uid)
-    )
-    row = result.one_or_none()
-    if row is None:
-        return 0.0, 0
-    balance, trial = row
-    return round(float(balance or 0.0), 1), int(trial or 0)
-
-
 async def get_balance_trial_key_count(session: AsyncSession, legacy_user_ref: int) -> tuple[float, int, int]:
     """
     Один запрос: баланс, триал и число ключей пользователя (для профиля при промахе кэша).
@@ -429,16 +411,6 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
     logger.info(f"[DB] Данные пользователя id={uid} полностью удалены")
 
 
-async def mark_trial_extended(legacy_user_ref: int, session: AsyncSession):
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
-        return
-    await session.execute(update(User).where(User.id == u.id).values(trial=-1))
-    invalidate_user_snapshot(u.id)
-    if u.tg_id is not None:
-        invalidate_user_snapshot(u.tg_id)
-
-
 async def get_user_snapshot(session: AsyncSession, legacy_user_ref: int) -> tuple[int, int] | None:
     uid = await resolve_uid_cached(session, legacy_user_ref)
     if uid is None:
@@ -478,3 +450,16 @@ async def upsert_source_if_empty(
     res = await session.execute(stmt)
     changed_tg_id = res.scalar_one_or_none()
     return changed_tg_id is not None
+
+
+async def set_source_if_empty(session: AsyncSession, user_id: int, source_code: str) -> bool:
+    """Метка источника существующему клиенту — по users.id, без обращения к tg_id."""
+    if not source_code:
+        return False
+    res = await session.execute(
+        update(User)
+        .where(User.id == int(user_id), User.source_code.is_(None))
+        .values(source_code=source_code)
+        .returning(User.id)
+    )
+    return res.scalar_one_or_none() is not None

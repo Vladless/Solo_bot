@@ -337,10 +337,9 @@ async def build_key_created_message(
 
     if tariff:
         tariff_name = tariff.get("name", "—")
-        subgroup_title = tariff.get("subgroup_title") or ""
+        tariff.get("subgroup_title") or ""
     else:
         tariff_name = "—"
-        subgroup_title = ""
 
     selected_device_limit_effective = selected_device_limit
     if selected_device_limit_effective is None:

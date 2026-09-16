@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, validate_redirect_url, verify_identity_admin, verify_identity_token
+from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from api.v2.base_crud import generate_crud_router
 from api.v2.routes.coupon_pricing import resolve_percent_coupon_pricing
 from api.v2.schemas import TariffBase, TariffResponse, TariffUpdate
@@ -34,7 +35,12 @@ from services.errors import InsufficientFundsError
 from services.keys import create_vpn_key_headless
 from services.payments.payment_links import PaymentLinkRequest, create_payment_link
 from services.payments.providers import get_web_link_provider_ids
-from services.tariffs import calculate_config_price, filter_config_options
+from services.tariffs import (
+    ConfigOptionRejected,
+    calculate_config_price,
+    ensure_allowed_config,
+    filter_config_options,
+)
 from services.tariffs.cooldown import format_cooldown_left, get_tariff_cooldown_remaining
 from services.tariffs.visibility import is_tariff_visible_for
 from settings.config import TRIAL_TIME_DISABLE
@@ -84,32 +90,6 @@ def _tariff_to_public(t: Tariff) -> TariffPublic:
 
 
 public_router = APIRouter()
-
-
-def _resolve_public_base_url(request: Request) -> str:
-    origin = str(request.headers.get("origin") or "").strip()
-    if origin.startswith(("http://", "https://")):
-        return origin.rstrip("/")
-    referer = str(request.headers.get("referer") or request.headers.get("referrer") or "").strip()
-    if referer.startswith(("http://", "https://")):
-        parsed = urlsplit(referer)
-        if parsed.scheme and parsed.netloc:
-            return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-    forwarded_host = str(request.headers.get("x-forwarded-host") or "").strip()
-    host = forwarded_host or str(request.headers.get("host") or "").strip()
-    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
-    scheme = forwarded_proto if forwarded_proto in {"http", "https"} else request.url.scheme
-    if host:
-        return f"{scheme}://{host}".rstrip("/")
-    return str(request.base_url).rstrip("/")
-
-
-def _resolve_default_web_payment_provider() -> str | None:
-    ids = get_web_link_provider_ids()
-    for provider_id in ids:
-        if bool(PAYMENTS_CONFIG.get(provider_id)):
-            return provider_id
-    return ids[0] if ids else None
 
 
 def _public_tariffs_cache_key(
@@ -206,7 +186,11 @@ async def get_tariff_config_price(
     tariff = await get_tariff_by_id(session, tariff_id)
     if not tariff or not tariff.get("is_active", True):
         raise HTTPException(status_code=404, detail="Тариф не найден")
-    price = int(calculate_config_price(tariff, selected_device_limit, selected_traffic_gb))
+    try:
+        device_limit, traffic_gb = ensure_allowed_config(tariff, selected_device_limit, selected_traffic_gb)
+    except ConfigOptionRejected as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    price = int(calculate_config_price(tariff, device_limit, traffic_gb))
     return TariffConfigPriceResponse(price_rub=price)
 
 
@@ -247,6 +231,10 @@ async def purchase_tariff_with_balance(
                     left=format_cooldown_left(cooldown_left),
                 ),
             )
+    try:
+        ensure_allowed_config(tariff, body.selected_device_limit, body.selected_traffic_gb)
+    except ConfigOptionRejected as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
     price = int(calculate_config_price(tariff, body.selected_device_limit, body.selected_traffic_gb))
     if price <= 0:
         raise HTTPException(status_code=400, detail="Некорректная цена тарифа")
@@ -277,10 +265,10 @@ async def purchase_tariff_with_balance(
             payment_url=None,
         )
     if required_amount > 0:
-        provider_id = str(body.provider_id or _resolve_default_web_payment_provider() or "").strip().upper()
+        provider_id = str(body.provider_id or resolve_default_web_payment_provider() or "").strip().upper()
         if not provider_id:
             raise HTTPException(status_code=503, detail="Нет доступных провайдеров оплаты")
-        base_url = _resolve_public_base_url(request)
+        base_url = resolve_public_base_url(request)
         success_url = validate_redirect_url(str(body.success_url or ""), f"{base_url}/payment-success")
         failure_url = validate_redirect_url(str(body.failure_url or ""), f"{base_url}/payment-failure")
         payment_request = PaymentLinkRequest(
@@ -454,10 +442,10 @@ async def activate_trial(
             final_price_rub=price,
         )
 
-    provider_id = str(_resolve_default_web_payment_provider() or "").strip().upper()
+    provider_id = str(resolve_default_web_payment_provider() or "").strip().upper()
     if not provider_id:
         raise HTTPException(status_code=503, detail="Нет доступных провайдеров оплаты")
-    base_url = _resolve_public_base_url(request)
+    base_url = resolve_public_base_url(request)
     payment_request = PaymentLinkRequest(
         legacy_user_ref=int(tg_id),
         amount=required_amount,

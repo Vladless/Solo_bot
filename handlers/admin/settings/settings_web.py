@@ -4,9 +4,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from core.settings.web_config import WEB_CONFIG, update_web_config
+from core.settings.web_config import WEB_CONFIG, get_web_node_status_interval_min, update_web_config
 from database import async_session_maker
-from settings.buttons import BACK
 
 from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
@@ -18,13 +17,6 @@ router = Router(name="admin_settings_web")
 class WebSettingsState(StatesGroup):
     waiting_for_url = State()
     waiting_for_node_status_interval = State()
-
-
-def _node_status_interval_min() -> int:
-    try:
-        return max(1, int(WEB_CONFIG.get("WEB_NODE_STATUS_INTERVAL_MIN") or 1))
-    except (TypeError, ValueError):
-        return 1
 
 
 def build_settings_web_kb() -> InlineKeyboardBuilder:
@@ -53,7 +45,7 @@ def build_settings_web_kb() -> InlineKeyboardBuilder:
     )
     builder.row(
         InlineKeyboardButton(
-            text=f"⏱ Статус серверов: раз в {_node_status_interval_min()} мин",
+            text=f"⏱ Статус серверов: раз в {get_web_node_status_interval_min()} мин",
             callback_data=AdminPanelCallback(action="settings_web_node_interval").pack(),
         )
     )
@@ -100,7 +92,7 @@ def _web_settings_text() -> str:
             f"Статус: {'✅ включён' if enabled else '❌ выключен'}\n"
             f"URL: <code>{url}</code>\n"
             f"Открытие: {'в браузере' if open_in_browser else 'в веб-аппе'}\n"
-            f"Статус серверов: раз в {_node_status_interval_min()} мин\n"
+            f"Статус серверов: раз в {get_web_node_status_interval_min()} мин\n"
             f"Привязка почты: {'✅ включена' if email_binding else '❌ выключена'}"
         ),
         quote(
@@ -212,7 +204,7 @@ async def prompt_web_url(callback: CallbackQuery, state: FSMContext) -> None:
 async def prompt_node_status_interval(callback: CallbackQuery, state: FSMContext) -> None:
     text = menu_text(
         "Статус серверов",
-        f"Сейчас: раз в <b>{_node_status_interval_min()} мин</b>",
+        f"Сейчас: раз в <b>{get_web_node_status_interval_min()} мин</b>",
         "Как часто сайт обновляет список серверов и их состояние из панели.",
         "Отправьте число минут от 1 до 60.",
     )
@@ -297,12 +289,7 @@ async def do_reset_site(callback: CallbackQuery, session=None) -> None:
 
         safe = html_escape(str(exc))[:2000]
         await callback.message.edit_text(
-            text=menu_text(
-                "Сброс сайта",
-                "❌ Сбросить не удалось.",
-                section("⚠️ Ошибка", safe),
-                markup=build_settings_web_kb().as_markup(),
-            ),
+            text=menu_text("Сброс сайта", "❌ Сбросить не удалось.", section("⚠️ Ошибка", safe)),
             reply_markup=build_settings_web_kb().as_markup(),
         )
         return

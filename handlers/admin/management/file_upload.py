@@ -64,7 +64,6 @@ async def select_upload_target(callback: CallbackQuery, state: FSMContext):
             "Загрузка файла",
             f"Директория: <b>{target_text}</b>",
             quote("Пришлите файл с тем же именем и расширением — он заменит существующий."),
-            markup=build_admin_back_kb("management"),
         ),
         reply_markup=build_admin_back_kb("management"),
     )
@@ -112,14 +111,13 @@ async def handle_admin_file_upload(message: Message, state: FSMContext):
                 "Загрузка файла",
                 f"✅ Файл <code>{file_name}</code> загружен и заменён в директории <code>{target}</code>.",
                 quote("🔄 <b>Перезагрузите бота, чтобы изменения вступили в силу.</b>"),
-                markup=kb.as_markup(),
             ),
             reply_markup=kb.as_markup(),
         )
     except Exception as e:
         logger.error(f"[Upload File] Ошибка при загрузке файла {file_name}: {e}")
         await message.answer(
-            menu_text("Загрузка файла", f"❌ Не удалось сохранить файл: {e}", markup=build_admin_back_kb("management")),
+            menu_text("Загрузка файла", f"❌ Не удалось сохранить файл: {e}"),
             reply_markup=build_admin_back_kb("management"),
         )
     await state.clear()

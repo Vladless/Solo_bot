@@ -12,10 +12,10 @@ from database.models import Gift, GiftUsage
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_GIFTS
-from handlers.utils import edit_or_send_message, format_days, format_months
+from handlers.utils import edit_or_send_message
 from logger import logger
+from services.formatting import format_days, format_months, get_site_gift_link
 from settings.buttons import BACK
-from services.formatting import get_site_gift_link
 
 from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
@@ -52,7 +52,7 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
         builder = InlineKeyboardBuilder()
         builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
         await callback.message.edit_text(
-            menu_text("Подарки", "❌ Нет активных тарифов в группе 'gifts'.", markup=builder.as_markup()),
+            menu_text("Подарки", "❌ Нет активных тарифов в группе 'gifts'."),
             reply_markup=builder.as_markup(),
         )
         return
@@ -89,7 +89,7 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
     builder.row(types.InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack()))
 
     await callback.message.edit_text(
-        menu_text("Подарки", "🎁 Выберите тариф для подарка:", markup=builder.as_markup()),
+        menu_text("Подарки", "🎁 Выберите тариф для подарка:"),
         reply_markup=builder.as_markup(),
     )
 
@@ -128,7 +128,7 @@ async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: 
 
         await edit_or_send_message(
             target_message=callback.message,
-            text=menu_text("Подарки", f"<b>{subgroup}</b>", quote("Выберите тариф:"), markup=builder.as_markup()),
+            text=menu_text("Подарки", f"<b>{subgroup}</b>", quote("Выберите тариф:")),
             reply_markup=builder.as_markup(),
         )
 
@@ -146,7 +146,7 @@ async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
     kb = InlineKeyboardBuilder()
     kb.button(text=BACK, callback_data="admin_gift_create")
     await callback.message.edit_text(
-        menu_text("Подарки", "🔢 Сколько раз подарок можно активировать?", markup=kb.as_markup()),
+        menu_text("Подарки", "🔢 Сколько раз подарок можно активировать?"),
         reply_markup=kb.as_markup(),
     )
 
@@ -202,14 +202,14 @@ async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: i
         builder = InlineKeyboardBuilder()
         builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
         await callback.message.edit_text(
-            menu_text("Подарки", "❌ Подарки не найдены.", markup=builder.as_markup()), reply_markup=builder.as_markup()
+            menu_text("Подарки", "❌ Подарки не найдены."), reply_markup=builder.as_markup()
         )
         return
 
     keyboard = build_gifts_list_kb(gifts, page, total=len(gifts))
 
     await callback.message.edit_text(
-        menu_text("Подарки", f"Страница {page}.", markup=keyboard),
+        menu_text("Подарки", f"Страница {page}."),
         reply_markup=keyboard,
     )
 
@@ -246,9 +246,7 @@ async def view_gift(callback: CallbackQuery, session: AsyncSession):
     builder.button(text="🗑 Удалить", callback_data=f"gift_delete|{gift_id}")
     builder.button(text=BACK, callback_data="admin_gifts_all")
 
-    await callback.message.edit_text(
-        menu_text("Подарок", text, markup=builder.as_markup()), reply_markup=builder.as_markup()
-    )
+    await callback.message.edit_text(menu_text("Подарок", text), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("gift_delete|"), IsAdminFilter())
@@ -261,6 +259,4 @@ async def delete_gift(callback: CallbackQuery, session: AsyncSession):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔙 Назад к списку", callback_data="admin_gifts_all")
 
-    await callback.message.edit_text(
-        menu_text("Подарки", "✅ Подарок удалён.", markup=builder.as_markup()), reply_markup=builder.as_markup()
-    )
+    await callback.message.edit_text(menu_text("Подарки", "✅ Подарок удалён."), reply_markup=builder.as_markup())

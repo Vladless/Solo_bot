@@ -20,7 +20,7 @@ from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from logger import logger
 from panels.remnawave_runtime import fetch_all_remnawave_traffic
-from settings.buttons import CONNECT_DEVICE, MAIN_MENU, SUPPORT
+from settings.buttons import CONNECT_DEVICE, MAIN_MENU
 from settings.config import NOTIFY_INACTIVE_TRAFFIC, REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER
 from settings.texts import ZERO_TRAFFIC_MSG
 

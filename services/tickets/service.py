@@ -310,17 +310,17 @@ async def build_client_context(session: AsyncSession, identity) -> dict | None:
 
     from database.models import Key, Payment, User
 
-    tg_id = getattr(identity, "tg_id", None)
-    if not tg_id or int(tg_id) <= 0:
+    user_id = await resolve_billing_user_ref(session, identity)
+    if user_id is None:
         return None
     now_ms = int(_dt.now(UTC).timestamp() * 1000)
-    user = (await session.execute(select(User).where(User.tg_id == tg_id))).scalar_one_or_none()
-    keys = list((await session.execute(select(Key).where(Key.tg_id == tg_id))).scalars().all())
+    user = await session.get(User, int(user_id))
+    keys = list((await session.execute(select(Key).where(Key.user_id == int(user_id)))).scalars().all())
     active = [k for k in keys if (k.expiry_time or 0) > now_ms and not getattr(k, "is_frozen", False)]
     nearest = max((k.expiry_time for k in keys if k.expiry_time), default=None)
     last_pay = (
         await session.execute(
-            select(Payment).where(Payment.tg_id == tg_id).order_by(Payment.created_at.desc()).limit(1)
+            select(Payment).where(Payment.user_id == int(user_id)).order_by(Payment.created_at.desc()).limit(1)
         )
     ).scalar_one_or_none()
     return {

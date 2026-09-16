@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, MONEY_CONFIG, PAYMENTS_CONFIG
+from core.defaults import DEFAULT_WEB_CONFIG
 from core.settings.bonus_config import is_daily_bonus_enabled
 from core.settings.money_config import get_currency_mode
-from core.settings.web_config import WEB_CONFIG
+from core.settings.web_config import WEB_CONFIG, get_site_mode, is_webapp_only
 from services.payments.providers import (
     TELEGRAM_ONLY_PROVIDER_IDS,
     get_providers_with_hooks,
@@ -189,11 +190,18 @@ async def site_config(session: AsyncSession = Depends(get_session)):
         "telegram_web_app_short_name": webapp_short,
         "telegram_web_app_return_base": webapp_return_base,
         "project_name": (PROJECT_NAME or "Solo").strip() if isinstance(PROJECT_NAME, str) else "Solo",
-        "site_mode": str(WEB_CONFIG.get("SITE_MODE", "full")).strip() or "full",
+        "site_mode": get_site_mode(),
         "maintenance": bool(WEB_CONFIG.get("WEB_MAINTENANCE_MODE", False)),
         "auth": {
             "telegram_login_enabled": bool(bot_username),
-            "email_code_login_enabled": bool(MODES_CONFIG.get("WEB_EMAIL_CODE_LOGIN_ENABLED", True)),
+            "email_code_login_enabled": (
+                False if is_webapp_only() else bool(MODES_CONFIG.get("WEB_EMAIL_CODE_LOGIN_ENABLED", True))
+            ),
+        },
+        "webapp_only": {
+            "title": str(WEB_CONFIG.get("WEBAPP_ONLY_TITLE") or DEFAULT_WEB_CONFIG["WEBAPP_ONLY_TITLE"]),
+            "text": str(WEB_CONFIG.get("WEBAPP_ONLY_TEXT") or DEFAULT_WEB_CONFIG["WEBAPP_ONLY_TEXT"]),
+            "button": str(WEB_CONFIG.get("WEBAPP_ONLY_BUTTON") or DEFAULT_WEB_CONFIG["WEBAPP_ONLY_BUTTON"]),
         },
         "mobile": {
             "prefer_mini_app_on_telegram_mobile": bool(MODES_CONFIG.get("PREFER_MINI_APP_ON_TELEGRAM_MOBILE", False)),

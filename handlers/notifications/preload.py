@@ -24,7 +24,7 @@ async def preload_notification_data(session: AsyncSession) -> dict:
             Key.is_frozen.is_(False),
             ~exists().where(BlockedUser.tg_id == Key.tg_id),
             ~exists().where(
-                ManualBan.tg_id == Key.tg_id,
+                ManualBan.user_id == Key.user_id,
                 or_(ManualBan.until.is_(None), ManualBan.until > datetime.now(timezone.utc)),
             ),
         )

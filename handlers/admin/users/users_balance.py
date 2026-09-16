@@ -177,11 +177,7 @@ async def handle_balance_add(
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
-        text=menu_text(
-            "Баланс",
-            "✍️ Сколько добавить на баланс?",
-            markup=build_users_balance_change_kb(user_id),
-        ),
+        text=menu_text("Баланс", "✍️ Сколько добавить на баланс?"),
         reply_markup=build_users_balance_change_kb(user_id),
     )
 
@@ -201,11 +197,7 @@ async def handle_balance_take(
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
-        text=menu_text(
-            "Баланс",
-            "✍️ Сколько списать с баланса?",
-            markup=build_users_balance_change_kb(user_id),
-        ),
+        text=menu_text("Баланс", "✍️ Сколько списать с баланса?"),
         reply_markup=build_users_balance_change_kb(user_id),
     )
 
@@ -225,11 +217,7 @@ async def handle_balance_set(
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
-        text=menu_text(
-            "Баланс",
-            "✍️ Новый баланс клиента.",
-            markup=build_users_balance_change_kb(user_id),
-        ),
+        text=menu_text("Баланс", "✍️ Новый баланс клиента."),
         reply_markup=build_users_balance_change_kb(user_id),
     )
 
@@ -242,7 +230,7 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Asy
 
     if not message.text.isdigit() or int(message.text) < 0:
         await message.answer(
-            text=menu_text("Баланс", "❌ Нужна сумма числом.", markup=build_users_balance_change_kb(user_id)),
+            text=menu_text("Баланс", "❌ Нужна сумма числом."),
             reply_markup=build_users_balance_change_kb(user_id),
         )
         return

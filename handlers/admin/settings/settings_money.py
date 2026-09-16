@@ -98,7 +98,7 @@ async def edit_money_field_save(
     if not key:
         await state.clear()
         await message.answer(
-            menu_text("Деньги", "Ошибка состояния, попробуйте ещё раз.", markup=build_settings_money_kb(MONEY_CONFIG)),
+            menu_text("Деньги", "Ошибка состояния, попробуйте ещё раз."),
             reply_markup=build_settings_money_kb(MONEY_CONFIG),
         )
         return
@@ -137,7 +137,7 @@ async def edit_money_field_save(
     await state.clear()
 
     await message.answer(
-        menu_text("Деньги", "Настройки денег обновлены.", markup=build_settings_money_kb(MONEY_CONFIG)),
+        menu_text("Деньги", "Настройки денег обновлены."),
         reply_markup=build_settings_money_kb(MONEY_CONFIG),
     )
 

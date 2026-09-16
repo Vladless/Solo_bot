@@ -253,20 +253,6 @@ async def check_notification_time_bulk(
     return can_notify
 
 
-async def get_last_notification_time(session: AsyncSession, legacy_user_ref: int, notification_type: str) -> int | None:
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
-        return None
-    stmt = select(Notification.last_notification_time).where(
-        Notification.user_id == u.id, Notification.notification_type == notification_type
-    )
-    result = await session.execute(stmt)
-    ts = result.scalar_one_or_none()
-    if ts:
-        return int(ts.timestamp() * 1000)
-    return None
-
-
 async def get_last_notification_times_bulk(
     session: AsyncSession, pairs: list[tuple[int, str]]
 ) -> dict[tuple[int, str], int]:
@@ -313,30 +299,6 @@ _COLD_LEAD_NOTIFICATION_TYPES = (
     "cold_lead_step_2",
     "cold_lead_step_3",
 )
-
-
-async def get_hot_lead_notification_flags(session: AsyncSession, legacy_user_refs: list[int]) -> dict[int, set[str]]:
-    """
-    Один запрос: для каждого legacy_user_ref (tg_id или user_id) возвращает множество
-    типов уведомлений hot_lead_*, которые у пользователя уже есть.
-    """
-    if not legacy_user_refs:
-        return {}
-    id_map = await _map_legacy_refs_to_user_ids(session, legacy_user_refs)
-    if not id_map:
-        return {}
-    uids = list(set(id_map.values()))
-    uid_to_ref = {id_map[ref]: ref for ref in legacy_user_refs if ref in id_map}
-    out = defaultdict(set)
-    for chunk in _batched_list(uids, _LEGACY_REF_MAP_BATCH_SIZE):
-        stmt = select(Notification.user_id, Notification.notification_type).where(
-            Notification.user_id.in_(chunk),
-            Notification.notification_type.in_(_HOT_LEAD_NOTIFICATION_TYPES),
-        )
-        result = await session.execute(stmt)
-        for uid, ntype in result.all():
-            out[uid_to_ref.get(uid, uid)].add(ntype)
-    return dict(out)
 
 
 async def get_hot_lead_notification_times(

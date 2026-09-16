@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import BUTTONS_CONFIG
 from database import get_clusters, get_key_expiry_presets
-from handlers.utils import format_days
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
+from services.formatting import format_days
 from services.users_utils import build_admin_key_ref
 from settings.buttons import BACK
 from settings.config import HWID_RESET_BUTTON
@@ -250,7 +250,9 @@ async def build_users_key_expiry_kb(
     builder.row(
         InlineKeyboardButton(
             text=BACK,
-            callback_data=AdminUserEditorCallback(action="users_key_edit", user_id=user_id, data=resolved_key_ref).pack(),
+            callback_data=AdminUserEditorCallback(
+                action="users_key_edit", user_id=user_id, data=resolved_key_ref
+            ).pack(),
         )
     )
 
@@ -264,16 +266,6 @@ def build_user_delete_kb(user_id: int):
         callback_data=AdminUserEditorCallback(action="users_delete_user_confirm", user_id=user_id).pack(),
     )
     builder.row(build_editor_back_btn(user_id, True))
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def build_user_key_kb(user_id: int, key_ref: str) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.button(
-        text=BACK,
-        callback_data=AdminUserEditorCallback(action="users_key_edit", user_id=user_id, data=key_ref).pack(),
-    )
     builder.adjust(1)
     return builder.as_markup()
 

@@ -6,10 +6,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.bootstrap import MODES_CONFIG
 from database import get_tariff_by_id
-from handlers.utils import edit_or_send_message, get_plural_form, safe_answer_callback
+from handlers.utils import edit_or_send_message, safe_answer_callback
 from logger import logger
-from services.payments.currency_rates import format_for_user
 from services.addons import calc_carried_addons_price_rub, is_addons_carry_enabled
+from services.formatting import get_plural_form
+from services.payments.currency_rates import format_for_user
 from services.tariffs.pricing import calculate_config_price
 from services.tariffs.tariff_display import GB
 from settings.buttons import BACK, CONFIG_PAY_BUTTON_TEXT, MAIN_MENU
@@ -353,8 +354,3 @@ async def render_user_config_screen(
         reply_markup=builder.as_markup(),
     )
     await safe_answer_callback(callback_query)
-
-
-async def show_price_and_confirm(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    """Обновляет экран конфигурации и показывает актуальную цену."""
-    await render_user_config_screen(callback_query, state, session)

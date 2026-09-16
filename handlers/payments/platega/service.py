@@ -12,15 +12,20 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from settings.config import (
-    PLATEGA_API_SECRET,
-    PLATEGA_FAIL_URL,
-    PLATEGA_MERCHANT_ID,
-    PLATEGA_SUCCESS_URL,
-)
 from core.bootstrap import PAYMENTS_CONFIG
 from database import add_payment, async_session_maker
 from database.models import User
+from handlers.payments.keyboards import (
+    balance_fallback_kb,
+    build_amounts_keyboard,
+    parse_amount_from_callback,
+    pay_keyboard,
+    payment_options_for_user,
+)
+from handlers.utils import edit_or_send_message
+from logger import logger
+from services.payments.currency_rates import format_for_user, get_rub_rate, pick_currency, to_rub
+from services.payments.payment_links import register_payment_creator
 from settings.buttons import (
     BACK,
     PAY_2,
@@ -29,12 +34,11 @@ from settings.buttons import (
     PLATEGA_INT,
     PLATEGA_SBP,
 )
-from handlers.payments.keyboards import (
-    balance_fallback_kb,
-    build_amounts_keyboard,
-    parse_amount_from_callback,
-    pay_keyboard,
-    payment_options_for_user,
+from settings.config import (
+    PLATEGA_API_SECRET,
+    PLATEGA_FAIL_URL,
+    PLATEGA_MERCHANT_ID,
+    PLATEGA_SUCCESS_URL,
 )
 from settings.texts import (
     PLATEGA_CARDS_DESCRIPTION,
@@ -44,10 +48,6 @@ from settings.texts import (
     PLATEGA_PAYMENT_TITLE,
     PLATEGA_SBP_DESCRIPTION,
 )
-from handlers.utils import edit_or_send_message
-from logger import logger
-from services.payments.currency_rates import format_for_user, get_rub_rate, pick_currency, to_rub
-from services.payments.payment_links import register_payment_creator
 
 
 router = Router()

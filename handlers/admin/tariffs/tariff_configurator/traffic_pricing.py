@@ -49,11 +49,7 @@ async def save_traffic_step(message: Message, state: FSMContext, session: AsyncS
             raise ValueError
     except ValueError:
         await message.answer(
-            menu_text(
-                "Конфигуратор",
-                "❌ Нужно число от нуля.",
-                markup=build_cancel_config_kb(tariff_id),
-            ),
+            menu_text("Конфигуратор", "❌ Нужно число от нуля."),
             reply_markup=build_cancel_config_kb(tariff_id),
         )
         return
@@ -88,7 +84,7 @@ async def open_traffic_overrides_menu(callback: CallbackQuery, state: FSMContext
     await state.update_data(tariff_id=tariff_id, traffic_override_gb=None)
 
     text, markup = build_traffic_overrides_screen(tariff)
-    await callback.message.edit_text(text=menu_text("Конфигуратор", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Конфигуратор", text), reply_markup=markup)
 
 
 @router.callback_query(
@@ -152,7 +148,7 @@ async def clear_traffic_overrides(callback: CallbackQuery, state: FSMContext, se
     text, markup = build_traffic_overrides_screen(tariff)
 
     try:
-        await callback.message.edit_text(text=menu_text("Конфигуратор", text, markup=markup), reply_markup=markup)
+        await callback.message.edit_text(text=menu_text("Конфигуратор", text), reply_markup=markup)
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
@@ -202,4 +198,4 @@ async def save_traffic_override_price(message: Message, state: FSMContext, sessi
     await state.update_data(traffic_override_gb=None)
 
     text, markup = build_traffic_overrides_screen(tariff)
-    await message.answer(text=menu_text("Конфигуратор", text, markup=markup), reply_markup=markup)
+    await message.answer(text=menu_text("Конфигуратор", text), reply_markup=markup)

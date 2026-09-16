@@ -70,22 +70,14 @@ async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
 async def handle_cluster_name_input(message: Message, state: FSMContext):
     if not message.text:
         await message.answer(
-            text=menu_text(
-                "Кластеры",
-                "❌ Имя не может быть пустым.",
-                markup=build_admin_back_kb("clusters"),
-            ),
+            text=menu_text("Кластеры", "❌ Имя не может быть пустым."),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
 
     if len(message.text) > 12:
         await message.answer(
-            text=menu_text(
-                "Кластеры",
-                "❌ Максимум 12 символов.",
-                markup=build_admin_back_kb("clusters"),
-            ),
+            text=menu_text("Кластеры", "❌ Максимум 12 символов."),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -114,11 +106,7 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
 async def handle_server_name_input(message: Message, state: FSMContext, session: Any):
     if not message.text:
         await message.answer(
-            text=menu_text(
-                "Кластеры",
-                "❌ Имя не может быть пустым.",
-                markup=build_admin_back_kb("clusters"),
-            ),
+            text=menu_text("Кластеры", "❌ Имя не может быть пустым."),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -127,11 +115,7 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
     if len(server_name) > 12:
         await message.answer(
-            text=menu_text(
-                "Кластеры",
-                "❌ Максимум 12 символов.",
-                markup=build_admin_back_kb("clusters"),
-            ),
+            text=menu_text("Кластеры", "❌ Максимум 12 символов."),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -141,11 +125,7 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
     if not await check_unique_server_name(session, server_name, cluster_name):
         await message.answer(
-            text=menu_text(
-                "Кластеры",
-                "❌ Сервер с таким именем уже существует. Выберите другое имя.",
-                markup=build_admin_back_kb("clusters"),
-            ),
+            text=menu_text("Кластеры", "❌ Сервер с таким именем уже существует. Выберите другое имя."),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -212,7 +192,6 @@ async def handle_subscription_url_input(message: Message, state: FSMContext):
                 "Remnawave — UUID сквада.",
                 "3x-ui — числовой ID, например <code>1</code>.",
             ),
-            markup=build_admin_back_kb("clusters"),
         ),
         reply_markup=build_admin_back_kb("clusters"),
     )
@@ -229,7 +208,6 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
             "Тип панели",
             "Выберите панель этого сервера.",
             quote("⚠️ Часть функций Remnawave ещё в разработке, режим выбора стран поддержан ограниченно."),
-            markup=build_panel_type_kb(),
         ),
         reply_markup=build_panel_type_kb(),
     )
@@ -275,7 +253,6 @@ async def handle_panel_type_selection(
             "Кластеры",
             f"✅ Сервер <b>{server_name}</b> добавлен в кластер <b>{cluster_name}</b>.",
             quote(f"Панель: {panel_type}"),
-            markup=build_admin_back_kb("clusters"),
         ),
         reply_markup=build_admin_back_kb("clusters"),
     )

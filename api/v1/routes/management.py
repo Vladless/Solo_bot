@@ -1,29 +1,25 @@
-import asyncio
-import os
 import re
-import subprocess
-import sys
 
-from datetime import datetime, timezone
-from typing import Literal
-
-import psutil
-
-from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from pydantic import BaseModel
 from sqlalchemy import distinct, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_admin_token, verify_admin_token_short
+from api.shared.broadcast_admin import (
+    BroadcastLaunchPayload,
+    DomainChange,
+    MaintenanceUpdate,
+    ScheduledBroadcastCreatePayload,
+    ScheduledBroadcastUpdatePayload,
+    get_broadcast_bot,
+    require_future_schedule,
+    resolve_update_payload,
+    restart_bot_process,
+)
 from core.bootstrap import MANAGEMENT_CONFIG
-from core.executor import run_io, spawn
+from core.executor import spawn
 from core.settings.management_config import update_management_config
-from core.settings.modes_config import resolve_protect_content
-from database import async_session_maker
-from database.models import Key, ScheduledBroadcast, Server, User
+from database.models import Key, Server, User
 from database.scheduled_broadcasts import (
     cancel_scheduled_broadcast,
     create_scheduled_broadcast,
@@ -35,121 +31,16 @@ from database.scheduled_broadcasts import (
     update_scheduled_broadcast,
 )
 from handlers.admin.sender.scheduled_service import (
-    ensure_utc_datetime,
     execute_broadcast_payload,
     execute_scheduled_broadcast,
     prepare_broadcast_payload,
     scheduled_broadcast_to_dict,
 )
 from logger import logger
-from settings.config import API_TOKEN, BOT_SERVICE
 from utils.backup import backup_database
 
 
 router = APIRouter()
-
-
-class MaintenanceUpdate(BaseModel):
-    enabled: bool
-
-
-class DomainChange(BaseModel):
-    domain: str
-
-
-class BroadcastLaunchPayload(BaseModel):
-    send_to: Literal["all", "subscribed", "unsubscribed", "untrial", "trial", "hotleads", "cluster"] = "all"
-    channel: Literal["bot", "site", "both"] = "both"
-    text: str
-    photo: str | None = None
-    cluster_name: str | None = None
-    workers: int = 5
-    messages_per_second: int = 35
-
-
-class ScheduledBroadcastCreatePayload(BroadcastLaunchPayload):
-    scheduled_for: datetime
-
-
-class ScheduledBroadcastUpdatePayload(BaseModel):
-    send_to: Literal["all", "subscribed", "unsubscribed", "untrial", "trial", "hotleads", "cluster"] | None = None
-    channel: Literal["bot", "site", "both"] | None = None
-    text: str | None = None
-    photo: str | None = None
-    cluster_name: str | None = None
-    workers: int | None = None
-    messages_per_second: int | None = None
-    scheduled_for: datetime | None = None
-
-
-_broadcast_bot: Bot | None = None
-
-
-def _get_broadcast_bot() -> Bot:
-    global _broadcast_bot
-    if _broadcast_bot is None:
-        _broadcast_bot = Bot(
-            token=API_TOKEN,
-            default=DefaultBotProperties(parse_mode=ParseMode.HTML, protect_content=resolve_protect_content()),
-        )
-    elif _broadcast_bot.default is not None:
-        _broadcast_bot.default.protect_content = resolve_protect_content()
-    return _broadcast_bot
-
-
-def _require_future_schedule(value: datetime) -> datetime:
-    scheduled_for = ensure_utc_datetime(value)
-    if scheduled_for <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="scheduled_for must be in the future")
-    return scheduled_for
-
-
-def _resolve_update_payload(
-    payload: ScheduledBroadcastUpdatePayload,
-    current: ScheduledBroadcast,
-) -> dict:
-    fields = payload.model_fields_set
-    text_changed = "text" in fields
-    send_to = payload.send_to if "send_to" in fields else current.send_to
-    channel = payload.channel if "channel" in fields else current.channel
-    text = payload.text if "text" in fields else current.text
-    photo = payload.photo if "photo" in fields else current.photo
-    cluster_name = payload.cluster_name if "cluster_name" in fields else current.cluster_name
-    workers = payload.workers if "workers" in fields else current.workers
-    messages_per_second = (
-        payload.messages_per_second if "messages_per_second" in fields else current.messages_per_second
-    )
-    prepared = prepare_broadcast_payload(
-        send_to=send_to,
-        text=text,
-        photo=photo,
-        cluster_name=cluster_name,
-        workers=workers,
-        messages_per_second=messages_per_second,
-        channel=channel,
-    )
-    if not text_changed:
-        prepared["text"] = current.text
-        prepared["keyboard_json"] = current.keyboard_json
-    if "scheduled_for" in fields:
-        prepared["scheduled_for"] = _require_future_schedule(payload.scheduled_for)
-    return prepared
-
-
-async def _restart_bot() -> None:
-    await asyncio.sleep(1)
-    try:
-        parent = psutil.Process(os.getpid()).parent()
-        is_systemd = parent and "systemd" in parent.name().lower()
-
-        if is_systemd:
-            await run_io(lambda: subprocess.run(["sudo", "systemctl", "restart", BOT_SERVICE], check=True))
-        else:
-            python_exe = sys.executable
-            script_path = os.path.abspath(sys.argv[0])
-            os.execv(python_exe, [python_exe, script_path] + sys.argv[1:])
-    except Exception:
-        os._exit(1)
 
 
 @router.get("/status")
@@ -177,7 +68,7 @@ async def restart_bot(
     background: BackgroundTasks,
     admin=Depends(verify_admin_token),
 ):
-    background.add_task(_restart_bot)
+    background.add_task(restart_bot_process)
     return {"status": "restarting"}
 
 
@@ -270,7 +161,7 @@ async def launch_broadcast(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return await execute_broadcast_payload(prepared, bot=_get_broadcast_bot())
+    return await execute_broadcast_payload(prepared, bot=get_broadcast_bot())
 
 
 @router.post("/broadcast/scheduled")
@@ -300,7 +191,7 @@ async def create_broadcast_schedule(
         text=prepared["text"],
         photo=prepared["photo"],
         keyboard_json=prepared["keyboard_json"],
-        scheduled_for=_require_future_schedule(payload.scheduled_for),
+        scheduled_for=require_future_schedule(payload.scheduled_for),
         workers=prepared["workers"],
         messages_per_second=prepared["messages_per_second"],
     )
@@ -343,7 +234,7 @@ async def update_broadcast_schedule(
     if current is None:
         raise HTTPException(status_code=404, detail="Scheduled broadcast not found")
     try:
-        values = _resolve_update_payload(payload, current)
+        values = resolve_update_payload(payload, current)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     updated = await update_scheduled_broadcast(session, broadcast_id, **values)
@@ -374,7 +265,7 @@ async def send_broadcast_schedule_now(
     if item is None:
         raise HTTPException(status_code=409, detail="Scheduled broadcast can no longer be sent now")
     try:
-        result = await execute_scheduled_broadcast(item, bot=_get_broadcast_bot())
+        result = await execute_scheduled_broadcast(item, bot=get_broadcast_bot())
     except Exception as exc:
         await mark_scheduled_broadcast_failed(session, broadcast_id, str(exc))
         raise HTTPException(status_code=500, detail=str(exc)) from exc

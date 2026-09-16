@@ -133,44 +133,6 @@ async def get_or_create_identity_for_google(
     return identity
 
 
-async def attach_google(
-    session: AsyncSession,
-    identity_id: str,
-    google_sub: str,
-) -> Identity | None:
-    """Привязывает Google-аккаунт к существующей identity.
-
-    Возвращает None, если этот google_sub уже привязан к другой identity.
-    """
-    identity = await get_identity_by_id(session, identity_id)
-    if not identity:
-        return None
-    if identity.google_sub == google_sub:
-        return identity
-    existing = await get_identity_by_google_sub(session, google_sub)
-    if existing and existing.id != identity_id:
-        return None
-    identity.google_sub = google_sub
-    await session.flush()
-    await session.refresh(identity)
-    return identity
-
-
-async def detach_google(session: AsyncSession, identity_id: str) -> Identity | None:
-    """Отвязывает Google от identity. Запрещено если это единственный канал."""
-    identity = await get_identity_by_id(session, identity_id)
-    if not identity:
-        return None
-    if identity.google_sub is None:
-        return identity
-    if identity.email is None and identity.tg_id is None:
-        return None
-    identity.google_sub = None
-    await session.flush()
-    await session.refresh(identity)
-    return identity
-
-
 async def get_identity_by_yandex_sub(session: AsyncSession, yandex_sub: str) -> Identity | None:
     """Возвращает идентичность по Яндекс ID (поле `id` из https://login.yandex.ru/info)."""
     if not yandex_sub:
@@ -218,47 +180,6 @@ async def get_or_create_identity_for_yandex(
     await session.flush()
     await session.refresh(identity)
     return identity
-
-
-async def attach_yandex(
-    session: AsyncSession,
-    identity_id: str,
-    yandex_sub: str,
-) -> Identity | None:
-    """Привязывает Яндекс-аккаунт к existing identity. None если yandex_sub занят чужой identity."""
-    identity = await get_identity_by_id(session, identity_id)
-    if not identity:
-        return None
-    if identity.yandex_sub == yandex_sub:
-        return identity
-    existing = await get_identity_by_yandex_sub(session, yandex_sub)
-    if existing and existing.id != identity_id:
-        return None
-    identity.yandex_sub = yandex_sub
-    await session.flush()
-    await session.refresh(identity)
-    return identity
-
-
-async def detach_yandex(session: AsyncSession, identity_id: str) -> Identity | None:
-    """Отвязывает Яндекс от identity. Запрещено если это единственный канал."""
-    identity = await get_identity_by_id(session, identity_id)
-    if not identity:
-        return None
-    if identity.yandex_sub is None:
-        return identity
-    if identity.email is None and identity.tg_id is None and identity.google_sub is None:
-        return None
-    identity.yandex_sub = None
-    await session.flush()
-    await session.refresh(identity)
-    return identity
-
-
-async def get_identity_by_token_hash(session: AsyncSession, token_hash: str) -> Identity | None:
-    """Возвращает идентичность по хешу API-токена."""
-    result = await session.execute(select(Identity).where(Identity.api_token_hash == token_hash))
-    return result.scalar_one_or_none()
 
 
 async def issue_token_for_identity(
@@ -375,23 +296,25 @@ async def change_identity_password(
     return None
 
 
-async def _assign_synthetic_tg_id(session: AsyncSession, uid: int) -> None:
-    synthetic = -int(uid)
+async def _ensure_compat_tg_ref(session: AsyncSession, uid: int) -> None:
+    """Совместимость: tg-ключевым модулям и уже выданным ссылкам на подписку нужен числовой ref."""
+    from database.access.resolution import ensure_legacy_tg_ref
+
     try:
         async with session.begin_nested():
-            await session.execute(update(User).where(User.id == uid).values(tg_id=synthetic))
+            await ensure_legacy_tg_ref(session, uid)
     except Exception as exc:
-        logger.warning("[ensure_billing_user] синтетический tg_id для user {} не присвоен: {}", uid, exc)
+        logger.warning("[ensure_billing_user] совместимый tg_id для user {} не присвоен: {}", uid, exc)
 
 
-async def _attribute_client_campaign(session: AsyncSession, tg_id: int | None) -> None:
+async def _attribute_client_campaign(session: AsyncSession, user_id: int | None) -> None:
     """Первое касание рекламы с сайта: в боте источник ставит диплинк, здесь — метка клиента."""
     campaign = client_campaign()
-    if not campaign or tg_id is None:
+    if not campaign or user_id is None:
         return
     from database.tracking_sources import attribute_source_if_known
 
-    await attribute_source_if_known(session, int(tg_id), campaign)
+    await attribute_source_if_known(session, int(user_id), campaign)
 
 
 async def ensure_billing_user_for_identity(session: AsyncSession, identity: Identity) -> int:
@@ -405,20 +328,20 @@ async def ensure_billing_user_for_identity(session: AsyncSession, identity: Iden
         u = ur.scalar_one()
         if u.identity_id != identity.id:
             await session.execute(update(User).where(User.id == u.id).values(identity_id=identity.id))
-        await _attribute_client_campaign(session, u.tg_id)
+        await _attribute_client_campaign(session, u.id)
         return int(u.id)
     res = await session.execute(select(User).where(User.identity_id == identity.id))
     row = res.scalars().first()
     if row is not None:
         if row.tg_id is None:
-            await _assign_synthetic_tg_id(session, row.id)
-        await _attribute_client_campaign(session, row.tg_id if row.tg_id is not None else -int(row.id))
+            await _ensure_compat_tg_ref(session, row.id)
+        await _attribute_client_campaign(session, row.id)
         return int(row.id)
     new_u = User(identity_id=identity.id, tg_id=None)
     session.add(new_u)
     await session.flush()
-    await _assign_synthetic_tg_id(session, new_u.id)
-    await _attribute_client_campaign(session, -int(new_u.id))
+    await _ensure_compat_tg_ref(session, new_u.id)
+    await _attribute_client_campaign(session, new_u.id)
     try:
         from services.admin_notify import notify_new_client
 
@@ -626,14 +549,6 @@ async def merge_billing_user_into_telegram(session: AsyncSession, identity_id: s
             await session.execute(update(User).where(User.id == dst_uid).values(trial=st))
 
     await _transfer_user_data(session, src_uid, dst_uid, dst_tg, identity_id)
-
-
-async def resolve_tg_id(session: AsyncSession, identity_id: str) -> int | None:
-    """По identity_id возвращает внутренний user id (users.id) для биллинга и ключей."""
-    identity = await get_identity_by_id(session, identity_id)
-    if not identity:
-        return None
-    return await ensure_billing_user_for_identity(session, identity)
 
 
 async def attach_email(session: AsyncSession, identity_id: str, email: str) -> Identity | None:

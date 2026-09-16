@@ -84,7 +84,7 @@ async def _notify_reissue(
         async with async_session_maker() as notify_session:
             notification = await notify_web(
                 notify_session,
-                tg_id=int(user_id),
+                user_ref=int(user_id),
                 type="system",
                 title="Подписка перевыпущена",
                 message="Ссылка подписки обновлена, старая больше не работает.",

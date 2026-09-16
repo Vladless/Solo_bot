@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import PAYMENTS_CONFIG, update_payments_config
-from core.settings.providers_order_config import PROVIDERS_ORDER, update_providers_order
+from core.settings.providers_order_config import update_providers_order
 from filters.admin import IsAdminFilter
 from services.payments.providers import PROVIDERS_BASE, _get_effective_order
 
@@ -78,10 +78,7 @@ async def open_providers_order_menu(callback: CallbackQuery, session: AsyncSessi
     sorted_names = _get_sorted_provider_names()
     markup = build_providers_order_kb(sorted_names)
     text = menu_text(
-        "Порядок касс",
-        "⬆️ поднять выше, ⬇️ опустить ниже.",
-        "Порядок виден в меню оплаты и в быстром сценарии.",
-        markup=markup,
+        "Порядок касс", "⬆️ поднять выше, ⬇️ опустить ниже.", "Порядок виден в меню оплаты и в быстром сценарии."
     )
     await callback.message.edit_text(text=text, reply_markup=markup)
     await callback.answer()

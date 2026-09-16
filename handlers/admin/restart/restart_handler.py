@@ -24,9 +24,7 @@ router.message.filter(HasPermission(PERM_MANAGEMENT))
 @router.callback_query(AdminPanelCallback.filter(F.action == "restart"), IsAdminFilter())
 async def handle_restart_confirm(callback_query: CallbackQuery, callback_data: AdminPanelCallback):
     kb = build_admin_back_kb()
-    await callback_query.message.edit_text(
-        menu_text("Перезапуск", "🔄 Перезапускаем бота...", markup=kb), reply_markup=kb
-    )
+    await callback_query.message.edit_text(menu_text("Перезапуск", "🔄 Перезапускаем бота..."), reply_markup=kb)
 
     spawn(restart_bot())
 

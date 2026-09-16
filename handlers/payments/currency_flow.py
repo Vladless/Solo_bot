@@ -1,13 +1,12 @@
-from collections.abc import Iterable
-from typing import Any, List
+from typing import Any
 
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from settings.config import TRIBUTE_LINK
-from settings.buttons import MAIN_MENU, RUB_CURRENCY, STARS, USD_CURRENCY
-from settings.texts import FAST_PAY_NOT_ENOUGH
 from services.payments.currency_rates import format_for_user
+from settings.buttons import MAIN_MENU, RUB_CURRENCY, STARS, USD_CURRENCY
+from settings.config import TRIBUTE_LINK
+from settings.texts import FAST_PAY_NOT_ENOUGH
 
 
 def build_currency_choice_kb(
@@ -49,37 +48,6 @@ async def shortfall_lead_text(
         session, tg_id, float(required_amount), language_code, force_currency=force_currency
     )
     return FAST_PAY_NOT_ENOUGH.format(amount=amount_txt)
-
-
-def filter_providers_by_currency(
-    currency: str,
-    providers: Iterable[str],
-    rub_providers: Iterable[str],
-) -> list[str]:
-    rub_set = {p.upper() for p in rub_providers}
-    out: list[str] = []
-    for p in providers:
-        up = p.upper()
-        if currency == "RUB":
-            if up in rub_set:
-                out.append(p)
-        elif currency == "USD":
-            if up not in rub_set and up != "STARS":
-                out.append(p)
-        elif currency == "STARS":
-            if up == "STARS":
-                out.append(p)
-        else:
-            out.append(p)
-    return out
-
-
-def currency_for_provider(up_provider: str, rub_providers: Iterable[str]) -> str | None:
-    if up_provider in {p.upper() for p in rub_providers}:
-        return "RUB"
-    if up_provider == "STARS":
-        return "STARS"
-    return "USD"
 
 
 def currency_label(code: str) -> str:

@@ -16,7 +16,7 @@ async def handle_user_traffic(
     key_obj = await resolve_callback_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(user_id)),
+            menu_text("Подписка", "❌ Ключ не найден."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -30,7 +30,7 @@ async def handle_user_traffic(
 
     if traffic_data["status"] == "error":
         await callback_query.message.edit_text(
-            menu_text("Трафик подписки", traffic_data["message"], markup=build_editor_kb(user_id, True)),
+            menu_text("Трафик подписки", traffic_data["message"]),
             reply_markup=build_editor_kb(user_id, True),
         )
         return
@@ -71,7 +71,7 @@ async def handle_reset_traffic(
     key_obj = await resolve_callback_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Ключ не найден в базе данных.", markup=build_editor_kb(user_id)),
+            menu_text("Подписка", "❌ Ключ не найден в базе данных."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -82,15 +82,13 @@ async def handle_reset_traffic(
     try:
         await reset_traffic_in_cluster(cluster_id, email, session)
         await callback_query.message.edit_text(
-            menu_text(
-                "Подписка", f"✅ Трафик для ключа <b>{email}</b> успешно сброшен.", markup=build_editor_kb(user_id)
-            ),
+            menu_text("Подписка", f"✅ Трафик для ключа <b>{email}</b> успешно сброшен."),
             reply_markup=build_editor_kb(user_id),
         )
     except Exception as e:
         logger.error(f"Ошибка при сбросе трафика: {e}")
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Не удалось сбросить трафик. Попробуйте позже.", markup=build_editor_kb(user_id)),
+            menu_text("Подписка", "❌ Не удалось сбросить трафик. Попробуйте позже."),
             reply_markup=build_editor_kb(user_id),
         )
 
@@ -108,7 +106,7 @@ async def handle_admin_freeze_subscription(
     key_obj = await resolve_callback_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -118,7 +116,7 @@ async def handle_admin_freeze_subscription(
         record = await get_key_details(session, email)
         if not record:
             await callback_query.message.edit_text(
-                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+                text=menu_text("Подписка", "❌ Подписка не найдена."),
                 reply_markup=build_editor_kb(user_id),
             )
             return
@@ -172,7 +170,7 @@ async def handle_admin_unfreeze_subscription(
     key_obj = await resolve_callback_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -182,7 +180,7 @@ async def handle_admin_unfreeze_subscription(
         record = await get_key_details(session, email)
         if not record:
             await callback_query.message.edit_text(
-                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+                text=menu_text("Подписка", "❌ Подписка не найдена."),
                 reply_markup=build_editor_kb(user_id),
             )
             return

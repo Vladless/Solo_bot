@@ -21,7 +21,6 @@ from settings.buttons import (
     MAIN_MENU,
     PC_MACOS,
     PC_PC,
-    SUPPORT,
     TV_CONTINUE,
 )
 from settings.config import (
@@ -31,7 +30,6 @@ from settings.config import (
     DOWNLOAD_PC,
     HAPP_CRYPTOLINK,
     REMNAWAVE_WEBAPP,
-    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
     WEBHOOK_HOST,
 )
 from settings.texts import (

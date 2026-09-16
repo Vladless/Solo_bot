@@ -34,12 +34,6 @@ async def release_tg_mirrors(session: AsyncSession, tg_id: int) -> None:
         await session.execute(update(model).where(getattr(model, column) == tg_id).values({column: None}))
 
 
-def mirror_telegram_id(user: User | None) -> int | None:
-    if user is None:
-        return None
-    return user.tg_id
-
-
 async def refresh_tg_mirrors_for_user(session: AsyncSession, user_id: int) -> None:
     r = await session.execute(select(User.tg_id).where(User.id == user_id))
     tg = r.scalar_one_or_none()

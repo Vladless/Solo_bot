@@ -25,12 +25,23 @@ async def is_known_tracking_source(session: AsyncSession, code: str) -> bool:
     return exists
 
 
-async def attribute_source_if_known(session: AsyncSession, tg_id: int, code: str | None) -> bool:
-    """Ставит источник клиенту, если код известен и источник ещё не заполнен."""
+async def attribute_source_if_known(session: AsyncSession, user_ref: int, code: str | None) -> bool:
+    """Ставит источник клиенту, если код известен и источник ещё не заполнен.
+
+    Клиента адресуем по `users.id`; upsert по tg остаётся для бота, где строки может ещё не быть.
+    """
     normalized = normalize_campaign(code)
     if not normalized or not await is_known_tracking_source(session, normalized):
         return False
-    return await upsert_source_if_empty(session, tg_id, normalized)
+    from database.access.resolution import resolve_user_optional
+    from database.users import set_source_if_empty
+
+    user = await resolve_user_optional(session, int(user_ref))
+    if user is not None:
+        return await set_source_if_empty(session, int(user.id), normalized)
+    if int(user_ref) > 0:
+        return await upsert_source_if_empty(session, int(user_ref), normalized)
+    return False
 
 
 async def create_tracking_source(session: AsyncSession, name: str, code: str, type_: str, created_by: int):

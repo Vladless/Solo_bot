@@ -73,35 +73,6 @@ async def export_payments_csv(session: AsyncSession) -> BufferedInputFile:
     return _export_payments_csv(payments, "payments_export.csv")
 
 
-async def export_user_payments_csv(tg_id: int, session: AsyncSession) -> BufferedInputFile:
-    u = await resolve_user_optional(session, tg_id)
-    uid = u.id if u is not None else tg_id
-    j = join(User, Payment, User.id == Payment.user_id)
-    query = (
-        select(
-            User.tg_id,
-            User.username,
-            User.first_name,
-            User.last_name,
-            Payment.amount,
-            Payment.payment_system,
-            Payment.status,
-            Payment.created_at,
-        )
-        .select_from(j)
-        .where(
-            User.id == uid,
-            Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
-        )
-        .order_by(Payment.created_at.asc())
-    )
-
-    result = await session.execute(query)
-    payments = result.all()
-
-    return _export_payments_csv(payments, f"payments_export_{tg_id}.csv")
-
-
 def _export_payments_csv(payments, filename: str) -> BufferedInputFile:
     buffer = StringIO()
     writer = csv.writer(buffer)

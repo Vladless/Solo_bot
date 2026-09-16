@@ -16,7 +16,6 @@ from database import (
     reset_key_tariff_state,
     save_key_tariff_selection,
 )
-from database.models import Tariff
 from filters.admin import IsAdminFilter
 from logger import logger
 from middlewares.session import release_session_early
@@ -72,7 +71,7 @@ async def handle_user_choose_tariff_group(
     key_obj = await resolve_admin_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Тариф клиента", "❌ Ключ не найден.", markup=build_editor_kb(user_id)),
+            menu_text("Тариф клиента", "❌ Ключ не найден."),
             reply_markup=build_editor_kb(user_id),
         )
         return
@@ -90,7 +89,7 @@ async def handle_user_choose_tariff_group(
     builder.adjust(1)
 
     await callback_query.message.edit_text(
-        text=menu_text("Тариф клиента", "Выберите группу.", markup=builder.as_markup()),
+        text=menu_text("Тариф клиента", "Выберите группу."),
         reply_markup=builder.as_markup(),
     )
 
@@ -118,11 +117,7 @@ async def handle_user_choose_tariff(
     builder.adjust(1)
 
     await callback_query.message.edit_text(
-        text=menu_text(
-            "Тариф клиента",
-            f"Тариф из группы <b>{group_code}</b>.",
-            markup=builder.as_markup(),
-        ),
+        text=menu_text("Тариф клиента", f"Тариф из группы <b>{group_code}</b>."),
         reply_markup=builder.as_markup(),
     )
 
@@ -311,7 +306,6 @@ async def handle_user_renew_confirm(
                         f"Устройства: {devices_label}",
                         f"Трафик: {traffic_label}",
                     ),
-                    markup=builder.as_markup(),
                 )
             ),
             reply_markup=builder.as_markup(),
@@ -712,7 +706,7 @@ async def handle_back_to_group(
     builder.adjust(1)
 
     await callback_query.message.edit_text(
-        text=menu_text("Тариф клиента", "Выберите группу.", markup=builder.as_markup()),
+        text=menu_text("Тариф клиента", "Выберите группу."),
         reply_markup=builder.as_markup(),
     )
     await state.set_state(RenewTariffState.selecting_group)

@@ -1,12 +1,7 @@
 from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
 from .._common import (
     _key_actions_config,
-    _normalize_expiry_ms,
     _resolve_available_location_servers,
-    _resolve_billing_user_id,
-    _resolve_default_web_payment_provider,
-    _resolve_public_base_url,
-    router,
     user_router,
 )
 
@@ -22,7 +17,7 @@ async def user_key_locations(
     actions = _key_actions_config()
     if not force_web and not actions.country_change_enabled:
         raise HTTPException(status_code=403, detail="Смена локации отключена в настройках")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
@@ -51,7 +46,7 @@ async def user_key_change_location(
     target_server = str(body.server_name or "").strip()
     if not target_server:
         raise HTTPException(status_code=400, detail="Укажите целевую локацию")
-    billing_user_id = await _resolve_billing_user_id(request, identity, session)
+    billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()

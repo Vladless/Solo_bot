@@ -16,8 +16,8 @@ from api.depends import (
     verify_identity_admin,
     verify_identity_token,
 )
+from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from api.v2.base_crud import generate_crud_router
-from api.v2.routes.tariffs import _resolve_default_web_payment_provider, _resolve_public_base_url
 from api.v2.schemas import GiftBase, GiftResponse, GiftUpdate, GiftUsageResponse
 from api.v2.schemas.web_public import (
     GiftCreatePreviewResponse,
@@ -46,7 +46,7 @@ from services.gifts import (
     redeem_gift as service_redeem_gift,
 )
 from services.payments.payment_links import PaymentLinkRequest, create_payment_link
-from services.tariffs import calculate_config_price
+from services.tariffs import ConfigOptionRejected, calculate_config_price, ensure_allowed_config
 from settings.config import GIFT_BUTTON
 
 
@@ -163,6 +163,10 @@ async def create_gift_for_user(
     if not tariff or tariff.get("group_code") != "gifts" or not tariff.get("is_active", True):
         raise HTTPException(status_code=404, detail="Тариф не найден")
 
+    try:
+        ensure_allowed_config(tariff, body.selected_device_limit, body.selected_traffic_gb)
+    except ConfigOptionRejected as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
     price = int(calculate_config_price(tariff, body.selected_device_limit, body.selected_traffic_gb))
     balance = float(await get_balance(session, billing_user_id))
 
@@ -179,10 +183,10 @@ async def create_gift_for_user(
         )
 
     if required_amount > 0:
-        provider_id = str(body.provider_id or _resolve_default_web_payment_provider() or "").strip().upper()
+        provider_id = str(body.provider_id or resolve_default_web_payment_provider() or "").strip().upper()
         if not provider_id:
             raise HTTPException(status_code=503, detail="Нет доступных провайдеров оплаты")
-        base_url = _resolve_public_base_url(request)
+        base_url = resolve_public_base_url(request)
         success_url = validate_redirect_url(str(body.success_url or ""), f"{base_url}/payment-success")
         failure_url = validate_redirect_url(str(body.failure_url or ""), f"{base_url}/payment-failure")
         payment_request = PaymentLinkRequest(

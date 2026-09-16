@@ -7,18 +7,6 @@ from database.models import BlockedUser, User
 from logger import logger
 
 
-async def create_blocked_user(session: AsyncSession, legacy_user_ref: int):
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
-        return
-    stmt = (
-        insert(BlockedUser)
-        .values(user_id=u.id, tg_id=u.tg_id)
-        .on_conflict_do_nothing(index_elements=[BlockedUser.user_id])
-    )
-    await session.execute(stmt)
-
-
 async def save_blocked_user_ids(session: AsyncSession, tg_ids: list[int]) -> None:
     """Вставка списка telegram id в таблицу blocked_users батчами по 500."""
     if not tg_ids:

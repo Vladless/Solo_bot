@@ -121,6 +121,7 @@ _FIELD_OPTIONS: dict[str, list[dict[str, str]]] = {
     "SITE_MODE": [
         {"value": "full", "label": "Полный сайт"},
         {"value": "cabinet_only", "label": "Только кабинет"},
+        {"value": "webapp_only", "label": "Только веб-апп"},
     ],
     "DAILY_BONUS_MODE": BONUS_MODE_OPTIONS,
 }

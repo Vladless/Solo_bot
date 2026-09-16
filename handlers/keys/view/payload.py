@@ -12,19 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import get_key_details, get_keys, get_vless_enabled_batch
 from database.models import Key
+from handlers.keys.utils import build_key_callback, build_key_ref, key_owned_by_user, resolve_key
 from handlers.keys.view.screens import (
     _format_device_block,
     build_key_view_text,
     build_single_subscription_text,
 )
-from handlers.keys.utils import build_key_callback, build_key_ref, key_owned_by_user, resolve_key
 from handlers.menu_layout import KEY_MENU, arrange_menu, split_hook_buttons
 from handlers.utils import (
     edit_or_send_message,
     fill_text,
-    format_days,
-    format_hours,
-    format_minutes,
     get_russian_month,
     is_full_remnawave_cluster,
     render_screen,
@@ -40,6 +37,7 @@ from panels.remnawave_runtime import (
     get_remnawave_profile,
     with_remnawave_api,
 )
+from services.formatting import format_days, format_hours, format_minutes
 from services.tariffs.tariff_display import GB, get_key_tariff_addons_state, get_key_tariff_display
 from settings.buttons import (
     ADDONS_BUTTON_DEVICES,
@@ -229,7 +227,6 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
     is_full_task = asyncio.create_task(is_full_remnawave_cluster(server_name, session))
 
     tariff_name = ""
-    subgroup_title = ""
     traffic_limit_gb = 0
     device_limit = 0
     vless_enabled = False
@@ -259,7 +256,9 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
     remna_used_gb = None
     if is_full_remnawave and client_id:
         profile = await get_remnawave_profile(
-            session, str(server_name), client_id,
+            session,
+            str(server_name),
+            client_id,
             username=str(record.get("email") or "") or None,
         )
         if profile:
@@ -371,9 +370,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
         "qr": InlineKeyboardButton(text=QR, callback_data=build_key_callback("show_qr", client_id, key_name))
         if qrcode_enabled
         else None,
-        "delete": InlineKeyboardButton(
-            text=DELETE, callback_data=build_key_callback("delete_key", client_id, key_name)
-        )
+        "delete": InlineKeyboardButton(text=DELETE, callback_data=build_key_callback("delete_key", client_id, key_name))
         if delete_key_enabled
         else None,
         "location": InlineKeyboardButton(
@@ -416,7 +413,6 @@ async def _build_single_subscription_text(
     balance_text: str,
 ) -> str:
     tariff_name = ""
-    subgroup_title = ""
     traffic_limit = 0
     device_limit = 0
     base_device_limit = 0
@@ -456,9 +452,7 @@ async def _build_single_subscription_text(
     if getattr(key, "client_id", None):
         try:
             if await is_full_remnawave_cluster(key.server_id, session):
-                profile = await get_remnawave_profile(
-                    session, str(key.server_id), key.client_id, username=key.email
-                )
+                profile = await get_remnawave_profile(session, str(key.server_id), key.client_id, username=key.email)
                 if isinstance(profile, dict):
                     hwid_count = int(profile.get("hwid_count") or 0)
                     used_traffic_gb = profile.get("used_gb")

@@ -1,16 +1,16 @@
-from aiogram import Router, types
+from aiogram import Router
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_temporary_data
 from database.models import User
-from settings.buttons import MAIN_MENU, PAY_2
-from settings.texts import PLATEGA_PAYMENT_MESSAGE
 from handlers.payments.keyboards import balance_fallback_kb
 from handlers.utils import edit_or_send_message
 from logger import logger
 from services.payments.currency_rates import format_for_user
+from settings.buttons import MAIN_MENU, PAY_2
+from settings.texts import PLATEGA_PAYMENT_MESSAGE
 
 from ..constants import ALLOWED_TEMP_PAYMENT_STATES
 from .service import (

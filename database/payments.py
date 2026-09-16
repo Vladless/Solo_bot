@@ -245,62 +245,6 @@ async def get_balance_activity(
     return (await session.execute(stmt)).all()
 
 
-async def get_last_payments(
-    session: AsyncSession,
-    legacy_user_ref: int,
-    limit: int = 3,
-    statuses: list[str] | None = None,
-):
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
-        return []
-    query = select(Payment).where(Payment.user_id == u.id)
-
-    if statuses:
-        query = query.where(Payment.status.in_(statuses))
-
-    query = query.order_by(Payment.created_at.desc()).limit(limit)
-
-    result = await session.execute(query)
-    payments = result.scalars().all()
-    return [
-        {
-            "id": p.id,
-            "tg_id": p.user_id,
-            "user_id": p.user_id,
-            "amount": p.amount,
-            "currency": p.currency,
-            "status": p.status,
-            "payment_system": p.payment_system,
-            "payment_id": p.payment_id,
-            "created_at": p.created_at,
-            "metadata": p.metadata_,
-            "original_amount": p.original_amount,
-        }
-        for p in payments
-    ]
-
-
-async def get_payment_by_id(session: AsyncSession, internal_id: int) -> dict | None:
-    result = await session.execute(select(Payment).where(Payment.id == internal_id).limit(1))
-    payment = result.scalar_one_or_none()
-    if not payment:
-        return None
-    return {
-        "id": payment.id,
-        "tg_id": payment.user_id,
-        "user_id": payment.user_id,
-        "amount": payment.amount,
-        "currency": payment.currency,
-        "status": payment.status,
-        "payment_system": payment.payment_system,
-        "payment_id": payment.payment_id,
-        "created_at": payment.created_at,
-        "metadata": payment.metadata_,
-        "original_amount": payment.original_amount,
-    }
-
-
 async def update_payment_status(
     session: AsyncSession,
     internal_id: int,
@@ -431,38 +375,3 @@ async def cancel_expired_pending_payments(session: AsyncSession) -> int:
     res = await session.execute(stmt)
     affected = res.rowcount or 0
     return affected
-
-
-async def get_all_payments(
-    session: AsyncSession,
-    legacy_user_ref: int,
-    statuses: list[str] | None = None,
-) -> list[dict]:
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
-        return []
-    query = select(Payment).where(Payment.user_id == u.id)
-
-    if statuses:
-        query = query.where(Payment.status.in_(statuses))
-
-    query = query.order_by(Payment.created_at.desc())
-
-    result = await session.execute(query)
-    payments = result.scalars().all()
-    return [
-        {
-            "id": p.id,
-            "tg_id": p.user_id,
-            "user_id": p.user_id,
-            "amount": p.amount,
-            "currency": p.currency,
-            "status": p.status,
-            "payment_system": p.payment_system,
-            "payment_id": p.payment_id,
-            "created_at": p.created_at,
-            "metadata": p.metadata_,
-            "original_amount": p.original_amount,
-        }
-        for p in payments
-    ]

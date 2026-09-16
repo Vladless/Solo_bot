@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum, auto
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from sqlalchemy import update
 
 from database import (
     add_notification,
     check_notification_time,
+    delete_notification,
     get_balance,
     update_balance,
     update_key_expiry,
@@ -30,6 +31,7 @@ class RenewalStatus(Enum):
     NO_BALANCE = auto()
     NO_TARIFF = auto()
     COOLDOWN = auto()
+    PANEL_FAILED = auto()
 
 
 class RenewalResult(NamedTuple):
@@ -122,20 +124,12 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
 
     key_subgroup = current_tariff.get("subgroup_title")
 
-    await release_session_early(ctx.session)
-    await renew_key_in_cluster(
-        cluster_id=server_id,
-        email=email,
-        client_id=client_id,
-        new_expiry_time=new_expiry_time,
-        total_gb=traffic_limit_gb,
-        hwid_device_limit=device_limit_effective,
-        session=ctx.session,
-        target_subgroup=key_subgroup,
-        old_subgroup=key_subgroup,
-        plan=current_tariff["id"],
-    )
+    debited = await update_balance(ctx.session, tg_id, -renewal_cost)
+    if debited is None:
+        return RenewalResult(RenewalStatus.NO_BALANCE)
 
+    await update_key_expiry(ctx.session, client_id, new_expiry_time, record_event=False)
+    await update_key_tariff(ctx.session, client_id, current_tariff["id"])
     await ctx.session.execute(
         update(Key)
         .where(Key.client_id == client_id)
@@ -145,19 +139,62 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
             selected_price_rub=renewal_cost,
         )
     )
+    await add_notification(ctx.session, tg_id, renew_notification_id)
+    await release_session_early(ctx.session)
 
-    if ctx.bulk_updates is not None:
-        bc = ctx.bulk_updates["balance_changes"]
-        bc[tg_id] = bc.get(tg_id, 0) - renewal_cost
-        ctx.bulk_updates["key_expiry_updates"].append((client_id, new_expiry_time))
-        ctx.bulk_updates["key_tariff_updates"].append((client_id, current_tariff["id"]))
-        ctx.bulk_updates["notifications_to_add"].append((tg_id, renew_notification_id))
-    else:
-        debited = await update_balance(ctx.session, tg_id, -renewal_cost)
-        if debited is None:
-            return RenewalResult(RenewalStatus.NO_BALANCE)
-        await update_key_expiry(ctx.session, client_id, new_expiry_time, price_rub=float(renewal_cost))
-        await update_key_tariff(ctx.session, client_id, current_tariff["id"])
-        await add_notification(ctx.session, tg_id, renew_notification_id)
+    try:
+        renewed = await renew_key_in_cluster(
+            cluster_id=server_id,
+            email=email,
+            client_id=client_id,
+            new_expiry_time=new_expiry_time,
+            total_gb=traffic_limit_gb,
+            hwid_device_limit=device_limit_effective,
+            session=ctx.session,
+            target_subgroup=key_subgroup,
+            old_subgroup=key_subgroup,
+            plan=current_tariff["id"],
+        )
+    except Exception as error:
+        logger.error(f"[RENEW] Панель не продлила {email}: {error}")
+        renewed = False
+
+    if not renewed:
+        await _revert_renewal(
+            ctx,
+            tg_id=tg_id,
+            client_id=client_id,
+            renewal_cost=renewal_cost,
+            old_expiry=current_expiry,
+            old_tariff_id=tariff_id,
+            notification_id=renew_notification_id,
+            email=email,
+        )
+        return RenewalResult(RenewalStatus.PANEL_FAILED)
+
+    await update_key_expiry(ctx.session, client_id, new_expiry_time, price_rub=float(renewal_cost))
 
     return RenewalResult(RenewalStatus.SUCCESS, current_tariff, new_expiry_time)
+
+
+async def _revert_renewal(
+    ctx: NotificationContext,
+    *,
+    tg_id: int,
+    client_id: str,
+    renewal_cost: float,
+    old_expiry: int,
+    old_tariff_id: int | None,
+    notification_id: str,
+    email: str,
+) -> None:
+    """Возвращает деньги и прежний срок, если панель продление не подтвердила."""
+    try:
+        await update_balance(ctx.session, tg_id, renewal_cost)
+        await update_key_expiry(ctx.session, client_id, old_expiry, record_event=False)
+        if old_tariff_id is not None:
+            await update_key_tariff(ctx.session, client_id, old_tariff_id)
+        await delete_notification(ctx.session, tg_id, notification_id)
+        logger.warning(f"[RENEW] {email}: продление отменено, {renewal_cost} возвращены на баланс")
+    except Exception as error:
+        logger.error(f"[RENEW] {email}: не удалось откатить продление ({renewal_cost}): {error}")

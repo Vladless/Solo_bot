@@ -4,14 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.depends import get_request_actor, get_session, verify_identity_admin, verify_identity_token
+from api.depends import get_session, verify_identity_admin, verify_identity_token
+from api.shared.billing_actor import resolve_billing_actor
 from api.v2.base_crud import generate_crud_router
 from api.v2.schemas import CouponBase, CouponResponse, CouponUpdate
 from api.v2.schemas.web_public import CouponApplyRequest, CouponApplyResponse
-from database import identities as idb
 from database.models import Coupon, CouponUsage
 from services.coupons import apply_fixed_coupon
-from services.errors import LimitExceededError, NotFoundError, ServiceError, ValidationError
+from services.errors import ServiceError
 
 
 admin_list_router = APIRouter()
@@ -80,15 +80,6 @@ router = generate_crud_router(
 )
 
 
-async def _resolve_coupon_user_id(session: AsyncSession, request: Request, identity) -> tuple[int, int | None]:
-    actor = get_request_actor(request)
-    billing_user_id = actor.billing_user_id if actor and actor.billing_user_id is not None else None
-    if billing_user_id is None:
-        billing_user_id = await idb.ensure_billing_user_for_identity(session, identity)
-    tg_id = actor.telegram_chat_id if actor else None
-    return int(billing_user_id), tg_id
-
-
 def _service_error_to_http(e: ServiceError) -> HTTPException:
     status_map = {
         "not_found": 404,
@@ -109,7 +100,7 @@ async def apply_coupon(
     from api.ratelimit import enforce_rate_limit
 
     await enforce_rate_limit(request, session, bucket="coupon_apply", max_per_window=10, window_sec=60)
-    user_id, tg_id = await _resolve_coupon_user_id(session, request, identity)
+    user_id, tg_id = await resolve_billing_actor(request, identity, session)
     try:
         result = await apply_fixed_coupon(
             session=session,

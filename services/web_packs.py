@@ -111,8 +111,26 @@ def load_pack_seed(pack_id: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def has_pack_seed(pack_id: str) -> bool:
-    return load_pack_seed(pack_id) is not None
+def installed_pack_block_types() -> dict[str, dict]:
+    """Блоки установленных наборов по их манифестам: по ним видно, что дизайн держится на поставляемом наборе."""
+    out: dict[str, dict] = {}
+    for pack_path in sorted(packs_dir().iterdir()):
+        if not pack_path.is_dir():
+            continue
+        manifest = read_manifest(pack_path / MANIFEST_NAME)
+        if manifest is None:
+            continue
+        elements = manifest.get("elements")
+        types = [
+            str(item.get("type") or "").strip()
+            for item in (elements if isinstance(elements, list) else [])
+            if isinstance(item, dict) and str(item.get("type") or "").strip()
+        ]
+        if not types:
+            continue
+        pack_id = str(manifest["id"]).strip()
+        out[pack_id] = {"name": str(manifest.get("name") or pack_id), "types": types}
+    return out
 
 
 def install_pack_from_zip(archive: Path) -> PackInstallResult:

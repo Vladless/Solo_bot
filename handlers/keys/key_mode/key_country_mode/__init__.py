@@ -14,4 +14,5 @@ __all__ = [
     "handle_country_selection",
     "finalize_key_creation",
     "check_server_availability",
+    "_legacy_check_server_availability",
 ]

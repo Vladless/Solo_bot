@@ -15,7 +15,6 @@ from aiogram.types import (
     Message,
     WebAppInfo,
 )
-from aiogram.utils.formatting import BlockQuote, Bold, Code, Text
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -302,13 +301,13 @@ async def handle_user_data_input(message: Message, state: FSMContext, session: A
         results = await smart_user_search(session, raw)
     else:
         await message.answer(
-            text=menu_text("Клиент", "Пришлите текст или перешлите сообщение клиента.", markup=kb),
+            text=menu_text("Клиент", "Пришлите текст или перешлите сообщение клиента."),
             reply_markup=kb,
         )
         return
 
     if not results:
-        await message.answer(text=menu_text("Клиент", "Ничего не найдено.", markup=kb), reply_markup=kb)
+        await message.answer(text=menu_text("Клиент", "Ничего не найдено."), reply_markup=kb)
         return
 
     if len(results) == 1:
@@ -357,7 +356,6 @@ async def handle_send_message(
                 "Пришлите то, что нужно отправить.",
                 section("📨 Подойдёт", "текст", "картинка", "текст с картинкой"),
                 quote("Форматирование штатное телеграмное: жирный, курсив и прочее."),
-                markup=build_editor_kb(user_id),
             )
         ),
         reply_markup=build_editor_kb(user_id),
@@ -381,7 +379,6 @@ async def handle_message_text_input(message: Message, state: FSMContext):
                 "Сообщение клиенту",
                 "⚠️ Сообщение слишком длинное.",
                 section("📏 Длина", f"Максимум: {max_len}", f"Сейчас: {len(text_message)}"),
-                markup=build_editor_kb(user_id),
             ),
             reply_markup=build_editor_kb(user_id),
         )
@@ -449,7 +446,7 @@ async def handle_send_user_message(callback_query: CallbackQuery, state: FSMCont
         title = lines[0][:120]
         body = lines[1].strip()[:300] if len(lines) > 1 else ""
         async with async_session_maker() as notify_session:
-            await notify_web(notify_session, tg_id=user_id, type="message", title=title, message=body)
+            await notify_web(notify_session, user_ref=user_id, type="message", title=title, message=body)
             await notify_session.commit()
         delivered.append("кабинет")
     except Exception as e:
@@ -460,13 +457,12 @@ async def handle_send_user_message(callback_query: CallbackQuery, state: FSMCont
         body = section("📬 Доставлено", *delivered)
         if failures:
             body = card(body, section("⚠️ Не дошло", *failures))
-        screen = menu_text("Клиент", "✅ Сообщение отправлено.", body, markup=build_editor_kb(user_id))
+        screen = menu_text("Клиент", "✅ Сообщение отправлено.", body)
     else:
         screen = menu_text(
             "Клиент",
             "❌ Сообщение никуда не доставлено.",
             section("⚠️ Причины", *failures) if failures else quote("У клиента нет ни Telegram, ни кабинета."),
-            markup=build_editor_kb(user_id),
         )
 
     await callback_query.message.edit_text(text=screen, reply_markup=build_editor_kb(user_id))
@@ -482,7 +478,7 @@ async def handle_cancel_user_message(callback_query: CallbackQuery, state: FSMCo
     data = await state.get_data()
     user_id = data.get("user_id")
     await callback_query.message.edit_text(
-        text=menu_text("Клиент", "Отправка отменена.", markup=build_editor_kb(user_id)),
+        text=menu_text("Клиент", "Отправка отменена."),
         reply_markup=build_editor_kb(user_id),
     )
     await state.clear()
@@ -501,7 +497,7 @@ async def handle_trial_restore(
 
     await update_trial(session, user_id, 0)
     await callback_query.message.edit_text(
-        text=menu_text("Клиент", "✅ Триал восстановлен.", markup=build_editor_kb(user_id)),
+        text=menu_text("Клиент", "✅ Триал восстановлен."),
         reply_markup=build_editor_kb(user_id),
     )
 
@@ -524,7 +520,6 @@ async def confirm_restore_trials(callback_query: types.CallbackQuery):
                 "Клиент",
                 "⚠️ Вернуть клиентам пробный период?",
                 quote("Только тем, у кого нет подписок — ни активных, ни истёкших."),
-                markup=builder.as_markup(),
             )
         ),
         reply_markup=builder.as_markup(),
@@ -550,11 +545,7 @@ async def restore_trials(callback_query: types.CallbackQuery, session: AsyncSess
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text=menu_text(
-            "Клиент",
-            f"✅ Пробный период вернули {result.rowcount} клиентам без подписок.",
-            markup=builder.as_markup(),
-        ),
+        text=menu_text("Клиент", f"✅ Пробный период вернули {result.rowcount} клиентам без подписок."),
         reply_markup=builder.as_markup(),
     )
 
@@ -601,7 +592,7 @@ async def process_user_search(
     u = await session.scalar(select(User).where(User.id == resolved_id)) if resolved_id is not None else None
     if u is None:
         await message.answer(
-            text=menu_text("Клиент", "❌ Клиент с таким ID не найден.", markup=build_admin_back_kb()),
+            text=menu_text("Клиент", "❌ Клиент с таким ID не найден."),
             reply_markup=build_admin_back_kb(),
         )
         return
@@ -617,7 +608,7 @@ async def process_user_search(
 
     if not user_data:
         await message.answer(
-            text=menu_text("Клиент", "❌ Клиент с таким ID не найден.", markup=build_admin_back_kb()),
+            text=menu_text("Клиент", "❌ Клиент с таким ID не найден."),
             reply_markup=build_admin_back_kb(),
         )
         return
@@ -730,10 +721,7 @@ async def process_user_search(
     )
 
     screen = menu_text(
-        "Клиент",
-        f"@{username}" if username else f"<code>{real_tg_id if real_tg_id is not None else uid}</code>",
-        text,
-        markup=kb,
+        "Клиент", f"@{username}" if username else f"<code>{real_tg_id if real_tg_id is not None else uid}</code>", text
     )
 
     if edit:
@@ -895,12 +883,7 @@ async def handle_user_sub_history(
 
     if not history:
         await callback.message.edit_text(
-            menu_text(
-                "История подписок",
-                "Все подписки клиента, от свежих к старым.",
-                quote("Подписок пока не было"),
-                markup=back_kb,
-            ),
+            menu_text("История подписок", "Все подписки клиента, от свежих к старым.", quote("Подписок пока не было")),
             reply_markup=back_kb,
         )
         return
@@ -962,9 +945,7 @@ async def handle_user_sub_history(
         blocks.append(quote(f"Показаны последние {len(shown)} из {len(history)}"))
 
     try:
-        await callback.message.edit_text(
-            menu_text("История подписок", card(*blocks), markup=back_kb), reply_markup=back_kb
-        )
+        await callback.message.edit_text(menu_text("История подписок", card(*blocks)), reply_markup=back_kb)
     except TelegramBadRequest:
         pass
 

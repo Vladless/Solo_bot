@@ -198,7 +198,7 @@ async def open_category(callback: CallbackQuery, callback_data: EmailFieldCallba
         await callback.answer()
         return
     await callback.message.edit_text(
-        text=menu_text("Письма", _category_text(cat_id), markup=build_category_kb(cat_id).as_markup()),
+        text=menu_text("Письма", _category_text(cat_id)),
         reply_markup=build_category_kb(cat_id).as_markup(),
     )
     await callback.answer()
@@ -252,7 +252,7 @@ async def save_field(message: Message, state: FSMContext) -> None:
     cat_id = CATEGORY_BY_FIELD.get(key)
     if cat_id:
         await message.answer(
-            text=menu_text("Письма", _category_text(cat_id), markup=build_category_kb(cat_id).as_markup()),
+            text=menu_text("Письма", _category_text(cat_id)),
             reply_markup=build_category_kb(cat_id).as_markup(),
         )
     else:

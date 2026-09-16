@@ -4,7 +4,6 @@ import re
 from base64 import b64encode
 from datetime import datetime
 from io import BytesIO, StringIO
-from urllib.parse import urlsplit
 
 import qrcode
 
@@ -14,6 +13,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_request_actor, get_session, verify_identity_admin, verify_identity_token
+from api.shared.http import resolve_public_base_url
+from api.shared.partners import default_partner_percent, parse_percent, row_dt_iso
 from api.v2.schemas.web_public import (
     PartnerApplyRequest,
     PartnerApplyResponse,
@@ -32,13 +33,8 @@ from api.v2.schemas.web_public import (
     PartnerTopResponse,
 )
 from database import identities as idb
+from database.access.resolution import ensure_legacy_tg_ref, public_tg_id
 from utils.referral_codes import decode_partner_code, encode_partner_code
-
-
-try:
-    from modules.partner_program.settings import PARTNER_BONUS_PERCENTAGES
-except Exception:
-    PARTNER_BONUS_PERCENTAGES = {1: 0.0}
 
 
 _PARTNERS_SCHEMA_READY = False
@@ -122,49 +118,6 @@ async def partner_stats(
     }
 
 
-def _parse_percent(value: float) -> float | None:
-    try:
-        val = float(value)
-    except (TypeError, ValueError):
-        return None
-    if 0.0 <= val <= 1.0:
-        val *= 100.0
-    if 0.0 <= val <= 100.0:
-        return val
-    return None
-
-
-def _default_partner_percent() -> float:
-    try:
-        return float(PARTNER_BONUS_PERCENTAGES.get(1, 0.0)) * 100.0
-    except Exception:
-        return 0.0
-
-
-def _row_dt_iso(value) -> str | None:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return None
-
-
-def _resolve_public_base_url(request: Request) -> str:
-    origin = str(request.headers.get("origin") or "").strip()
-    if origin.startswith(("http://", "https://")):
-        return origin.rstrip("/")
-    referer = str(request.headers.get("referer") or request.headers.get("referrer") or "").strip()
-    if referer.startswith(("http://", "https://")):
-        parsed = urlsplit(referer)
-        if parsed.scheme and parsed.netloc:
-            return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-    forwarded_host = str(request.headers.get("x-forwarded-host") or "").strip()
-    host = forwarded_host or str(request.headers.get("host") or "").strip()
-    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
-    scheme = forwarded_proto if forwarded_proto in {"http", "https"} else request.url.scheme
-    if host:
-        return f"{scheme}://{host}".rstrip("/")
-    return str(request.base_url).rstrip("/")
-
-
 async def _ensure_partner_code(session: AsyncSession, user_id: int, raw_code: str | None) -> str:
     code = str(raw_code or "").strip()
     if code and not code.isdigit() and not code.startswith("r1_"):
@@ -188,20 +141,14 @@ async def _resolve_partner_user(session: AsyncSession, request: Request, identit
         billing_user_id = await idb.ensure_billing_user_for_identity(session, identity)
     row = (
         await session.execute(
-            text("SELECT id, tg_id FROM users WHERE id = :user_id LIMIT 1"),
+            text("SELECT id FROM users WHERE id = :user_id LIMIT 1"),
             {"user_id": int(billing_user_id)},
         )
     ).first()
     if row is None:
         raise HTTPException(status_code=400, detail="Партнерский профиль недоступен")
-    if row[1] is None:
-        synthetic = -int(row[0])
-        await session.execute(
-            text("UPDATE users SET tg_id = :tg_id WHERE id = :user_id"),
-            {"tg_id": synthetic, "user_id": int(row[0])},
-        )
-        return int(row[0]), synthetic
-    return int(row[0]), int(row[1])
+    # Партнёрские таблицы модуля ключуются tg_id — берём совместимый ref одной канонической точкой.
+    return int(row[0]), await ensure_legacy_tg_ref(session, int(row[0]))
 
 
 async def _resolve_referrer_by_partner_code(session: AsyncSession, partner_code: str) -> tuple[int, int] | None:
@@ -302,7 +249,7 @@ async def partner_apply(
 
         await notify_web(
             session,
-            tg_id=int(referrer_tg_id),
+            user_ref=int(referrer_tg_id),
             type="partner_joined",
             title="К вам присоединился партнёр",
             message="Новый пользователь перешёл по вашей партнёрской ссылке.",
@@ -370,7 +317,7 @@ async def partner_qr(
         )
     ).first()
     partner_code = await _ensure_partner_code(session, int(user_id), code_row[0] if code_row else None)
-    base_url = _resolve_public_base_url(request)
+    base_url = resolve_public_base_url(request)
     partner_link = f"{base_url}/partner/{partner_code}"
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(partner_link)
@@ -577,7 +524,7 @@ async def partner_payouts_me(
             id=int(row[0]),
             amount_rub=float(row[1] or 0.0),
             status=str(row[2] or ""),
-            created_at=_row_dt_iso(row[3]),
+            created_at=row_dt_iso(row[3]),
             method=row[4] or None,
             destination=row[5] or None,
         )
@@ -786,14 +733,15 @@ async def get_all_partners(
     partners = result.fetchall()
     count_result = await session.execute(count_sql)
     total = count_result.scalar() or 0
-    default_percent = _default_partner_percent()
+    default_percent = default_partner_percent()
     partners_list = []
     for partner in partners:
         percent_value = partner[2]
         percent_custom = bool(partner[3])
         percent = float(percent_value) if (percent_custom and percent_value is not None) else float(default_percent)
         partners_list.append({
-            "tg_id": int(partner[0]),
+            "tg_id": public_tg_id(partner[0]),
+            "user_ref": int(partner[0]),
             "balance": float(partner[1] or 0),
             "percent": percent,
             "code": partner[4] or None,
@@ -859,7 +807,7 @@ async def get_partner_data(
     meta_row = meta_res.fetchone()
     invited_res = await session.execute(invited_sql, {"tg_id": tg_id})
     invited_rows = invited_res.fetchall()
-    default_percent = _default_partner_percent()
+    default_percent = default_partner_percent()
     percent = default_percent
     if meta_row:
         percent_value, percent_custom = meta_row[1], bool(meta_row[2])
@@ -975,7 +923,7 @@ async def update_partner_percent(
     session: AsyncSession = Depends(get_session),
 ):
     """Обновляет персональный процент партнёра."""
-    normalized = _parse_percent(percent)
+    normalized = parse_percent(percent)
     if normalized is None:
         return ORJSONResponse(
             content={"success": False, "message": "Неверный процент. Допустимо 0-100 или 0.0-1.0"}, status_code=400
@@ -1114,7 +1062,7 @@ async def get_partner_payouts_pending(
             "tg_id": int(row[1]),
             "amount": float(row[2] or 0.0),
             "status": row[3] or "pending",
-            "created_at": _row_dt_iso(row[4]),
+            "created_at": row_dt_iso(row[4]),
             "method": row[5] or None,
             "destination": row[6] or None,
         }
@@ -1157,7 +1105,7 @@ async def get_partner_payouts_history(
             "tg_id": int(row[1]),
             "amount": float(row[2] or 0.0),
             "status": row[3] or "—",
-            "created_at": _row_dt_iso(row[4]),
+            "created_at": row_dt_iso(row[4]),
             "method": row[5] or None,
             "destination": row[6] or None,
         }

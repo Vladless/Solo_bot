@@ -55,14 +55,6 @@ async def upsert_push_subscription(
     return result.scalar_one()
 
 
-async def get_push_subscriptions_by_user(
-    session: AsyncSession,
-    user_id: int,
-) -> list[WebPushSubscription]:
-    result = await session.execute(select(WebPushSubscription).where(WebPushSubscription.user_id == user_id))
-    return list(result.scalars().all())
-
-
 async def get_push_subscriptions_by_identity(
     session: AsyncSession,
     identity_id: str,
@@ -205,15 +197,6 @@ async def delete_all_for_identity(
     return result.rowcount or 0
 
 
-async def resolve_identity_id_by_tg_id(
-    session: AsyncSession,
-    tg_id: int,
-) -> str | None:
-    """Resolve identity_id from user's tg_id."""
-    result = await session.execute(select(User.identity_id).where(User.tg_id == tg_id))
-    return result.scalar_one_or_none()
-
-
 async def create_notification(
     session: AsyncSession,
     *,
@@ -272,20 +255,20 @@ def _push_url(data: dict | None) -> str:
 async def notify_web(
     session: AsyncSession,
     *,
-    tg_id: int,
+    user_ref: int,
     type: str = "system",
     title: str | None = None,
     message: str | None = None,
     data: dict | None = None,
     template_vars: dict | None = None,
 ) -> WebNotification | None:
-    """Создаёт web-уведомление по legacy-ref (tg_id или User.id).
+    """Создаёт web-уведомление адресату: users.id (или legacy tg_id у старых вызовов).
 
     title/message — если None, берутся из WEB_CONFIG шаблонов по type.
     template_vars — подстановки в шаблон ({email}, {amount}, {name}, {duration}).
     """
     try:
-        user = await resolve_user_optional(session, tg_id)
+        user = await resolve_user_optional(session, user_ref)
         if user is None or user.identity_id is None:
             return None
         identity_id = user.identity_id

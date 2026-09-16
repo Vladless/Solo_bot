@@ -530,7 +530,7 @@ class BroadcastService:
                         if tg_id and tg_id not in self.blocked_users:
                             await notify_web(
                                 session,
-                                tg_id=tg_id,
+                                user_ref=tg_id,
                                 type="broadcast",
                                 title=title,
                                 message=body,
@@ -543,7 +543,7 @@ class BroadcastService:
                     if tg_id and tg_id not in self.blocked_users:
                         await notify_web(
                             session,
-                            tg_id=tg_id,
+                            user_ref=tg_id,
                             type="broadcast",
                             title=title,
                             message=body,

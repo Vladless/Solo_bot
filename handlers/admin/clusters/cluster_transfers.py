@@ -51,11 +51,7 @@ async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContex
         await session.rollback()
         logger.error(f"Ошибка при переносе ключей на сервер {new_server_name}: {e}")
         await callback_query.message.edit_text(
-            text=menu_text(
-                "Перенос ключей",
-                f"❌ Не удалось перенести подписки: {e}",
-                markup=build_admin_back_kb("clusters"),
-            ),
+            text=menu_text("Перенос ключей", f"❌ Не удалось перенести подписки: {e}"),
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:
@@ -90,7 +86,6 @@ async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMConte
                     f"✅ Подписки переехали в кластер <b>{new_cluster_name}</b>.",
                     quote(f"Сервер <b>{old_server_name}</b> и кластер <b>{old_cluster_name}</b> удалены."),
                     quote("⚠️ Не забудьте синхронизировать."),
-                    markup=build_admin_back_kb("clusters"),
                 )
             ),
             reply_markup=build_admin_back_kb("clusters"),
@@ -99,11 +94,7 @@ async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMConte
         await session.rollback()
         logger.error(f"Ошибка при переносе ключей в кластер {new_cluster_name}: {e}")
         await callback_query.message.edit_text(
-            text=menu_text(
-                "Перенос ключей",
-                f"❌ Не удалось перенести подписки: {e}",
-                markup=build_admin_back_kb("clusters"),
-            ),
+            text=menu_text("Перенос ключей", f"❌ Не удалось перенести подписки: {e}"),
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:

@@ -8,12 +8,12 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.bootstrap import MODES_CONFIG
+from core.executor import spawn
 from database import async_session_maker
 from database.identities import get_or_create_identity_for_tg
 from handlers.support_bot.media import collect_attachment
 from services import tickets as svc
 from settings.texts import TRIAGE_ITEMS
-from core.executor import spawn
 
 
 router = Router()
@@ -80,14 +80,6 @@ async def _latest_closed_ticket(session, identity_id: str):
         if t.status == svc.CLOSED:
             return t
     return None
-
-
-def _menu_kb(has_tickets: bool) -> InlineKeyboardBuilder:
-    kb = InlineKeyboardBuilder()
-    kb.row(InlineKeyboardButton(text="✉️ Новое обращение", callback_data="sc:new"))
-    if has_tickets:
-        kb.row(InlineKeyboardButton(text="📋 Мои обращения", callback_data="sc:list"))
-    return kb
 
 
 def _cat_kb(has_tickets: bool = False) -> InlineKeyboardBuilder:

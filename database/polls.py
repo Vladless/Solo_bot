@@ -95,10 +95,6 @@ async def list_polls(session: AsyncSession, *, limit: int = 10, offset: int = 0)
     return list(result.scalars().all())
 
 
-async def count_polls(session: AsyncSession) -> int:
-    return int(await session.scalar(select(func.count()).select_from(Poll)) or 0)
-
-
 async def delete_poll(session: AsyncSession, poll_id: str) -> None:
     await session.execute(delete(Poll).where(Poll.id == poll_id))
 

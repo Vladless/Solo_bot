@@ -1,9 +1,8 @@
 import asyncio
 import time
 
-from contextlib import asynccontextmanager
-
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession

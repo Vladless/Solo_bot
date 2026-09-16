@@ -1,14 +1,14 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from sqlalchemy import Text, cast, func, or_, select
+from sqlalchemy import Text, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_admin
 from api.v2.base_crud import generate_crud_router
 from api.v2.schemas import UserBase, UserResponse, UserUpdate
 from database import async_session_maker, delete_user_data, get_servers
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import public_tg_id, resolve_user_optional
 from database.models import Gift, Key, ManualBan, Payment, Referral, Tariff, User
 from logger import logger
 from services.operations import delete_key_from_cluster
@@ -20,7 +20,7 @@ router = APIRouter()
 def _user_brief(u: User) -> dict:
     return {
         "id": int(u.id),
-        "tg_id": int(u.tg_id) if u.tg_id is not None else None,
+        "tg_id": public_tg_id(u.tg_id),
         "username": u.username,
         "first_name": u.first_name,
         "last_name": u.last_name,
@@ -32,13 +32,13 @@ def _user_brief(u: User) -> dict:
 
 @router.get("/search")
 async def search_users(
-    q: str = Query("", description="tg_id, username, email, имя"),
+    q: str = Query("", description="users.id, tg_id, username, email, имя"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Поиск клиентов по tg_id, username, имени или email ключа."""
+    """Поиск клиентов по users.id, tg_id, username, имени или email ключа."""
     term = q.strip()
     stmt = select(User)
     if term:
@@ -59,14 +59,14 @@ async def search_users(
     return {"total": int(total), "items": [_user_brief(u) for u in rows]}
 
 
-@router.post("/{tg_id}/ban")
+@router.post("/{user_ref}/ban")
 async def ban_user(
-    tg_id: int = Path(...),
+    user_ref: int = Path(..., description="users.id клиента (или legacy tg_id)"),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Ставит ручной бан пользователю (блокирует доступ к боту)."""
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, user_ref)
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     existing = (await session.execute(select(ManualBan).where(ManualBan.user_id == u.id))).scalar_one_or_none()
@@ -75,28 +75,28 @@ async def ban_user(
     return {"banned": True}
 
 
-@router.post("/{tg_id}/unban")
+@router.post("/{user_ref}/unban")
 async def unban_user(
-    tg_id: int = Path(...),
+    user_ref: int = Path(..., description="users.id клиента (или legacy tg_id)"),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Снимает ручной бан пользователя."""
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, user_ref)
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     await session.execute(ManualBan.__table__.delete().where(ManualBan.user_id == u.id))
     return {"banned": False}
 
 
-@router.get("/{tg_id}/card")
+@router.get("/{user_ref}/card")
 async def user_card(
-    tg_id: int = Path(...),
+    user_ref: int = Path(..., description="users.id клиента (или legacy tg_id)"),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Агрегированная карточка клиента: профиль, ключи, платежи, подарки, бан."""
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, user_ref)
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -125,7 +125,10 @@ async def user_card(
     payments = (
         (
             await session.execute(
-                select(Payment).where(Payment.tg_id == u.tg_id).order_by(Payment.created_at.desc()).limit(20)
+                select(Payment)
+                .where(or_(Payment.user_id == u.id, and_(Payment.tg_id.is_not(None), Payment.tg_id == u.tg_id)))
+                .order_by(Payment.created_at.desc())
+                .limit(20)
             )
         )
         .scalars()
@@ -144,16 +147,16 @@ async def user_card(
     ]
 
     gifts_count = (
-        await session.execute(select(func.count()).select_from(Gift).where(Gift.sender_tg_id == u.tg_id))
+        await session.execute(select(func.count()).select_from(Gift).where(Gift.sender_user_id == u.id))
     ).scalar() or 0
 
-    ban = (await session.execute(select(ManualBan).where(ManualBan.tg_id == u.tg_id).limit(1))).scalar_one_or_none()
+    ban = (await session.execute(select(ManualBan).where(ManualBan.user_id == u.id).limit(1))).scalar_one_or_none()
 
     invited_count = (
         await session.execute(select(func.count()).select_from(Referral).where(Referral.referrer_user_id == u.id))
     ).scalar() or 0
     invited_by_row = (
-        await session.execute(select(Referral.referrer_tg_id).where(Referral.referred_user_id == u.id).limit(1))
+        await session.execute(select(Referral.referrer_user_id).where(Referral.referred_user_id == u.id).limit(1))
     ).scalar_one_or_none()
 
     return {
@@ -168,15 +171,15 @@ async def user_card(
     }
 
 
-@router.delete("/{tg_id}", response_model=dict)
+@router.delete("/{user_ref}", response_model=dict)
 async def delete_user(
-    tg_id: int = Path(..., description="Telegram ID пользователя"),
+    user_ref: int = Path(..., description="users.id клиента (или legacy tg_id)"),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Удаляет пользователя и его ключи на серверах."""
     try:
-        u = await resolve_user_optional(session, tg_id)
+        u = await resolve_user_optional(session, user_ref)
         if u is None:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         result = await session.execute(select(Key.email, Key.client_id).where(Key.user_id == u.id))
@@ -198,12 +201,12 @@ async def delete_user(
             ]
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
-            logger.error(f"[DELETE] Ошибка при удалении ключей с серверов для пользователя {tg_id}: {e}")
+            logger.error(f"[DELETE] Ошибка при удалении ключей с серверов для клиента {user_ref}: {e}")
 
-        await delete_user_data(session, tg_id)
-        return {"detail": f"Пользователь {tg_id} и его ключи успешно удалены."}
+        await delete_user_data(session, user_ref)
+        return {"detail": f"Клиент {user_ref} и его ключи успешно удалены."}
     except Exception as e:
-        logger.error(f"[DELETE] Ошибка при удалении пользователя {tg_id}: {e}")
+        logger.error(f"[DELETE] Ошибка при удалении клиента {user_ref}: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при удалении пользователя") from None
 
 

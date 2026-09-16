@@ -8,7 +8,6 @@ __all__ = (
 
 from aiogram import Router
 
-from settings.config import PROVIDERS_ENABLED
 from services.payments.payment_links import (
     PaymentLinkRequest,
     PaymentLinkResult,
@@ -16,6 +15,7 @@ from services.payments.payment_links import (
     register_payment_creator,
 )
 from services.payments.providers import get_providers
+from settings.config import PROVIDERS_ENABLED
 
 from .cryptobot import router as cryptobot_router
 from .fast_payment_flow import router as fast_payment_flow_router

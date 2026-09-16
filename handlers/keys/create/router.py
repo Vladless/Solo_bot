@@ -1,4 +1,3 @@
-
 from typing import Any
 
 import pytz
@@ -21,12 +20,12 @@ from settings.texts import (
     SUBGROUP_TITLE_TEMPLATE,
 )
 
-from .flow import handle_key_creation
 from ..utils import (
     add_tariff_button_generic,
     format_subgroup_description,
     format_tariff_descriptions,
 )
+from .flow import handle_key_creation
 
 
 router = Router()

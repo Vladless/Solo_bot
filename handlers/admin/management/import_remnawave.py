@@ -17,7 +17,7 @@ from filters.permissions import PERM_MANAGEMENT
 from logger import logger
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
-from ..panel.headers import card, menu_text, quote, section
+from ..panel.headers import card, menu_text, section
 from . import router
 from .keyboard import AdminPanelCallback, build_back_to_db_menu
 
@@ -64,12 +64,13 @@ def extract_tg_id_from_user_payload(user: dict) -> int | None:
 @router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"), HasPermission(PERM_MANAGEMENT))
 async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession):
     from panels.remnawave_runtime import remnawave_api
+
     result = await session.execute(select(Server).where(Server.panel_type == "remnawave", Server.enabled.is_(True)))
     servers = result.scalars().all()
 
     if not servers:
         await callback.message.edit_text(
-            menu_text("Импорт с панели", "❌ Нет доступных Remnawave-серверов.", markup=build_back_to_db_menu()),
+            menu_text("Импорт с панели", "❌ Нет доступных Remnawave-серверов."),
             reply_markup=build_back_to_db_menu(),
         )
         return
@@ -77,7 +78,6 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
     server = servers[0]
 
     async with remnawave_api(server.api_url) as api:
-
         users = await api.get_all_users_time(
             username=REMNAWAVE_LOGIN,
             password=REMNAWAVE_PASSWORD,
@@ -85,7 +85,7 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
 
         if not users:
             await callback.message.edit_text(
-                menu_text("Импорт с панели", "📭 На панели нет клиентов.", markup=build_back_to_db_menu()),
+                menu_text("Импорт с панели", "📭 На панели нет клиентов."),
                 reply_markup=build_back_to_db_menu(),
             )
             return
@@ -128,7 +128,6 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
                     ),
                     section("👥 Первые три", *preview),
                 ),
-                markup=build_back_to_db_menu(),
             ),
             reply_markup=build_back_to_db_menu(),
         )

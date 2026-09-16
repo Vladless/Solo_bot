@@ -22,18 +22,18 @@ async def snapshot_all_key_traffic(session: AsyncSession) -> int:
     now_ms = int(time.time() * 1000)
     rows = (
         await session.execute(
-            select(Key.client_id, Key.tg_id).where(
+            select(Key.client_id).where(
                 Key.expiry_time > now_ms,
                 Key.is_frozen.isnot(True),
                 Key.client_id.isnot(None),
             )
         )
     ).all()
-    active = [(str(cid), tg) for (cid, tg) in rows if cid]
+    active = [str(cid) for (cid,) in rows if cid]
     if not active:
         return 0
 
-    needed = {cid for cid, _ in active}
+    needed = set(active)
     try:
         used_map = await asyncio.wait_for(fetch_all_remnawave_traffic(session, needed), timeout=_BULK_TIMEOUT_SEC)
     except (TimeoutError, Exception) as exc:
@@ -44,17 +44,17 @@ async def snapshot_all_key_traffic(session: AsyncSession) -> int:
 
     today = _dt.datetime.utcnow().date()
     count = 0
-    for cid, tg in active:
+    for cid in active:
         used_bytes = used_map.get(cid)
         if used_bytes is None:
             continue
         used_gb = round(int(used_bytes) / _GB, 3)
         stmt = (
             pg_insert(KeyTrafficHistory)
-            .values(client_id=cid, tg_id=tg, used_gb=used_gb, limit_gb=None, snapshot_date=today)
+            .values(client_id=cid, used_gb=used_gb, limit_gb=None, snapshot_date=today)
             .on_conflict_do_update(
                 constraint="uq_key_traffic_history_client_date",
-                set_={"used_gb": used_gb, "tg_id": tg},
+                set_={"used_gb": used_gb},
             )
         )
         await session.execute(stmt)
@@ -111,18 +111,18 @@ async def snapshot_all_key_traffic_hourly(session: AsyncSession) -> int:
     now_ms = int(time.time() * 1000)
     rows = (
         await session.execute(
-            select(Key.client_id, Key.tg_id).where(
+            select(Key.client_id).where(
                 Key.expiry_time > now_ms,
                 Key.is_frozen.isnot(True),
                 Key.client_id.isnot(None),
             )
         )
     ).all()
-    active = [(str(cid), tg) for (cid, tg) in rows if cid]
+    active = [str(cid) for (cid,) in rows if cid]
     if not active:
         return 0
 
-    needed = {cid for cid, _ in active}
+    needed = set(active)
     try:
         used_map = await asyncio.wait_for(fetch_all_remnawave_traffic(session, needed), timeout=_BULK_TIMEOUT_SEC)
     except (TimeoutError, Exception) as exc:
@@ -133,17 +133,17 @@ async def snapshot_all_key_traffic_hourly(session: AsyncSession) -> int:
 
     hour = _dt.datetime.utcnow().replace(minute=0, second=0, microsecond=0)
     count = 0
-    for cid, tg in active:
+    for cid in active:
         used_bytes = used_map.get(cid)
         if used_bytes is None:
             continue
         used_gb = round(int(used_bytes) / _GB, 3)
         stmt = (
             pg_insert(KeyTrafficHourly)
-            .values(client_id=cid, tg_id=tg, used_gb=used_gb, snapshot_hour=hour)
+            .values(client_id=cid, used_gb=used_gb, snapshot_hour=hour)
             .on_conflict_do_update(
                 constraint="uq_key_traffic_hourly_client_hour",
-                set_={"used_gb": used_gb, "tg_id": tg},
+                set_={"used_gb": used_gb},
             )
         )
         await session.execute(stmt)

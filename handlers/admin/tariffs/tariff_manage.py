@@ -55,7 +55,6 @@ async def start_tariff_creation(callback: CallbackQuery, state: FSMContext):
             quote("Скидки для тёплых лидов:\n<code>discounts</code>, <code>discounts_max</code>"),
             quote("Для холодных:\n<code>cold_discounts</code>, <code>cold_discounts_max</code>"),
             quote("Служебные:\n<code>gifts</code> — подарки, <code>trial</code> — пробный период"),
-            markup=build_cancel_kb(),
         ),
         reply_markup=build_cancel_kb(),
     )
@@ -71,7 +70,6 @@ async def process_tariff_group(message: Message, state: FSMContext):
                 "Тарифы",
                 "❌ Код группы должен содержать только латинские буквы, цифры, дефисы и подчёркивания.",
                 quote("Повторите ввод:"),
-                markup=build_cancel_kb(),
             ),
             reply_markup=build_cancel_kb(),
         )
@@ -85,7 +83,6 @@ async def process_tariff_group(message: Message, state: FSMContext):
             "📝 Введите <b>название тарифа</b>",
             quote("Например: <i>30 дней</i> или <i>1 месяц</i>"),
             quote("<i>Его увидит клиент при выборе тарифа.</i>"),
-            markup=build_cancel_kb(),
         ),
         reply_markup=build_cancel_kb(),
     )
@@ -98,7 +95,7 @@ async def process_tariff_name(message: Message, state: FSMContext):
     is_valid, error_msg = validate_tariff_name(name)
     if not is_valid:
         await message.answer(
-            menu_text("Тарифы", f"❌ {error_msg}", quote("Повторите ввод:"), markup=build_cancel_kb()),
+            menu_text("Тарифы", f"❌ {error_msg}", quote("Повторите ввод:")),
             reply_markup=build_cancel_kb(),
         )
         return
@@ -106,9 +103,7 @@ async def process_tariff_name(message: Message, state: FSMContext):
     await state.update_data(name=name)
     await state.set_state(TariffCreateState.duration)
     await message.answer(
-        menu_text(
-            "Тарифы", "📅 Введите <b>длительность тарифа в днях</b> (например: <i>30</i>):", markup=build_cancel_kb()
-        ),
+        menu_text("Тарифы", "📅 Введите <b>длительность тарифа в днях</b> (например: <i>30</i>):"),
         reply_markup=build_cancel_kb(),
     )
 
@@ -130,7 +125,6 @@ async def process_tariff_duration(message: Message, state: FSMContext):
             "Тарифы",
             "💰 Введите <b>цену тарифа в рублях</b> (например: <i>150</i>)",
             quote("<i>Будет показано клиенту при выборе тарифа</i>"),
-            markup=build_cancel_kb(),
         ),
         reply_markup=build_cancel_kb(),
     )
@@ -149,11 +143,7 @@ async def process_tariff_price(message: Message, state: FSMContext):
     await state.update_data(price_rub=price)
     await state.set_state(TariffCreateState.traffic)
     await message.answer(
-        menu_text(
-            "Тарифы",
-            "📦 Введите <b>лимит трафика в ГБ</b> (например: <i>100</i>, 0 — безлимит):",
-            markup=build_cancel_kb(),
-        ),
+        menu_text("Тарифы", "📦 Введите <b>лимит трафика в ГБ</b> (например: <i>100</i>, 0 — безлимит):"),
         reply_markup=build_cancel_kb(),
     )
 
@@ -171,11 +161,7 @@ async def process_tariff_traffic(message: Message, state: FSMContext):
     await state.update_data(traffic_limit=traffic if traffic > 0 else None)
     await state.set_state(TariffCreateState.device_limit)
     await message.answer(
-        menu_text(
-            "Тарифы",
-            "📱 Введите <b>лимит устройств (HWID)</b> для тарифа (например: <i>3</i>, 0 — безлимит):",
-            markup=build_cancel_kb(),
-        ),
+        menu_text("Тарифы", "📱 Введите <b>лимит устройств (HWID)</b> для тарифа (например: <i>3</i>, 0 — безлимит):"),
         reply_markup=build_cancel_kb(),
     )
 
@@ -253,7 +239,7 @@ async def select_vless_creation(callback: CallbackQuery, state: FSMContext, sess
 async def handle_add_more_tariff(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TariffCreateState.name)
     await callback.message.edit_text(
-        menu_text("Тарифы", "📝 Введите <b>название следующего тарифа</b>:", markup=build_cancel_kb()),
+        menu_text("Тарифы", "📝 Введите <b>название следующего тарифа</b>:"),
         reply_markup=build_cancel_kb(),
     )
 
@@ -262,7 +248,7 @@ async def handle_add_more_tariff(callback: CallbackQuery, state: FSMContext):
 async def handle_done_tariff_group(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
-        menu_text("Тарифы", "✅ Группа тарифов завершена.", markup=build_tariff_menu_kb()),
+        menu_text("Тарифы", "✅ Группа тарифов завершена."),
         reply_markup=build_tariff_menu_kb(),
     )
 
@@ -271,7 +257,7 @@ async def handle_done_tariff_group(callback: CallbackQuery, state: FSMContext):
 async def cancel_tariff_creation(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
-        menu_text("Тарифы", "❌ Создание тарифа отменено.", markup=build_tariff_menu_kb()),
+        menu_text("Тарифы", "❌ Создание тарифа отменено."),
         reply_markup=build_tariff_menu_kb(),
     )
 
@@ -285,7 +271,7 @@ async def show_tariff_groups(callback: CallbackQuery, session: AsyncSession):
 
     if not groups:
         await callback.message.edit_text(
-            menu_text("Тарифы", "❌ Нет сохранённых тарифов.", markup=build_tariff_menu_kb()),
+            menu_text("Тарифы", "❌ Нет сохранённых тарифов."),
             reply_markup=build_tariff_menu_kb(),
         )
         return
@@ -322,7 +308,7 @@ async def show_tariffs_in_group(callback: CallbackQuery, callback_data: AdminTar
     tariff_dicts = [tariff_to_dict(t) for t in tariffs]
 
     await callback.message.edit_text(
-        menu_text("Тарифы группы", f"Группа <b>{group_code}</b>", markup=build_tariff_list_kb(tariff_dicts)),
+        menu_text("Тарифы группы", f"Группа <b>{group_code}</b>"),
         reply_markup=build_tariff_list_kb(tariff_dicts),
     )
 
@@ -339,7 +325,7 @@ async def view_tariff(callback: CallbackQuery, callback_data: AdminTariffCallbac
         return
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Тарифы", text), reply_markup=markup)
 
 
 @router.callback_query(AdminTariffCallback.filter(F.action.startswith("duplicate|")), IsAdminFilter())
@@ -371,7 +357,7 @@ async def duplicate_tariff(callback: CallbackQuery, callback_data: AdminTariffCa
 
     text, markup = render_tariff_card(new_tariff)
     await callback.message.edit_text(
-        text=menu_text("Тарифы", "📑 Тариф дублирован.", quote(f"{text}"), markup=markup), reply_markup=markup
+        text=menu_text("Тарифы", "📑 Тариф дублирован.", quote(f"{text}")), reply_markup=markup
     )
 
 
@@ -432,11 +418,7 @@ async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminT
             )
 
             await callback.message.edit_text(
-                menu_text(
-                    "Тариф в подарках",
-                    "Тариф используется в подарках — выберите замену перед удалением.",
-                    markup=builder,
-                ),
+                menu_text("Тариф в подарках", "Тариф используется в подарках — выберите замену перед удалением."),
                 reply_markup=builder,
             )
             return
@@ -482,7 +464,7 @@ async def delete_tariff_with_gift_replacement(callback: CallbackQuery, session: 
         await session.execute(update(Server).where(Server.tariff_group == group_code).values(tariff_group=None))
 
     await callback.message.edit_text(
-        menu_text("Тарифы", "🗑 Тариф удалён. Все подарки обновлены.", markup=build_tariff_menu_kb()),
+        menu_text("Тарифы", "🗑 Тариф удалён. Все подарки обновлены."),
         reply_markup=build_tariff_menu_kb(),
     )
 
@@ -510,7 +492,7 @@ async def delete_tariff(callback: CallbackQuery, session: AsyncSession):
         await session.execute(update(Server).where(Server.tariff_group == group_code).values(tariff_group=None))
 
     await callback.message.edit_text(
-        menu_text("Тарифы", "🗑 Тариф удалён.", markup=build_tariff_menu_kb()),
+        menu_text("Тарифы", "🗑 Тариф удалён."),
         reply_markup=build_tariff_menu_kb(),
     )
 
@@ -521,7 +503,7 @@ async def start_edit_tariff(callback: CallbackQuery, callback_data: AdminTariffC
     await state.update_data(tariff_id=tariff_id)
     await state.set_state(TariffEditState.choosing_field)
     await callback.message.edit_text(
-        menu_text("Правка тарифа", "Выберите, что изменить.", markup=build_edit_tariff_fields_kb(tariff_id)),
+        menu_text("Правка тарифа", "Выберите, что изменить."),
         reply_markup=build_edit_tariff_fields_kb(tariff_id),
     )
 
@@ -567,7 +549,7 @@ async def ask_new_value(callback: CallbackQuery, state: FSMContext):
     }
 
     await callback.message.edit_text(
-        menu_text("Тарифы", f"✏️ Новое значение для <b>{field_names.get(field, field)}</b>:", markup=build_cancel_kb()),
+        menu_text("Тарифы", f"✏️ Новое значение для <b>{field_names.get(field, field)}</b>:"),
         reply_markup=build_cancel_kb(),
     )
 
@@ -590,7 +572,7 @@ async def set_vless_flag(callback: CallbackQuery, state: FSMContext, session: As
     await state.clear()
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Тарифы", text), reply_markup=markup)
 
 
 @router.callback_query(F.data.startswith("tvis|"), IsAdminFilter())
@@ -598,7 +580,7 @@ async def show_visibility_menu(callback: CallbackQuery, state: FSMContext):
     tariff_id = int(callback.data.split("|")[1])
     await state.clear()
     await callback.message.edit_text(
-        menu_text("Тарифы", "👁 Кому показывать тариф:", markup=build_tariff_visibility_kb(tariff_id)),
+        menu_text("Тарифы", "👁 Кому показывать тариф:"),
         reply_markup=build_tariff_visibility_kb(tariff_id),
     )
 
@@ -612,7 +594,7 @@ async def set_visibility(callback: CallbackQuery, state: FSMContext, session: As
         await state.set_state(TariffEditState.visibility_count)
         await state.update_data(vis_tariff_id=tariff_id, vis_mode=mode)
         await callback.message.edit_text(
-            menu_text("Тарифы", "Минимум активных подписок.", markup=build_cancel_kb()),
+            menu_text("Тарифы", "Минимум активных подписок."),
             reply_markup=build_cancel_kb(),
         )
         return
@@ -626,7 +608,7 @@ async def set_visibility(callback: CallbackQuery, state: FSMContext, session: As
     tariff.updated_at = datetime.utcnow()
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Тарифы", text), reply_markup=markup)
 
 
 @router.message(TariffEditState.visibility_count, IsAdminFilter())
@@ -649,7 +631,7 @@ async def apply_visibility_count(message: Message, state: FSMContext, session: A
     tariff.updated_at = datetime.utcnow()
 
     text, markup = render_tariff_card(tariff)
-    await message.answer(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+    await message.answer(text=menu_text("Тарифы", text), reply_markup=markup)
 
 
 @router.message(TariffEditState.editing_value, IsAdminFilter())
@@ -671,7 +653,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
         is_valid, error_msg = validate_tariff_name(value)
         if not is_valid:
             await message.answer(
-                menu_text("Тарифы", f"❌ {error_msg}", quote("Повторите ввод:"), markup=build_cancel_kb()),
+                menu_text("Тарифы", f"❌ {error_msg}", quote("Повторите ввод:")),
                 reply_markup=build_cancel_kb(),
             )
             return
@@ -684,7 +666,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
         await state.clear()
 
         text, markup = render_tariff_card(tariff)
-        await message.answer(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+        await message.answer(text=menu_text("Тарифы", text), reply_markup=markup)
         return
 
     if field == "description":
@@ -693,7 +675,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
         await state.clear()
 
         text, markup = render_tariff_card(tariff)
-        await message.answer(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+        await message.answer(text=menu_text("Тарифы", text), reply_markup=markup)
         return
 
     if field in ["duration_days", "price_rub", "traffic_limit", "device_limit", "cooldown_days"]:
@@ -719,7 +701,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
         from .tariff_utils import check_tariff_price_monotonicity, format_price_monotonicity_warning
 
         text += format_price_monotonicity_warning(await check_tariff_price_monotonicity(session, tariff))
-    await message.answer(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+    await message.answer(text=menu_text("Тарифы", text), reply_markup=markup)
 
 
 @router.callback_query(F.data.startswith("toggle_active|"), IsAdminFilter())
@@ -736,7 +718,7 @@ async def toggle_tariff_status(callback: CallbackQuery, session: AsyncSession):
     tariff.is_active = not tariff.is_active
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Тарифы", text), reply_markup=markup)
 
 
 @router.callback_query(AdminTariffCallback.filter(F.action.startswith("create|")), IsAdminFilter())
@@ -751,7 +733,6 @@ async def start_tariff_creation_existing_group(
             "Тарифы",
             f"📦 Добавление нового тарифа в группу <code>{group_code}</code>",
             quote("📝 Введите <b>название тарифа</b>:"),
-            markup=build_cancel_kb(),
         ),
         reply_markup=build_cancel_kb(),
     )
@@ -773,4 +754,4 @@ async def toggle_tariff_configurable(callback: CallbackQuery, session: AsyncSess
     tariff.updated_at = datetime.utcnow()
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=menu_text("Тарифы", text, markup=markup), reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Тарифы", text), reply_markup=markup)

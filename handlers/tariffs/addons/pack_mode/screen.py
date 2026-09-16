@@ -1,5 +1,3 @@
-
-
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
@@ -11,7 +9,7 @@ from core.settings.tariffs_config import TARIFFS_CONFIG
 from database import (
     get_tariff_by_id,
 )
-from handlers.utils import edit_or_send_message, get_plural_form
+from handlers.utils import edit_or_send_message
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_addons_menu
 from logger import logger
@@ -22,17 +20,15 @@ from services.addons import (
 from services.payments.currency_rates import format_for_user
 from services.tariffs.pricing import calculate_config_price
 from settings.buttons import BACK, CONFIRM_ADDON_BUTTON_TEXT
-from settings.texts import (
-    UNLIMITED_DEVICES_LABEL,
-    UNLIMITED_TRAFFIC_LABEL,
-)
 
 from ....keys.utils import build_key_callback
 from ..utils import (
     build_addons_pack_screen_text,
     calc_remaining_ratio_seconds,
+    device_option_label,
     format_devices_label,
     format_traffic_label,
+    traffic_option_label,
 )
 
 
@@ -221,16 +217,6 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
 
     builder = InlineKeyboardBuilder()
 
-    def _dev_label(v: int) -> str:
-        if int(v) == 0:
-            return UNLIMITED_DEVICES_LABEL.capitalize()
-        return f"{v} {get_plural_form(v, 'устройство', 'устройства', 'устройств')}"
-
-    def _traf_label(v: int) -> str:
-        if int(v) == 0:
-            return UNLIMITED_TRAFFIC_LABEL.capitalize()
-        return f"{v} ГБ"
-
     def _addon_stepper_row(options, selected, cb_prefix, label_fn):
         try:
             options = sorted(options, key=lambda v: (int(v) == 0, int(v)))
@@ -254,9 +240,15 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     use_pagination = bool((MODES_CONFIG or {}).get("TARIFF_OPTIONS_PAGINATION", True))
     if use_pagination:
         if has_device_option:
-            builder.row(*_addon_stepper_row(device_int_options, selected_devices, "key_addons_devices", _dev_label))
+            builder.row(
+                *_addon_stepper_row(device_int_options, selected_devices, "key_addons_devices", device_option_label)
+            )
         if has_traffic_option:
-            builder.row(*_addon_stepper_row(traffic_int_options, selected_traffic_gb, "key_addons_traffic", _traf_label))
+            builder.row(
+                *_addon_stepper_row(
+                    traffic_int_options, selected_traffic_gb, "key_addons_traffic", traffic_option_label
+                )
+            )
     else:
         device_buttons = []
         traffic_buttons = []
@@ -265,7 +257,7 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
                 mark = " ✅" if selected_devices is not None and int(value) == int(selected_devices) else ""
                 device_buttons.append(
                     InlineKeyboardButton(
-                        text=_dev_label(value) + mark,
+                        text=device_option_label(value) + mark,
                         callback_data=f"key_addons_devices|{email}|{value}",
                     )
                 )
@@ -274,7 +266,7 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
                 mark = " ✅" if selected_traffic_gb is not None and int(selected_traffic_gb) == int(value) else ""
                 traffic_buttons.append(
                     InlineKeyboardButton(
-                        text=_traf_label(value) + mark,
+                        text=traffic_option_label(value) + mark,
                         callback_data=f"key_addons_traffic|{email}|{value}",
                     )
                 )

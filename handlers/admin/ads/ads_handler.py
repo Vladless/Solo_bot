@@ -59,7 +59,7 @@ async def handle_ads_menu(callback_query: CallbackQuery):
 async def handle_ads_create(callback_query: CallbackQuery, state: FSMContext):
     await state.set_state(AdminAdsState.waiting_for_new_name)
     await callback_query.message.edit_text(
-        menu_text("Аналитика рекламы", "📝 Введите <b>название</b> новой ссылки:", markup=build_cancel_input_kb()),
+        menu_text("Аналитика рекламы", "📝 Введите <b>название</b> новой ссылки:"),
         reply_markup=build_cancel_input_kb(),
     )
 
@@ -71,10 +71,7 @@ async def handle_ads_name_input(message: Message, state: FSMContext):
     await state.set_state(AdminAdsState.waiting_for_new_code)
     await message.answer(
         menu_text(
-            "Аналитика рекламы",
-            f"Придумайте код ссылки для «{name}».",
-            quote("Только латинские буквы и цифры."),
-            markup=build_cancel_input_kb(),
+            "Аналитика рекламы", f"Придумайте код ссылки для «{name}».", quote("Только латинские буквы и цифры.")
         ),
         reply_markup=build_cancel_input_kb(),
     )
@@ -89,10 +86,7 @@ async def handle_ads_code_input(message: Message, state: FSMContext, session: As
     if not re.match(r"^[a-zA-Z0-9]+$", code):
         await message.answer(
             menu_text(
-                "Аналитика рекламы",
-                "❌ В коде допустимы только латинские буквы и цифры.",
-                quote("Введите код заново."),
-                markup=build_cancel_input_kb(),
+                "Аналитика рекламы", "❌ В коде допустимы только латинские буквы и цифры.", quote("Введите код заново.")
             ),
             reply_markup=build_cancel_input_kb(),
         )
@@ -115,7 +109,7 @@ async def handle_ads_code_input(message: Message, state: FSMContext, session: As
             return
         msg = format_ads_stats(stats, USERNAME_BOT)
         await message.answer(
-            text=menu_text("Аналитика рекламы", msg, markup=build_ads_stats_kb(code_with_prefix)),
+            text=menu_text("Аналитика рекламы", msg),
             reply_markup=build_ads_stats_kb(code_with_prefix),
         )
 
@@ -139,7 +133,7 @@ async def handle_ads_list(callback_query: CallbackQuery, session: AsyncSession, 
         total_pages = (len(ads) + items_per_page - 1) // items_per_page
         reply_markup = build_ads_list_kb(ads, current_page, total_pages)
         await callback_query.message.edit_text(
-            menu_text("Аналитика рекламы", "📋 Выберите ссылку для просмотра статистики:", markup=reply_markup),
+            menu_text("Аналитика рекламы", "📋 Выберите ссылку для просмотра статистики:"),
             reply_markup=reply_markup,
         )
     except Exception as e:
@@ -163,7 +157,7 @@ async def handle_ads_view(
             return
         msg = format_ads_stats(stats, USERNAME_BOT)
         await callback_query.message.edit_text(
-            text=menu_text("Аналитика рекламы", msg, markup=build_ads_stats_kb(code)),
+            text=menu_text("Аналитика рекламы", msg),
             reply_markup=build_ads_stats_kb(code),
         )
     except Exception as e:
@@ -175,11 +169,7 @@ async def handle_ads_view(
 async def handle_ads_delete_confirm(callback_query: CallbackQuery, callback_data: AdminAdsCallback):
     code = callback_data.code
     await callback_query.message.edit_text(
-        text=menu_text(
-            "Аналитика рекламы",
-            f"Удалить ссылку <code>{code}</code>?",
-            markup=build_ads_delete_confirm_kb(code),
-        ),
+        text=menu_text("Аналитика рекламы", f"Удалить ссылку <code>{code}</code>?"),
         reply_markup=build_ads_delete_confirm_kb(code),
     )
 
@@ -196,7 +186,7 @@ async def handle_ads_delete(
         await session.execute(delete(TrackingSource).where(TrackingSource.code == code))
         await cache_delete(cache_key("utm_exists", code))
         await callback_query.message.edit_text(
-            menu_text("Аналитика рекламы", f"🗑️ Ссылка <code>{code}</code> удалена.", markup=build_ads_kb()),
+            menu_text("Аналитика рекламы", f"🗑️ Ссылка <code>{code}</code> удалена."),
             reply_markup=build_ads_kb(),
         )
     except Exception as e:

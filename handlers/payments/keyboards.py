@@ -3,9 +3,9 @@ from collections.abc import Iterable
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from settings.config import RENEWAL_PRICES
-from settings.buttons import BACK, CUSTOM_AMOUNT
 from services.payments.currency_rates import format_for_user
+from settings.buttons import BACK, CUSTOM_AMOUNT
+from settings.config import RENEWAL_PRICES
 
 
 async def payment_options_for_user(

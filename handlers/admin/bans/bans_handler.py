@@ -119,7 +119,7 @@ async def handle_bans_export(callback_query: CallbackQuery, session: AsyncSessio
         )
     except Exception as e:
         await callback_query.message.answer(
-            text=menu_text("Баны", f"❌ Не удалось выгрузить: {e}", markup=kb),
+            text=menu_text("Баны", f"❌ Не удалось выгрузить: {e}"),
             reply_markup=kb,
         )
 
@@ -136,7 +136,7 @@ async def handle_bans_delete_banned(callback_query: CallbackQuery, session: Asyn
 
         if not blocked_ids:
             await callback_query.message.answer(
-                text=menu_text("Баны", "Никто не блокировал бота.", markup=kb),
+                text=menu_text("Баны", "Никто не блокировал бота."),
                 reply_markup=kb,
             )
             return
@@ -145,12 +145,12 @@ async def handle_bans_delete_banned(callback_query: CallbackQuery, session: Asyn
             await delete_user_data(session, tg_id)
 
         await callback_query.message.answer(
-            text=menu_text("Баны", f"🗑️ Удалены данные о {len(blocked_ids)} клиентах и связанных записях.", markup=kb),
+            text=menu_text("Баны", f"🗑️ Удалены данные о {len(blocked_ids)} клиентах и связанных записях."),
             reply_markup=kb,
         )
     except Exception as e:
         await callback_query.message.answer(
-            text=menu_text("Баны", f"❌ Не удалось удалить записи: {e}", markup=kb),
+            text=menu_text("Баны", f"❌ Не удалось удалить записи: {e}"),
             reply_markup=kb,
         )
 
@@ -184,7 +184,7 @@ async def handle_shadow_bans_export(callback_query: CallbackQuery, session: Asyn
         )
     except Exception as e:
         await callback_query.message.answer(
-            text=menu_text("Баны", f"❌ Ошибка при экспорте: {e}", markup=kb),
+            text=menu_text("Баны", f"❌ Ошибка при экспорте: {e}"),
             reply_markup=kb,
         )
 
@@ -225,7 +225,7 @@ async def handle_manual_bans_export(callback_query: CallbackQuery, session: Asyn
         )
     except Exception as e:
         await callback_query.message.answer(
-            text=menu_text("Баны", f"❌ Ошибка при экспорте: {e}", markup=kb),
+            text=menu_text("Баны", f"❌ Ошибка при экспорте: {e}"),
             reply_markup=kb,
         )
 
@@ -239,7 +239,7 @@ async def handle_clear_blocked_users(callback_query: CallbackQuery, session: Asy
 
         if total_count == 0:
             await callback_query.message.answer(
-                text=menu_text("Баны", "Никто не блокировал бота.", markup=kb),
+                text=menu_text("Баны", "Никто не блокировал бота."),
                 reply_markup=kb,
             )
             return
@@ -247,14 +247,14 @@ async def handle_clear_blocked_users(callback_query: CallbackQuery, session: Asy
         await session.execute(delete(BlockedUser))
 
         await callback_query.message.answer(
-            text=menu_text("Баны", f"🗑️ Очищено {total_count} записей.", markup=kb),
+            text=menu_text("Баны", f"🗑️ Очищено {total_count} записей."),
             reply_markup=kb,
         )
         logger.info(f"[BANS] Очищено {total_count} записей из blocked_users")
     except Exception as e:
         logger.error(f"[BANS] Ошибка при очистке blocked_users: {e}")
         await callback_query.message.answer(
-            text=menu_text("Баны", f"❌ Не удалось очистить список: {e}", markup=kb),
+            text=menu_text("Баны", f"❌ Не удалось очистить список: {e}"),
             reply_markup=kb,
         )
 
@@ -270,7 +270,7 @@ async def handle_clear_shadow_bans(callback_query: CallbackQuery, session: Async
 
         if total_count == 0:
             await callback_query.message.answer(
-                text=menu_text("Баны", "📂 Нет теневых банов для очистки.", markup=kb),
+                text=menu_text("Баны", "📂 Нет теневых банов для очистки."),
                 reply_markup=kb,
             )
             return
@@ -287,14 +287,14 @@ async def handle_clear_shadow_bans(callback_query: CallbackQuery, session: Async
             await invalidate_ban_cache(tid)
 
         await callback_query.message.answer(
-            text=menu_text("Баны", f"🗑️ Очищено {total_count} записей теневых банов из базы данных.", markup=kb),
+            text=menu_text("Баны", f"🗑️ Очищено {total_count} записей теневых банов из базы данных."),
             reply_markup=kb,
         )
         logger.info(f"[BANS] Очищено {total_count} записей теневых банов из manual_bans")
     except Exception as e:
         logger.error(f"[BANS] Ошибка при очистке теневых банов: {e}")
         await callback_query.message.answer(
-            text=menu_text("Баны", f"❌ Ошибка при очистке теневых банов: {e}", markup=kb),
+            text=menu_text("Баны", f"❌ Ошибка при очистке теневых банов: {e}"),
             reply_markup=kb,
         )
 
@@ -312,7 +312,7 @@ async def handle_clear_manual_bans(callback_query: CallbackQuery, session: Async
 
         if total_count == 0:
             await callback_query.message.answer(
-                text=menu_text("Баны", "📂 Нет ручных банов для очистки.", markup=kb),
+                text=menu_text("Баны", "📂 Нет ручных банов для очистки."),
                 reply_markup=kb,
             )
             return
@@ -329,14 +329,14 @@ async def handle_clear_manual_bans(callback_query: CallbackQuery, session: Async
             await invalidate_ban_cache(tid)
 
         await callback_query.message.answer(
-            text=menu_text("Баны", f"🗑️ Очищено {total_count} записей ручных банов из базы данных.", markup=kb),
+            text=menu_text("Баны", f"🗑️ Очищено {total_count} записей ручных банов из базы данных."),
             reply_markup=kb,
         )
         logger.info(f"[BANS] Очищено {total_count} записей ручных банов из manual_bans")
     except Exception as e:
         logger.error(f"[BANS] Ошибка при очистке ручных банов: {e}")
         await callback_query.message.answer(
-            text=menu_text("Баны", f"❌ Ошибка при очистке ручных банов: {e}", markup=kb),
+            text=menu_text("Баны", f"❌ Ошибка при очистке ручных банов: {e}"),
             reply_markup=kb,
         )
 
@@ -352,10 +352,7 @@ async def handle_preemptive_ban_start(callback: CallbackQuery, state: FSMContext
     )
     await callback.message.edit_text(
         menu_text(
-            "Теневой бан",
-            "Пришлите Telegram ID, по одному в строке.",
-            section("📥 Пример", "123456789", "987654321"),
-            markup=builder.as_markup(),
+            "Теневой бан", "Пришлите Telegram ID, по одному в строке.", section("📥 Пример", "123456789", "987654321")
         ),
         reply_markup=builder.as_markup(),
     )
@@ -426,11 +423,7 @@ async def handle_preemptive_ids_input(message: Message, state: FSMContext, sessi
         await invalidate_ban_cache(tid)
 
     await message.answer(
-        menu_text(
-            "Баны",
-            f"✅ Успешно добавлено в теневой бан: <b>{len(rows)}</b> клиентов.",
-            markup=build_shadow_bans_kb(),
-        ),
+        menu_text("Баны", f"✅ Успешно добавлено в теневой бан: <b>{len(rows)}</b> клиентов."),
         reply_markup=build_shadow_bans_kb(),
     )
     await state.clear()
