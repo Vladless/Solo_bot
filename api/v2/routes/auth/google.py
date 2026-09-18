@@ -21,7 +21,7 @@ from api.shared.oauth_state import STATE_TTL_SECONDS, make_state, verify_state
 
 
 _GOOGLE_NONCE_COOKIE = "g_oauth_nonce"
-from api.v2.routes.auth._common import _client_ip, safe_return_path
+from api.v2.routes.auth._common import _client_ip, safe_return_path, with_login_marker
 from database import identities as idb
 from logger import logger
 
@@ -178,7 +178,7 @@ async def google_callback(
         google_sub,
         _client_ip(request),
     )
-    redirect = RedirectResponse(safe_return_path(return_to, _OAUTH_SUCCESS_URI), status_code=302)
+    redirect = RedirectResponse(with_login_marker(safe_return_path(return_to, _OAUTH_SUCCESS_URI)), status_code=302)
     redirect.delete_cookie(_GOOGLE_NONCE_COOKIE, path="/")
     set_auth_cookie(redirect, token, request)
     set_is_admin_cookie(redirect, identity, request)

@@ -18,7 +18,7 @@ from database import (
     check_coupon_usage,
     claim_coupon_slot,
     create_coupon_usage,
-    get_coupon_by_code,
+    get_coupon_by_code_ci,
     get_keys,
     get_tariff_by_id,
     release_coupon_slot,
@@ -55,22 +55,41 @@ router = Router()
 
 @router.callback_query(F.data == "activate_coupon")
 @router.message(F.text == "/activate_coupon")
-async def handle_activate_coupon(callback_query_or_message: Message | CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+async def handle_activate_coupon(callback_query_or_message: Message | CallbackQuery, state: FSMContext, session: Any):
+    from services.coupons import peek_percent_hold
 
     if isinstance(callback_query_or_message, CallbackQuery):
         target_message = callback_query_or_message.message
     else:
         target_message = callback_query_or_message
 
+    user_id = callback_query_or_message.from_user.id
+    held = await peek_percent_hold(session, user_id)
+
+    builder = InlineKeyboardBuilder()
+    text = COUPON_INPUT_PROMPT
+    if held is not None:
+        text = f"{COUPON_INPUT_PROMPT}\n\nСейчас активна скидка {held.percent}% по купону {held.coupon_code}."
+        builder.row(InlineKeyboardButton(text="🚫 Снять скидку", callback_data="drop_coupon_hold"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
     await edit_or_send_message(
         target_message=target_message,
-        text=COUPON_INPUT_PROMPT,
+        text=text,
         reply_markup=builder.as_markup(),
         media_path=None,
     )
     await state.set_state(CouponActivationState.waiting_for_coupon_code)
+
+
+@router.callback_query(F.data == "drop_coupon_hold")
+async def drop_coupon_hold(callback_query: CallbackQuery, state: FSMContext, session: Any):
+    """Снимает закрепление скидки и возвращает экран ввода купона."""
+    from services.coupons import drop_percent_coupon
+
+    await drop_percent_coupon(session, callback_query.from_user.id)
+    await callback_query.answer("Скидка снята")
+    await handle_activate_coupon(callback_query, state, session)
 
 
 @router.message(CouponActivationState.waiting_for_coupon_code, F.text)
@@ -100,7 +119,7 @@ async def activate_coupon(
             await state.clear()
             return
 
-    coupon = await get_coupon_by_code(session, coupon_code)
+    coupon = await get_coupon_by_code_ci(session, coupon_code)
 
     if not coupon:
         builder = InlineKeyboardBuilder()
@@ -123,11 +142,10 @@ async def activate_coupon(
         await state.clear()
         return
 
-    from database.models import User
-
     if getattr(coupon, "new_users_only", False):
-        exists = await session.scalar(select(User.tg_id).where(User.tg_id == user_id))
-        if exists is not None:
+        from services.coupons import is_new_user
+
+        if not await is_new_user(session, user_id):
             await message.answer("❌ Этот купон доступен только для новых пользователей.")
             await state.clear()
             return
@@ -202,6 +220,32 @@ async def activate_coupon(
             logger.error(f"Ошибка при обработке купона на дни: {e}")
             await message.answer("❌ Ошибка при активации купона.")
             await state.clear()
+        return
+
+    if coupon.percent:
+        try:
+            from services.coupons import hold_percent_coupon
+            from services.errors import ServiceError
+
+            held = await hold_percent_coupon(session=session, user_id=user_id, code=coupon_code)
+        except ServiceError as e:
+            await message.answer(f"❌ {e.message}")
+            await state.clear()
+            return
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении скидки: {e}")
+            await message.answer("❌ Ошибка при активации купона.")
+            await state.clear()
+            return
+
+        conditions = []
+        if held.min_order_amount:
+            conditions.append(f"от {held.min_order_amount} ₽")
+        if held.max_discount_amount:
+            conditions.append(f"не больше {held.max_discount_amount} ₽")
+        tail = f" ({', '.join(conditions)})" if conditions else ""
+        await message.answer(f"✅ Скидка {held.percent}% сохранена{tail} — применится при ближайшей оплате.")
+        await state.clear()
         return
 
     await message.answer("❌ Купон недействителен (нет суммы или дней).")

@@ -15,7 +15,8 @@ from database.models import Key, Server, Tariff, User
 from filters.admin import IsAdminFilter
 from handlers.utils import ALLOWED_GROUP_CODES
 from logger import logger
-from panels.remnawave import RemnawaveAPI
+from panels import remnawave as remnawave_panel
+from panels._3xui import get_inbound_node
 from services.operations import (
     create_client_on_server,
     create_key_on_cluster,
@@ -40,7 +41,7 @@ from .keyboard import AdminClusterCallback, build_availability_kb, build_sync_cl
 SYNC_CONCURRENCY = 200
 
 
-async def _fetch_all_panel_uuids(remna: RemnawaveAPI) -> set[str]:
+async def _fetch_all_panel_uuids(remna: "remnawave_panel.RemnawaveAPI") -> set[str]:
     uuids: set[str] = set()
     page_size = 1000
     start = 0
@@ -70,7 +71,6 @@ async def _fetch_all_panel_uuids(remna: RemnawaveAPI) -> set[str]:
             break
 
         for u in users:
-            # Remnawave 3.x: у пользователя нет uuid, наш client_id лежит в vlessUuid
             uid = u.get("vlessUuid") or u.get("uuid")
             if uid:
                 uuids.add(str(uid))
@@ -204,6 +204,14 @@ async def handle_cluster_availability(
 
                 total_online_users += online_inbound_users
                 lines.append(f"🌍 <b>{prefix} {server_name}</b> — {online_inbound_users} онлайн")
+
+                node = await get_inbound_node(xui, server["api_url"], inbound_id)
+                if node:
+                    node_name = str(node.get("name") or "узел")
+                    node_address = str(node.get("address") or "").strip() or "адрес не задан"
+                    node_status = str(node.get("status") or "unknown").lower()
+                    mark = "🔴 " if node_status == "offline" or not node.get("enable", True) else ""
+                    lines.append(f"  ↳ {mark}{node_name} ({node_address})")
 
             elif panel_type == "remnawave":
                 server_inbound_id = server.get("inbound_id")
@@ -660,7 +668,7 @@ async def handle_sync_cluster(
             total_keys = len(keys_to_sync)
 
             api_url = cluster_servers[0]["api_url"]
-            remna = RemnawaveAPI(api_url)
+            remna = remnawave_panel.RemnawaveAPI(api_url)
             login_ok = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
             if not login_ok:
                 await callback_query.message.edit_text(

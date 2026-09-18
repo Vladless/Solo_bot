@@ -9,8 +9,10 @@ from api.shared.billing_actor import resolve_billing_actor
 from api.v2.base_crud import generate_crud_router
 from api.v2.schemas import CouponBase, CouponResponse, CouponUpdate
 from api.v2.schemas.web_public import CouponApplyRequest, CouponApplyResponse
+from database.coupons import get_coupon_by_code_ci
 from database.models import Coupon, CouponUsage
-from services.coupons import apply_fixed_coupon
+from database.users import get_balance
+from services.coupons import apply_fixed_coupon, drop_percent_coupon, hold_percent_coupon
 from services.errors import ServiceError
 
 
@@ -90,6 +92,24 @@ def _service_error_to_http(e: ServiceError) -> HTTPException:
     return HTTPException(status_code=status_map.get(e.code, 400), detail=e.message)
 
 
+@router.post("/drop", response_model=CouponApplyResponse)
+async def drop_coupon(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    identity=Depends(verify_identity_token),
+):
+    """Снимает закрепление скидки у текущего клиента."""
+    user_id, _tg_id = await resolve_billing_actor(request, identity, session)
+    await drop_percent_coupon(session, user_id)
+    return CouponApplyResponse(
+        ok=True,
+        message="Скидка снята",
+        coupon_code="",
+        amount=0,
+        balance=float(await get_balance(session, user_id)),
+    )
+
+
 @router.post("/apply", response_model=CouponApplyResponse)
 async def apply_coupon(
     body: CouponApplyRequest,
@@ -101,12 +121,23 @@ async def apply_coupon(
 
     await enforce_rate_limit(request, session, bucket="coupon_apply", max_per_window=10, window_sec=60)
     user_id, tg_id = await resolve_billing_actor(request, identity, session)
+    code = str(body.code or "")
     try:
+        coupon = await get_coupon_by_code_ci(session, code)
+        if coupon is not None and getattr(coupon, "percent", None) is not None:
+            held = await hold_percent_coupon(session=session, user_id=user_id, code=code)
+            return CouponApplyResponse(
+                ok=True,
+                message=f"Скидка {held.percent}% сохранена — применится при оплате",
+                coupon_code=held.coupon_code,
+                amount=0,
+                balance=float(await get_balance(session, user_id)),
+            )
         result = await apply_fixed_coupon(
             session=session,
             user_id=user_id,
             tg_id=tg_id,
-            code=str(body.code or ""),
+            code=code,
         )
         return CouponApplyResponse(
             ok=True,

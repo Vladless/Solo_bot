@@ -57,7 +57,11 @@ async def _offer_coupon_before_charge(
         "selected_traffic_limit_gb": selected_traffic_gb,
         "required_amount": 0,
     }
+    from handlers.payments.checkout_coupon import apply_checkout_coupon
+
     await create_temporary_data(session, tg_id, "waiting_for_payment", payload)
+    payload, _required, coupon_note = await apply_checkout_coupon(session, tg_id, "waiting_for_payment", payload, 0)
+    price_rub = int(payload.get("selected_price_rub") or price_rub)
     await state.update_data(temp_key="waiting_for_payment", temp_payload=payload, required_amount=0)
 
     language_code = getattr(callback_query.from_user, "language_code", None)
@@ -66,15 +70,17 @@ async def _offer_coupon_before_charge(
 
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(
-            text=CONFIG_PAY_BUTTON_TEXT.format(amount=price_text), callback_data="buy_confirm_balance"
-        )
+        InlineKeyboardButton(text=CONFIG_PAY_BUTTON_TEXT.format(amount=price_text), callback_data="buy_confirm_balance")
     )
     builder.row(InlineKeyboardButton(text=COUPON, callback_data="fastflow_coupon"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data="back_to_tariff_group_list"))
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=f"К оплате: {price_text}\nНа балансе: {balance_text}\n\nЕсли есть купон — примените его перед оплатой.",
+        text=(
+            f"К оплате: {price_text}\nНа балансе: {balance_text}\n\n"
+            + (f"{coupon_note}\n\n" if coupon_note else "")
+            + "Если есть купон — примените его перед оплатой."
+        ),
         reply_markup=builder.as_markup(),
     )
     await safe_answer_callback(callback_query)

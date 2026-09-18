@@ -461,7 +461,7 @@ DEFAULT_SERVICE_NAME = "bot.service"
 VENV_PYTHON = os.path.join(PROJECT_DIR, "venv", "bin", "python")
 SOLOBOT_CMD_PATH = "/usr/local/bin/solobot"
 SETTINGS_DIR = os.path.join(PROJECT_DIR, "settings")
-CLI_VERSION = "v1.2.0"
+CLI_VERSION = "v1.3.0"
 
 
 def _ensure_solobot_command() -> None:
@@ -736,9 +736,9 @@ def has_local_config() -> bool:
     return os.path.exists(resolve_config_path(PROJECT_DIR))
 
 
-def bootstrap_project_files(branch: str = "main") -> bool:
+def bootstrap_project_files(branch: str = "main", force: bool = False) -> bool:
     refresh_service_name()
-    if has_project_code():
+    if has_project_code() and not force:
         return True
 
     step_warn("Полный проект рядом не найден. Подтягиваю файлы бота...")
@@ -1081,13 +1081,14 @@ def install_bot():
     try:
         step_rule(1, total, "Файлы проекта")
         console.print(
-            "[faint]Проверяю исходники бота рядом с лаунчером. Если их нет — скачаю стабильную версию с GitHub.[/faint]"
+            "[faint]Проверяю исходники бота рядом с лаунчером. Если их нет — скачаю с GitHub выбранную ветку.[/faint]"
         )
-        if not bootstrap_project_files(branch="main"):
+        source = _prepare_project_source()
+        if not source:
             step_fail("Не удалось подготовить файлы проекта. Установка прервана.")
             return
         refresh_service_name()
-        step_ok("Файлы проекта на месте.")
+        step_ok(f"Файлы проекта на месте ({source}).")
 
         step_rule(2, total, "Конфигурация")
         console.print(
@@ -1149,7 +1150,9 @@ def install_bot():
                 step_warn("Установка приостановлена. Запустите снова, когда загрузите файлы: sudo solobot")
                 return
         config_path, texts_path = _cfg_paths()
-        step_ok(f"config.py и texts.py на месте: {os.path.relpath(config_path, PROJECT_DIR)}, {os.path.relpath(texts_path, PROJECT_DIR)}")
+        step_ok(
+            f"config.py и texts.py на месте: {os.path.relpath(config_path, PROJECT_DIR)}, {os.path.relpath(texts_path, PROJECT_DIR)}"
+        )
 
         console.print(
             f"[warn]Напоминание:[/warn] config.py — это шаблон с пустыми значениями. "
@@ -1456,7 +1459,6 @@ def _restore_backup_unattended(backup_path: str) -> bool:
     if is_service_exists(SERVICE_NAME):
         subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME], check=False)
     install_rsync_if_needed()
-    # Того, чего в копии нет, --delete не должен сносить: venv переживает откат.
     excludes = [f"--exclude={name}" for name in BACKUP_SKIP_DIRS]
     result = run_with_status(
         ["rsync", "-a", "--delete", *excludes, f"{backup_path}/", f"{PROJECT_DIR}/"],
@@ -1618,9 +1620,21 @@ def backup_database() -> str | None:
             if container:
                 proc = subprocess.run(
                     [
-                        "docker", "exec", "-e", f"PGPASSWORD={creds['password']}", container,
-                        "pg_dump", "-U", creds["user"], "-h", "127.0.0.1", "-p", "5432",
-                        "-F", "c", creds["name"],
+                        "docker",
+                        "exec",
+                        "-e",
+                        f"PGPASSWORD={creds['password']}",
+                        container,
+                        "pg_dump",
+                        "-U",
+                        creds["user"],
+                        "-h",
+                        "127.0.0.1",
+                        "-p",
+                        "5432",
+                        "-F",
+                        "c",
+                        creds["name"],
                     ],
                     stdout=out_file,
                     stderr=subprocess.PIPE,
@@ -1669,8 +1683,22 @@ def _pg_recreate_db(creds: dict, container: str | None, host: str, port: str) ->
         if container:
             return subprocess.run(
                 [
-                    "docker", "exec", "-e", f"PGPASSWORD={creds['password']}", container,
-                    "psql", "-U", user, "-h", "127.0.0.1", "-p", "5432", "-d", "postgres", "-c", sql,
+                    "docker",
+                    "exec",
+                    "-e",
+                    f"PGPASSWORD={creds['password']}",
+                    container,
+                    "psql",
+                    "-U",
+                    user,
+                    "-h",
+                    "127.0.0.1",
+                    "-p",
+                    "5432",
+                    "-d",
+                    "postgres",
+                    "-c",
+                    sql,
                 ],
                 capture_output=True,
                 text=True,
@@ -1716,9 +1744,7 @@ def restore_database():
             dt = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%d.%m.%Y %H:%M")
         except Exception:
             dt = "дата неизвестна"
-        console.print(
-            f"  [key]{idx}[/key]  [text]{os.path.basename(path)}[/text]  [faint]{dt} · {origin}[/faint]"
-        )
+        console.print(f"  [key]{idx}[/key]  [text]{os.path.basename(path)}[/text]  [faint]{dt} · {origin}[/faint]")
         shown.append((idx, path))
 
     try:
@@ -1751,9 +1777,23 @@ def restore_database():
         with open(sel_path, "rb") as dump_file:
             rc = subprocess.run(
                 [
-                    "docker", "exec", "-i", "-e", f"PGPASSWORD={creds['password']}", container,
-                    "pg_restore", f"--dbname={creds['name']}", "-U", creds["user"],
-                    "-h", "127.0.0.1", "-p", "5432", "--no-owner", "--clean", "--if-exists",
+                    "docker",
+                    "exec",
+                    "-i",
+                    "-e",
+                    f"PGPASSWORD={creds['password']}",
+                    container,
+                    "pg_restore",
+                    f"--dbname={creds['name']}",
+                    "-U",
+                    creds["user"],
+                    "-h",
+                    "127.0.0.1",
+                    "-p",
+                    "5432",
+                    "--no-owner",
+                    "--clean",
+                    "--if-exists",
                 ],
                 stdin=dump_file,
                 capture_output=True,
@@ -1765,8 +1805,18 @@ def restore_database():
         env = {**os.environ, "PGPASSWORD": creds["password"]}
         rc = subprocess.run(
             [
-                "pg_restore", f"--dbname={creds['name']}", "-U", creds["user"], "-h", host, "-p", port,
-                "--no-owner", "--clean", "--if-exists", sel_path,
+                "pg_restore",
+                f"--dbname={creds['name']}",
+                "-U",
+                creds["user"],
+                "-h",
+                host,
+                "-p",
+                port,
+                "--no-owner",
+                "--clean",
+                "--if-exists",
+                sel_path,
             ],
             capture_output=True,
             env=env,
@@ -1920,9 +1970,7 @@ def fix_permissions():
 
     try:
         user = os.environ.get("SUDO_USER") or subprocess.check_output(["whoami"], text=True).strip()
-        console.print(
-            f"  [faint]Пользователь {user}: владелец проекта, права u=rwX,go=rX, чистка __pycache__[/faint]"
-        )
+        console.print(f"  [faint]Пользователь {user}: владелец проекта, права u=rwX,go=rX, чистка __pycache__[/faint]")
 
         skip_dirs = {"venv", ".venv", ".git", "node_modules"}
         for root, dirs, files in os.walk(PROJECT_DIR):
@@ -2944,25 +2992,66 @@ def _authorize_web_install(code: str, password: str) -> bool:
     return False
 
 
+def _docker_daemon_ready(timeout_sec: int = 40) -> bool:
+    """Ждёт, пока демон Docker начнёт отвечать."""
+    deadline = time_mod.time() + timeout_sec
+    while time_mod.time() < deadline:
+        result = subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result.returncode == 0:
+            return True
+        sleep(2)
+    return False
+
+
+def _compose_plugin_ready() -> bool:
+    """Проверяет плагин docker compose и подсказывает, как его поставить."""
+    result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if result.returncode == 0:
+        return True
+    step_warn("Docker есть, а плагина docker compose нет — без него контейнеры не поднять.")
+    if shutil.which("apt-get") and safe_confirm("Поставить плагин docker compose?", default=True):
+        subprocess.run(["apt-get", "update", "-qq"], check=False)
+        subprocess.run(["apt-get", "install", "-y", "-qq", "docker-compose-plugin"], check=False)
+        result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result.returncode == 0:
+            step_ok("Плагин docker compose установлен.")
+            return True
+    console.print(
+        Panel(
+            "[text]Поставьте плагин вручную и повторите:[/text]\n\n"
+            "  [bold]apt-get install docker-compose-plugin[/bold]\n"
+            "  или переустановите Docker: [bold]curl -fsSL https://get.docker.com | sh[/bold]",
+            border_style="err",
+            width=_PANEL_W,
+            title="[err.bold]Нет docker compose[/err.bold]",
+            padding=(1, 2),
+        )
+    )
+    return False
+
+
 def _ensure_docker():
-    """Проверяет/устанавливает Docker."""
+    """Проверяет/устанавливает Docker вместе с плагином compose."""
     if shutil.which("docker"):
-        try:
-            subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-            return True
-        except subprocess.CalledProcessError:
-            step_warn("Docker установлен, но не запущен.")
+        if not _docker_daemon_ready(timeout_sec=5):
+            step_warn("Docker установлен, но не запущен — запускаю.")
             subprocess.run(["sudo", "systemctl", "start", "docker"], check=False)
-            return True
+            if not _docker_daemon_ready():
+                step_fail("Демон Docker не отвечает. Проверьте: systemctl status docker")
+                return False
+        return _compose_plugin_ready()
     console.print("[accent]Установка Docker...[/accent]")
     try:
         subprocess.run("curl -fsSL https://get.docker.com | sh", shell=True, check=True)
-        subprocess.run(["sudo", "systemctl", "enable", "docker"], check=False)
-        subprocess.run(["sudo", "systemctl", "start", "docker"], check=False)
-        return True
     except subprocess.CalledProcessError:
         step_fail("Не удалось установить Docker.")
         return False
+    subprocess.run(["sudo", "systemctl", "enable", "docker"], check=False)
+    subprocess.run(["sudo", "systemctl", "start", "docker"], check=False)
+    if not _docker_daemon_ready():
+        step_fail("Docker установлен, но демон не отвечает. Проверьте: systemctl status docker")
+        return False
+    return _compose_plugin_ready()
 
 
 def _port_owner(port: int) -> str | None:
@@ -3082,6 +3171,31 @@ def _dns_precheck(domain: str) -> bool:
         return False
     step_ok(f"✓ DNS ок: {domain} → {resolved}")
     return True
+
+
+def _bot_docker_network() -> str | None:
+    """Сеть compose-проекта бота, если бот поднят в Docker на этом же сервере."""
+    if not shutil.which("docker"):
+        return None
+    try:
+        running = subprocess.run(
+            ["docker", "ps", "--filter", "name=^solobot$", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if (running.stdout or "").strip() != "solobot":
+            return None
+        networks = subprocess.run(
+            ["docker", "inspect", "-f", "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}", "solobot"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return None
+    names = (networks.stdout or "").split()
+    return names[0] if names else None
 
 
 def _wait_for_web_container(web_port: int, timeout_sec: int = 60) -> bool:
@@ -3464,10 +3578,16 @@ def setup_bot_https(domain: str) -> None:
         )
 
     opts = [
-        ("caddy", "Caddy — сертификат выпускается сам, самый простой вариант"
-         + (" (уже установлен)" if px["caddy_installed"] else " — установлю автоматически")),
-        ("nginx", "Nginx + сертификат Let's Encrypt (certbot)"
-         + (" (уже установлен)" if px["nginx_installed"] else " — установлю автоматически")),
+        (
+            "caddy",
+            "Caddy — сертификат выпускается сам, самый простой вариант"
+            + (" (уже установлен)" if px["caddy_installed"] else " — установлю автоматически"),
+        ),
+        (
+            "nginx",
+            "Nginx + сертификат Let's Encrypt (certbot)"
+            + (" (уже установлен)" if px["nginx_installed"] else " — установлю автоматически"),
+        ),
         ("skip", "Пропустить — прокси уже настроен или настрою вручную"),
     ]
     if px["nginx_active"] and not px["caddy_active"]:
@@ -3693,20 +3813,36 @@ def install_website():
         show_choices=False,
     )
     api_domain = ""
+    bot_network = ""
     if bot_location == "1":
-        api_url = f"http://host.docker.internal:{_bot_api_port}"
-        console.print(
-            Panel(
-                f"[text]API: [bold]{api_url}[/bold] (через docker host-gateway)[/text]\n\n"
-                f"[faint]Требования к боту на этом сервере:[/faint]\n"
-                f"  • Бот запущен на хосте и слушает [bold]0.0.0.0:{_bot_api_port}[/bold]\n"
-                f'  • В config.py: [bold]API_HOST="0.0.0.0"[/bold], [bold]API_PORT={_bot_api_port}[/bold]',
-                border_style="dim",
-                width=_PANEL_W,
-                title="[faint]Размещение: один сервер[/faint]",
-                padding=(1, 2),
+        bot_network = _bot_docker_network() or ""
+        if bot_network:
+            api_url = f"http://solobot:{_bot_api_port}"
+            console.print(
+                Panel(
+                    f"[text]Бот найден в Docker — подключу сайт к его сети.[/text]\n\n"
+                    f"[text]API: [bold]{api_url}[/bold] (сеть [bold]{bot_network}[/bold])[/text]\n\n"
+                    f"[faint]Так контейнеры общаются напрямую, порт бота наружу открывать не нужно.[/faint]",
+                    border_style="dim",
+                    width=_PANEL_W,
+                    title="[faint]Размещение: бот в Docker рядом[/faint]",
+                    padding=(1, 2),
+                )
             )
-        )
+        else:
+            api_url = f"http://host.docker.internal:{_bot_api_port}"
+            console.print(
+                Panel(
+                    f"[text]API: [bold]{api_url}[/bold] (через docker host-gateway)[/text]\n\n"
+                    f"[faint]Требования к боту на этом сервере:[/faint]\n"
+                    f"  • Бот запущен на хосте и слушает [bold]0.0.0.0:{_bot_api_port}[/bold]\n"
+                    f'  • В config.py: [bold]API_HOST="0.0.0.0"[/bold], [bold]API_PORT={_bot_api_port}[/bold]',
+                    border_style="dim",
+                    width=_PANEL_W,
+                    title="[faint]Размещение: один сервер[/faint]",
+                    padding=(1, 2),
+                )
+            )
     else:
         console.print(
             "\n[faint]Домен, по которому web-контейнер будет ходить на API бота.\nНа сервере бота должен стоять nginx+SSL перед портом API.[/faint]"
@@ -3895,6 +4031,8 @@ def install_website():
     _save_web_tag(web_tag)
 
     compose_path = os.path.join(WEB_DIR, "docker-compose.yml")
+    network_service = "    networks:\n      - bot\n" if bot_network else ""
+    network_block = f"\nnetworks:\n  bot:\n    name: {bot_network}\n    external: true\n" if bot_network else ""
     with open(compose_path, "w") as f:
         f.write(f"""name: {WEB_CONTAINER_NAME}
 
@@ -3907,7 +4045,7 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    extra_hosts:
+{network_service}    extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -3917,7 +4055,7 @@ services:
       start_period: 10s
     volumes:
       - ./logs:/app/logs
-""")
+{network_block}""")
 
     _ensure_web_logs_dir()
     console.print("[accent]Запуск контейнера...[/accent]")
@@ -4445,7 +4583,6 @@ def fetch_latest_ghcr_tag(image: str, channel: str = "") -> str | None:
             if parsed is None:
                 continue
             prerelease = parsed[3] == 0
-            # На канале latest предрелизы не предлагаем, на dev — наоборот, они и нужны.
             if channel == "latest" and prerelease:
                 continue
             if channel == "dev" and not prerelease:
@@ -4513,6 +4650,195 @@ def _docker_bot_state() -> tuple[str, str]:
     return "warn", f"частично ({running}/{len(rows)})"
 
 
+MIN_DOCKER_BOT_MAJOR = 6
+DOCKER_SOURCE_BRANCHES = (("main", "стабильная"), ("dev", "свежая"))
+DOCKER_STATE_FILE = ".solobot_docker.json"
+
+
+def _version_major(version: str | None) -> int | None:
+    """Мажорная версия из строки вида v6.0 или v.5.1.2."""
+    match = re.search(r"v\.?(\d+)", version or "")
+    return int(match.group(1)) if match else None
+
+
+def _branch_bot_major(branch: str) -> int | None:
+    """Мажорная версия бота в ветке публичного репозитория."""
+    for path in ("utils/versioning.py", "bot.py"):
+        url = f"https://raw.githubusercontent.com/Vladless/Solo_bot/{branch}/{path}"
+        try:
+            response = http_get(url, timeout=10)
+        except Exception:
+            continue
+        if getattr(response, "status_code", 0) != 200:
+            continue
+        match = re.search(r"""["']v\.?(\d+)""", response.text or "")
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _choose_docker_source_branch() -> str | None:
+    """Ветка с кодом для установки в Docker: годится только версия 6 и выше."""
+    checked = []
+    with console.status("[brand]Проверяю версии в ветках проекта...[/brand]", spinner="dots"):
+        for name, title in DOCKER_SOURCE_BRANCHES:
+            checked.append((name, title, _branch_bot_major(name)))
+
+    allowed = []
+    lines = []
+    for name, title, major in checked:
+        if major is None:
+            lines.append(f"  • [bold]{name}[/bold] ({title}) — версию определить не удалось")
+        elif major < MIN_DOCKER_BOT_MAJOR:
+            lines.append(f"  • [bold]{name}[/bold] ({title}) — версия {major}, нужна {MIN_DOCKER_BOT_MAJOR} и выше")
+        else:
+            allowed.append(name)
+            lines.append(f"  • [bold]{name}[/bold] ({title}) — версия {major} [ok]подходит[/ok]")
+
+    console.print(
+        Panel(
+            "[text]Откуда взять код бота:[/text]\n\n" + "\n".join(lines),
+            border_style="dim",
+            width=_PANEL_W,
+            title="[faint]Ветки проекта[/faint]",
+            padding=(1, 2),
+        )
+    )
+
+    if not allowed:
+        step_fail(f"Ни в одной ветке нет версии {MIN_DOCKER_BOT_MAJOR} и выше — ставить в Docker нечего.")
+        return None
+    if len(allowed) == 1:
+        step_info(f"Беру код из ветки {allowed[0]} — она единственная подходит.")
+        return allowed[0]
+    return safe_prompt("[accent]Ветка с кодом[/accent]", choices=allowed, default=allowed[0])
+
+
+def _resolve_source_branch() -> str | None:
+    """Ветка с кодом бота: подтверждаем запомненную или выбираем заново."""
+    saved = _read_docker_state().get("branch")
+    if saved:
+        major = _branch_bot_major(saved)
+        if major is not None and major >= MIN_DOCKER_BOT_MAJOR:
+            if safe_confirm(f"Брать код из ветки {saved} (версия {major})?", default=True):
+                return saved
+        else:
+            step_warn(f"В запомненной ветке {saved} нет версии {MIN_DOCKER_BOT_MAJOR} — выберите другую.")
+    branch = _choose_docker_source_branch()
+    if branch:
+        _write_docker_state(branch=branch)
+    return branch
+
+
+def _local_source_major() -> int | None:
+    """Версия кода, который уже лежит рядом с лаунчером."""
+    if not has_project_code():
+        return None
+    return _version_major(local_version(PROJECT_DIR))
+
+
+def _prepare_project_source() -> str | None:
+    """Готовит файлы бота: ветка с версией 6 и выше, иначе — годный местный код."""
+    local_major = _local_source_major()
+    local_ok = local_major is not None and local_major >= MIN_DOCKER_BOT_MAJOR
+
+    branch = _resolve_source_branch()
+    if not branch:
+        if local_ok:
+            step_warn(f"Ветки проверить не удалось — оставляю код версии {local_major}, он уже лежит рядом.")
+            return f"локальный код v{local_major}"
+        return None
+
+    if not bootstrap_project_files(branch=branch, force=_needs_source_refresh(branch)):
+        return None
+    return f"ветка {branch}"
+
+
+def _needs_source_refresh(branch: str) -> bool:
+    """Нужно ли перекачать файлы проекта: код старый либо админ сам захотел обновить."""
+    if not has_project_code():
+        return False
+    local_major = _local_source_major()
+    if local_major is None or local_major < MIN_DOCKER_BOT_MAJOR:
+        have = f"версии {local_major}" if local_major else "неизвестной версии"
+        step_warn(f"Рядом лежит код {have} — обновлю его из ветки {branch}.")
+        return True
+    return safe_confirm(f"Рядом уже есть код версии {local_major}. Обновить его из ветки {branch}?", default=False)
+
+
+def _docker_state_path() -> str:
+    """Файл с параметрами установки рядом с проектом."""
+    return os.path.join(PROJECT_DIR, DOCKER_STATE_FILE)
+
+
+def _read_docker_state() -> dict:
+    """Параметры прошлой установки в Docker: ветка кода и внешние БД."""
+    try:
+        with open(_docker_state_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_docker_state(**values: object) -> None:
+    state = _read_docker_state()
+    state.update(values)
+    try:
+        with open(_docker_state_path(), "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        step_warn(f"Не удалось сохранить параметры установки: {e}")
+
+
+def _compose_up_args(build: bool = False) -> list[str]:
+    """Аргументы docker compose up с учётом того, где живут база и Redis."""
+    args = ["up", "-d"]
+    if build:
+        args.append("--build")
+    if _read_docker_state().get("external_data"):
+        args += ["--no-deps", "bot"]
+    return args
+
+
+def _wait_for_bot_container(timeout_sec: int = 120) -> bool:
+    """Ждёт, пока контейнер бота перейдёт в рабочее состояние и перестанет перезапускаться."""
+    deadline = time_mod.time() + timeout_sec
+    last_state = ""
+    with console.status("[brand]Жду, пока бот поднимется...[/brand]", spinner="dots"):
+        while time_mod.time() < deadline:
+            result = subprocess.run(
+                ["docker", "inspect", "-f", "{{.State.Status}} {{.RestartCount}}", "solobot"],
+                capture_output=True,
+                text=True,
+            )
+            out = (result.stdout or "").strip()
+            if result.returncode != 0 or not out:
+                sleep(2)
+                continue
+            parts = out.split()
+            last_state = parts[0]
+            restarts = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+            if last_state == "running" and restarts == 0:
+                sleep(3)
+                again = subprocess.run(
+                    ["docker", "inspect", "-f", "{{.State.Status}} {{.RestartCount}}", "solobot"],
+                    capture_output=True,
+                    text=True,
+                )
+                if (again.stdout or "").strip().startswith("running"):
+                    return True
+            if last_state in ("exited", "dead") or restarts > 0:
+                return False
+            sleep(2)
+    return last_state == "running"
+
+
+def _show_bot_container_logs(lines: int = 40) -> None:
+    step_warn("Последние строки лога контейнера:")
+    _dc("logs", "--tail", str(lines), "bot")
+
+
 def _write_docker_env(creds: dict, redis_external: bool) -> bool:
     env_path = os.path.join(PROJECT_DIR, ".env")
     lines = [
@@ -4552,13 +4878,14 @@ def install_bot_docker():
     total = 6
     try:
         step_rule(1, total, "Файлы проекта")
-        if not bootstrap_project_files(branch="main"):
+        source = _prepare_project_source()
+        if not source:
             step_fail("Не удалось подготовить файлы проекта. Установка прервана.")
             return
         if not os.path.isfile(os.path.join(PROJECT_DIR, "docker-compose.yml")):
             step_fail("В проекте нет docker-compose.yml — обновите бота (пункт 7) и повторите.")
             return
-        step_ok("Файлы проекта на месте.")
+        step_ok(f"Файлы проекта на месте ({source}).")
 
         step_rule(2, total, "Конфигурация")
         migrate_settings_layout(PROJECT_DIR, out=console.print)
@@ -4624,8 +4951,11 @@ def install_bot_docker():
             _write_config_value("PG_HOST", "postgres")
             redis_external = False
         _write_config_value("BACK_DIR", "/app/backups")
+        _write_config_value("API_HOST", "0.0.0.0")
+        _write_config_value("WEBAPP_HOST", "0.0.0.0")
         if not _write_docker_env(creds, redis_external):
             return
+        _write_docker_state(external_data=external)
         step_ok("Доступы записаны в config.py и .env.")
 
         step_rule(5, total, "HTTPS для бота")
@@ -4634,14 +4964,15 @@ def install_bot_docker():
 
         step_rule(6, total, "Сборка и запуск")
         console.print("[faint]Первая сборка образа занимает 3–5 минут.[/faint]")
-        args = ["up", "-d", "--build"]
-        if external:
-            args += ["--no-deps", "bot"]
-        result = _dc(*args)
+        result = _dc(*_compose_up_args(build=True))
         if result.returncode != 0:
             step_fail("Не удалось запустить контейнеры. Смотрите вывод выше.")
             return
-        step_ok("Контейнеры запущены.")
+        if not _wait_for_bot_container():
+            step_fail("Контейнер бота не удержался в работе.")
+            _show_bot_container_logs()
+            return
+        step_ok("Контейнеры запущены, бот отвечает.")
         console.print()
         step_ok("Установка в Docker завершена.")
         console.print("[faint]Логи: пункт «Логи контейнера» в меню Docker. Проверьте /start в Telegram.[/faint]")
@@ -4650,19 +4981,30 @@ def install_bot_docker():
 
 
 def update_bot_docker():
-    if not safe_confirm("Обновить код из GitHub и пересобрать образ?", default=True):
+    branch = _read_docker_state().get("branch") or "main"
+    if not safe_confirm(f"Обновить код из ветки {branch} и пересобрать образ?", default=True):
         return
-    if os.path.isdir(os.path.join(PROJECT_DIR, ".git")):
-        pull = subprocess.run(["git", "pull"], cwd=PROJECT_DIR)
-        if pull.returncode != 0:
-            step_warn("git pull не удался — пересобираю из текущих файлов.")
-    else:
-        step_warn("Проект не под git — пересобираю из текущих файлов.")
-    result = _dc("up", "-d", "--build")
-    if result.returncode == 0:
-        step_ok("Бот обновлён и перезапущен.")
-    else:
+    major = _branch_bot_major(branch)
+    if major is not None and major < MIN_DOCKER_BOT_MAJOR:
+        step_warn(f"В ветке {branch} сейчас версия {major} — выберите другую.")
+        branch = _choose_docker_source_branch() or ""
+        if not branch:
+            return
+        _write_docker_state(branch=branch)
+    if not bootstrap_project_files(branch=branch, force=True):
+        step_fail("Не удалось обновить файлы проекта.")
+        return
+    _write_config_value("API_HOST", "0.0.0.0")
+    _write_config_value("WEBAPP_HOST", "0.0.0.0")
+    result = _dc(*_compose_up_args(build=True))
+    if result.returncode != 0:
         step_fail("Пересборка не удалась. Смотрите вывод выше.")
+        return
+    if not _wait_for_bot_container():
+        step_fail("После обновления контейнер бота не удержался в работе.")
+        _show_bot_container_logs()
+        return
+    step_ok(f"Бот обновлён из ветки {branch} и перезапущен.")
 
 
 def manage_bot_docker():
@@ -4705,8 +5047,12 @@ def manage_bot_docker():
         )
         choice = ask_choice(8)
         if choice == "1":
-            _dc("up", "-d")
-            step_ok("Контейнеры запущены.")
+            _dc(*_compose_up_args())
+            if _wait_for_bot_container(timeout_sec=60):
+                step_ok("Контейнеры запущены.")
+            else:
+                step_fail("Бот не поднялся.")
+                _show_bot_container_logs()
         elif choice == "2":
             _dc("restart")
             step_ok("Контейнеры перезапущены.")

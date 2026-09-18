@@ -89,6 +89,7 @@ def get_site_mode() -> str:
 
 
 def is_cabinet_only() -> bool:
+    """Сайт работает только как кабинет: витрина скрыта."""
     return get_site_mode() == "cabinet_only"
 
 

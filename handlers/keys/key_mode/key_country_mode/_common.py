@@ -47,8 +47,8 @@ from hooks.processors import (
     process_remnawave_webapp_override,
 )
 from logger import logger
+from panels import remnawave as remnawave_panel
 from panels._3xui import delete_client, get_xui_instance
-from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
 from services.errors import InsufficientFundsError
 from services.operations import create_client_on_server
 from services.operations.aggregated_links import make_aggregated_link

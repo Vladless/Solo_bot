@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import time
 
@@ -103,6 +104,108 @@ async def _get_inbound_cached(xui: AsyncApi, inbound_id: int) -> Inbound:
     inbound = await xui.inbound.get_by_id(int(inbound_id))
     _inbound_cache[key] = (inbound, now)
     return inbound
+
+
+_NODES_CACHE: dict[str, tuple[list[dict], float]] = {}
+NODES_CACHE_TTL = 60
+
+
+def _is_routable_host(value: str) -> bool:
+    """Проверяет, годится ли адрес инбаунда для клиентской ссылки."""
+    host = (value or "").strip()
+    if not host or host[0] in ("@", "/"):
+        return False
+    if host.lower() == "localhost":
+        return False
+    try:
+        address = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return True
+    return not (address.is_unspecified or address.is_loopback)
+
+
+async def _panel_get(xui: AsyncApi, api_url: str, endpoint: str) -> Any | None:
+    """Выполняет GET к панели под сессией py3xui для ручек, которых нет в клиенте."""
+    session = getattr(xui.inbound, "session", None)
+    if not session:
+        return None
+    url = f"{api_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    try:
+        async with httpx.AsyncClient(cookies={"3x-ui": session}, timeout=10.0) as client:
+            response = await client.get(url)
+        if response.status_code != 200:
+            return None
+        payload = response.json()
+    except Exception as error:
+        logger.debug(f"[XUI] Ручка {endpoint} недоступна: {error}")
+        return None
+    if not isinstance(payload, dict) or not payload.get("success"):
+        return None
+    return payload.get("obj")
+
+
+async def get_panel_nodes(xui: AsyncApi, api_url: str) -> list[dict]:
+    """Возвращает узлы мастер-панели 3x-ui; для панели без узлов список пуст."""
+    now = time.time()
+    cached = _NODES_CACHE.get(api_url)
+    if cached and now - cached[1] < NODES_CACHE_TTL:
+        return cached[0]
+    obj = await _panel_get(xui, api_url, "panel/api/nodes/list")
+    nodes = [node for node in obj if isinstance(node, dict)] if isinstance(obj, list) else []
+    _NODES_CACHE[api_url] = (nodes, now)
+    return nodes
+
+
+async def get_inbound_raw(xui: AsyncApi, api_url: str, inbound_id: int) -> dict | None:
+    """Возвращает инбаунд как его отдаёт панель, вместе с полями узла и стратегии адреса."""
+    obj = await _panel_get(xui, api_url, f"panel/api/inbounds/get/{int(inbound_id)}")
+    return obj if isinstance(obj, dict) else None
+
+
+async def get_inbound_node(xui: AsyncApi, api_url: str, inbound_id: int) -> dict | None:
+    """Возвращает узел, к которому привязан инбаунд, если панель работает мастером."""
+    raw = await get_inbound_raw(xui, api_url, inbound_id)
+    if not raw:
+        return None
+    node_id = raw.get("nodeId")
+    if node_id is None:
+        return None
+    for node in await get_panel_nodes(xui, api_url):
+        if node.get("id") == node_id:
+            return node
+    return None
+
+
+async def resolve_inbound_host(xui: AsyncApi, api_url: str, inbound_id: int, fallback_host: str) -> str:
+    """Возвращает адрес для ссылки по правилу панели: узел, адрес прослушивания или свой адрес."""
+    raw = await get_inbound_raw(xui, api_url, inbound_id)
+    if not raw:
+        return fallback_host
+
+    node_host = ""
+    node_id = raw.get("nodeId")
+    if node_id is not None:
+        for node in await get_panel_nodes(xui, api_url):
+            if node.get("id") == node_id:
+                node_host = str(node.get("address") or "").strip()
+                break
+
+    listen = str(raw.get("listen") or "").strip()
+    listen_host = listen if _is_routable_host(listen) else ""
+    custom_host = str(raw.get("shareAddr") or "").strip()
+
+    strategy = str(raw.get("shareAddrStrategy") or "node").strip().lower()
+    if strategy == "listen":
+        candidates = [listen_host, node_host]
+    elif strategy == "custom":
+        candidates = [custom_host, node_host, listen_host]
+    else:
+        candidates = [node_host, listen_host]
+
+    for candidate in candidates:
+        if candidate:
+            return candidate
+    return fallback_host
 
 
 async def get_xui_instance(api_url: str) -> AsyncApi:

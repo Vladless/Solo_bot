@@ -446,15 +446,12 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
 
         file_size = os.path.getsize(backup_file_path)
         if file_size <= TELEGRAM_SEND_LIMIT and not backup_file_path.endswith(".sql"):
-            # База — единственное, без чего не восстановиться, поэтому она уходит
-            # своим файлом и не зависит от того, сколько весит папка.
             await _send_dump_alongside(active_bot, backup_file_path, chat_id, thread_id, TELEGRAM_SEND_LIMIT)
 
         if file_size > TELEGRAM_SEND_LIMIT:
             size_mb = file_size / (1024 * 1024)
             targets = [chat_id] if chat_id else list(ADMIN_ID)
 
-            # Когда бэкап и есть дамп, второй раз его снимать незачем — режем этот.
             already_dump = backup_file_path.endswith(".sql")
             if already_dump:
                 db_path, db_err = backup_file_path, None
@@ -470,9 +467,7 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
                 kw_parts: dict = {"parse_mode": "HTML"}
                 if chat_id and thread_id:
                     kw_parts["message_thread_id"] = thread_id
-                parts_sent = await _send_dump_in_parts(
-                    active_bot, targets, kw_parts, db_path, TELEGRAM_SEND_LIMIT
-                )
+                parts_sent = await _send_dump_in_parts(active_bot, targets, kw_parts, db_path, TELEGRAM_SEND_LIMIT)
                 if parts_sent:
                     db_note = (
                         f"Дамп {db_size_mb:.0f} МБ ушёл {parts_sent} частями — "

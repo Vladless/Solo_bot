@@ -8,16 +8,12 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.bootstrap import PAYMENTS_CONFIG
+from core.rate_limit import rate_limit_hit
 from core.settings.buttons_config import BUTTONS_CONFIG
 from core.settings.money_config import get_currency_mode
-from database import (
-    check_coupon_usage,
-    get_balance,
-    get_coupon_by_code,
-    has_any_coupon_usage,
-)
-from database.coupons import apply_percent_coupon
+from database import get_balance, get_coupon_by_code_ci
 from database.temporary_data import create_temporary_data, get_temporary_data
+from handlers.payments.checkout_coupon import apply_checkout_coupon, payload_base_price
 from handlers.payments.currency_flow import (
     build_currency_choice_kb,
     currency_label,
@@ -25,11 +21,12 @@ from handlers.payments.currency_flow import (
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
+from services.errors import ServiceError
 from services.payments.providers import get_providers_with_hooks, sort_provider_names
 from settings import buttons as btn
+from settings.cache_config import COUPON_ATTEMPTS_PER_MINUTE
 from settings.config import TRIBUTE_LINK, USE_NEW_PAYMENT_FLOW
 from settings.texts import (
-    FASTFLOW_COUPON_APPLIED_TEMPLATE,
     FAST_PAY_CHOOSE_CURRENCY,
     FAST_PAY_CHOOSE_PROVIDER,
     RESUME_CHECKOUT_EXPIRED,
@@ -106,6 +103,16 @@ async def try_fast_payment_flow(
     if not USE_NEW_PAYMENT_FLOW:
         return False
 
+    temp_payload, required_amount, coupon_note = await apply_checkout_coupon(
+        session, tg_id, temp_key, temp_payload, required_amount
+    )
+    if coupon_note and required_amount == 0:
+        await state.update_data(temp_key=temp_key, temp_payload=temp_payload, required_amount=0)
+        await state.set_state(None)
+        return await _finish_from_balance(callback_query.message, session, temp_key, temp_payload, tg_id)
+
+    note_block = f"{coupon_note}\n\n" if coupon_note else ""
+
     payment_config = await get_payment_providers_config()
     providers_map = await get_providers_with_hooks(payment_config)
 
@@ -180,7 +187,7 @@ async def try_fast_payment_flow(
             required_amount,
             getattr(callback_query.from_user, "language_code", None),
         )
-        text = f"{lead_text}\n\n{FAST_PAY_CHOOSE_CURRENCY}"
+        text = f"{lead_text}\n\n{note_block}{FAST_PAY_CHOOSE_CURRENCY}"
         await state.update_data(
             temp_key=temp_key,
             temp_payload=temp_payload,
@@ -195,7 +202,10 @@ async def try_fast_payment_flow(
         return True
 
     total_options = len(providers) + (1 if tribute_enabled else 0)
-    if len(providers) == 1 and total_options == 1:
+    coupon_offer = bool(BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True)) and not temp_payload.get(
+        "applied_coupon_code"
+    )
+    if len(providers) == 1 and total_options == 1 and not coupon_offer:
         single_provider = providers[0]
         cfg = providers_map.get(single_provider) or {}
         currency = cfg.get("currency")
@@ -246,7 +256,7 @@ async def try_fast_payment_flow(
     )
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=f"{lead_text}\n\n{FAST_PAY_CHOOSE_PROVIDER}",
+        text=f"{lead_text}\n\n{note_block}{FAST_PAY_CHOOSE_PROVIDER}",
         reply_markup=keyboard.as_markup(),
     )
     return True
@@ -425,12 +435,10 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
     input_text = "Введите купон:"
     amount_not_found_text = "Сумма не найдена"
     not_found_text = "Купон не найден"
-    exhausted_text = "Купон исчерпан"
-    already_used_text = "Вы уже использовали этот купон"
-    new_users_only_text = "Купон доступен только новым пользователям"
     not_applicable_text = "Купон не применим к текущей сумме"
     days_coupon_text = "Это купон на дни подписки — активируйте его в меню «Купон», он продлит активный ключ."
     no_methods_text = "Нет доступных способов оплаты"
+    too_many_tries_text = "Слишком много попыток. Попробуйте через минуту."
 
     back_markup = (
         InlineKeyboardBuilder()
@@ -441,6 +449,11 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
     code = (message.text or "").strip()
     if not code:
         await message.answer(input_text, reply_markup=back_markup)
+        return
+
+    _, exceeded = await rate_limit_hit(f"coupon_try:{message.from_user.id}", COUPON_ATTEMPTS_PER_MINUTE, 60)
+    if exceeded:
+        await message.answer(too_many_tries_text, reply_markup=back_markup)
         return
 
     data = await state.get_data()
@@ -457,45 +470,10 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         await message.answer(amount_not_found_text, reply_markup=back_markup)
         return
 
-    coupon = await get_coupon_by_code(session, code)
+    coupon = await get_coupon_by_code_ci(session, code)
     if not coupon:
         await message.answer(not_found_text, reply_markup=back_markup)
         return
-
-    if bool(getattr(coupon, "is_used", False)):
-        await message.answer(exhausted_text, reply_markup=back_markup)
-        return
-
-    usage_count = getattr(coupon, "usage_count", None)
-    usage_limit = getattr(coupon, "usage_limit", None)
-    if usage_count is not None and usage_limit is not None and int(usage_count) >= int(usage_limit):
-        await message.answer(exhausted_text, reply_markup=back_markup)
-        return
-
-    if await check_coupon_usage(session, coupon.id, message.from_user.id):
-        await message.answer(already_used_text, reply_markup=back_markup)
-        return
-
-    if bool(getattr(coupon, "new_users_only", False)):
-        if await has_any_coupon_usage(session, message.from_user.id):
-            await message.answer(new_users_only_text, reply_markup=back_markup)
-            return
-
-    balance_now = await get_balance(session, message.from_user.id)
-
-    base_price_raw = temp_payload.get("selected_price_rub")
-    if base_price_raw is None:
-        base_price_raw = temp_payload.get("cost")
-    if base_price_raw is None:
-        try:
-            base_price_raw = int(float(balance_now) + float(required_amount))
-        except Exception:
-            base_price_raw = required_amount
-
-    try:
-        base_price = int(base_price_raw)
-    except (TypeError, ValueError):
-        base_price = int(required_amount)
 
     percent_raw = int(getattr(coupon, "percent", 0) or 0)
     amount_raw = int(getattr(coupon, "amount", 0) or 0)
@@ -506,9 +484,7 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         return
 
     if percent_raw <= 0 and amount_raw > 0:
-        # Купон на баланс закрывает недостачу деньгами: зачисляем и пересчитываем.
         from services.coupons import apply_fixed_coupon
-        from services.errors import ServiceError
 
         try:
             await apply_fixed_coupon(session=session, user_id=message.from_user.id, tg_id=message.from_user.id, code=code)
@@ -521,7 +497,7 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
             return
 
         balance_after = await get_balance(session, message.from_user.id)
-        price_now = int(temp_payload.get("selected_price_rub") or temp_payload.get("cost") or required_amount)
+        price_now = int(payload_base_price(temp_payload) or required_amount)
         left = int(max(0, ceil(float(price_now) - float(balance_after))))
         payload_after = dict(temp_payload)
         payload_after["required_amount"] = left
@@ -537,37 +513,21 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         )
         return
 
-    new_price, discount = apply_percent_coupon(int(base_price), coupon)
-    if int(discount) <= 0:
-        await message.answer(not_applicable_text, reply_markup=back_markup)
+    try:
+        temp_payload_updated, required_amount_new, coupon_text = await apply_checkout_coupon(
+            session, message.from_user.id, str(temp_key), temp_payload, required_amount, coupon_code=code
+        )
+    except ServiceError as e:
+        await message.answer(f"❌ {e.message}", reply_markup=back_markup)
         return
 
-    required_amount_new = int(max(0, ceil(float(new_price) - float(balance_now))))
-
-    percent_value = int(getattr(coupon, "percent", 0) or 0)
-
-    temp_payload_updated = dict(temp_payload)
-    temp_payload_updated["required_amount"] = int(required_amount_new)
-    temp_payload_updated["pending_coupon_id"] = int(coupon.id)
-    # Без кода скидка теряется: списание пересчитывает цену заново по тарифу.
-    temp_payload_updated["applied_coupon_code"] = code
-    if "selected_price_rub" in temp_payload_updated:
-        temp_payload_updated["selected_price_rub"] = int(new_price)
-    if "cost" in temp_payload_updated:
-        temp_payload_updated["cost"] = int(new_price)
-
-    await create_temporary_data(session, message.from_user.id, str(temp_key), temp_payload_updated)
+    if not coupon_text:
+        await message.answer(not_applicable_text, reply_markup=back_markup)
+        return
 
     await state.update_data(
         required_amount=int(required_amount_new),
         temp_payload=temp_payload_updated,
-        applied_coupon={
-            "code": code,
-            "percent": percent_value,
-            "discount": int(discount),
-            "old_price": int(base_price),
-            "new_price": int(new_price),
-        },
     )
     await state.set_state(None)
 
@@ -614,14 +574,6 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         message.from_user.id,
         int(required_amount_new),
         getattr(message.from_user, "language_code", None),
-    )
-
-    coupon_text = FASTFLOW_COUPON_APPLIED_TEMPLATE.format(
-        code=code,
-        percent=percent_value,
-        old_price=int(base_price),
-        discount=int(discount),
-        new_price=int(new_price),
     )
 
     if multicurrency_mode and not one_screen:

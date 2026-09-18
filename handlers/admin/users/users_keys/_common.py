@@ -40,7 +40,7 @@ from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_admin_key_edit_menu
 from logger import logger
 from middlewares.session import release_session_early
-from panels.remnawave import RemnawaveAPI
+from panels import remnawave as remnawave_panel
 from services.operations import (
     create_key_on_cluster,
     delete_key_from_cluster,

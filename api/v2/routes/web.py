@@ -2298,7 +2298,6 @@ async def get_pack_settings(
     return {"pack": pack, "values": values}
 
 
-# Настройки набора едут в теме витрины, а она уходит каждому посетителю: держим их маленькими.
 _PACK_SETTINGS_MAX_KEYS = 64
 _PACK_SETTINGS_MAX_VALUE_LEN = 2000
 

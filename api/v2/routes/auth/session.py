@@ -575,7 +575,6 @@ async def my_search(
     pattern = f"%{query_raw.lower()}%"
     hits: list[AccountSearchHit] = []
 
-    # Keys: alias / email / server_id
     keys_rows = (
         (
             await session.execute(
@@ -602,7 +601,6 @@ async def my_search(
             )
         )
 
-    # Payments: provider / metadata.purpose
     payments_rows = (
         (
             await session.execute(
@@ -637,7 +635,6 @@ async def my_search(
             )
         )
 
-    # Notifications: title / message
     notif_rows = (
         (
             await session.execute(

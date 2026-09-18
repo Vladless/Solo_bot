@@ -11,7 +11,7 @@ from database.models import Key, Server, Tariff
 from filters.admin import IsAdminFilter
 from logger import logger
 from middlewares.session import release_session_early
-from panels.remnawave import RemnawaveAPI
+from panels import remnawave as remnawave_panel
 from services.operations import renew_key_in_cluster
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
@@ -214,7 +214,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
 
             await release_session_early(session)
 
-            remna = RemnawaveAPI(api_url)
+            remna = remnawave_panel.RemnawaveAPI(api_url)
             try:
                 affected = await remna.bulk_set_expiry(items, username=REMNAWAVE_LOGIN, password=REMNAWAVE_PASSWORD)
             finally:

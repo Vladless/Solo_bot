@@ -9,7 +9,7 @@ from database.access.resolution import chat_id_for_user
 from database.keys import delete_key, mark_key_as_frozen, mark_key_as_unfrozen, update_key_subscription_links
 from database.models import Key
 from logger import logger
-from panels.remnawave import RemnawaveAPI
+from panels import remnawave as remnawave_panel
 from services.operations import (
     delete_key_from_cluster,
     renew_key_in_cluster,
@@ -111,7 +111,7 @@ async def bulk_reissue_link(session: AsyncSession, keys: list[Key], bot) -> tupl
                 if not api_url:
                     fail += 1
                     continue
-                api = RemnawaveAPI(api_url)
+                api = remnawave_panel.RemnawaveAPI(api_url)
                 try:
                     if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
                         await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)

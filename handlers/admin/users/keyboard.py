@@ -518,13 +518,6 @@ def build_user_ban_type_kb(user_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-class AdminUserGiftCallback(LegacyTgRefAlias, CallbackData, prefix="admin_gift"):
-    action: str
-    user_id: int
-    gift_id: str | None = None
-    page: int = 0
-
-
 GIFTS_PER_PAGE = 10
 
 

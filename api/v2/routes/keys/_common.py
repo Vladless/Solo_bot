@@ -24,7 +24,6 @@ from api.depends import (
 from api.shared.billing_actor import resolve_billing_user_id
 from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from api.v2.base_crud import generate_crud_router
-from api.v2.routes.coupon_pricing import resolve_percent_coupon_pricing
 from api.v2.schemas import KeyBase, KeyCreateRequest, KeyResponse, KeyUpdate
 from api.v2.schemas.web_public import (
     AccountKeyActionResponse,
@@ -73,6 +72,7 @@ from panels._3xui import delete_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
 from panels.remnawave_runtime import get_remnawave_profile, invalidate_remnawave_profile, with_remnawave_api
 from services.addons import calc_pack_full_price_rub, get_pack_flags
+from services.coupons import resolve_percent_coupon_soft
 from services.keys import normalize_expiry_ms
 from services.operations import (
     create_client_on_server,

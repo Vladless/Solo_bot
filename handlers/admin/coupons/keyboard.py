@@ -76,7 +76,12 @@ def format_coupons_list(coupons: list, username_bot: str) -> str:
         amount_value = coupon.get("amount") or 0
 
         if percent_value is not None and int(percent_value) > 0:
-            value_line = f"Скидка: {int(percent_value)}%"
+            limits = []
+            if coupon.get("min_order_amount"):
+                limits.append(f"от {int(coupon['min_order_amount'])} ₽")
+            if coupon.get("max_discount_amount"):
+                limits.append(f"до {int(coupon['max_discount_amount'])} ₽")
+            value_line = f"Скидка: {int(percent_value)}%" + (f" ({', '.join(limits)})" if limits else "")
         elif days_value is not None and int(days_value) > 0:
             value_line = f"Продление: {format_days(int(days_value))}"
         elif int(amount_value) > 0:

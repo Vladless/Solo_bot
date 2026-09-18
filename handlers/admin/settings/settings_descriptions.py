@@ -98,6 +98,8 @@ SETTING_HINTS: Final[dict[str, str]] = {
     "WEB_NOTIFY_KEY_CREATED_MESSAGE": "Текст уведомления о создании. Переменная: {email}",
     "WEB_NOTIFY_KEY_EXPIRY_TITLE": "Веб-уведомление об истечении. Переменная: {email}",
     "WEB_NOTIFY_KEY_EXPIRY_MESSAGE": "Текст уведомления об истечении. Переменная: {email}",
+    "WEB_NOTIFY_KEY_EXPIRED_TITLE": "Веб-уведомление об истёкшей подписке. Переменная: {email}",
+    "WEB_NOTIFY_KEY_EXPIRED_MESSAGE": "Текст уведомления об истёкшей подписке. Переменная: {email}",
     "WEB_NOTIFY_KEY_RENEWED_TITLE": "Веб-уведомление о продлении. Переменные: {email}, {expiry}",
     "WEB_NOTIFY_KEY_RENEWED_MESSAGE": "Текст уведомления о продлении. Переменные: {email}, {expiry}",
     "WEB_NOTIFY_GIFT_TITLE": "Веб-уведомление о подарке. Переменные: {name}, {duration}",

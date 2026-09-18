@@ -26,6 +26,17 @@ def safe_return_path(return_to: str | None, default: str) -> str:
     return path
 
 
+LOGIN_MARKER_PARAM = "auth"
+
+
+def with_login_marker(path: str) -> str:
+    """Помечает возврат после входа: клиент забирает личность из cookie-сессии."""
+    if f"{LOGIN_MARKER_PARAM}=1" in path:
+        return path
+    separator = "&" if "?" in path else "?"
+    return f"{path}{separator}{LOGIN_MARKER_PARAM}=1"
+
+
 _TRUSTED_PROXY_CIDRS: list[str] = []
 
 

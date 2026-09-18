@@ -38,3 +38,11 @@ class CouponUsage(DictLikeMixin, Base):
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     tg_id = Column(BigInteger, nullable=True, index=True)
     used_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CouponHold(DictLikeMixin, Base):
+    __tablename__ = "coupon_holds"
+
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    coupon_id = Column(Integer, ForeignKey("coupons.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

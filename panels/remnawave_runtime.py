@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import time
 
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +13,6 @@ from core.executor import run_io
 from core.redis_cache import cache_delete_pattern, cache_get, cache_key, cache_set
 from database import get_servers
 from logger import logger
-from panels.remnawave import RemnawaveAPI
 from settings.cache_config import (
     REMNAWAVE_ACTION_TIMEOUT_SEC,
     REMNAWAVE_MAX_CONCURRENCY,
@@ -23,7 +24,19 @@ from settings.cache_config import (
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 
 
+if TYPE_CHECKING:
+    from panels.remnawave import RemnawaveAPI
+
+
 _remnawave_semaphore = asyncio.Semaphore(REMNAWAVE_MAX_CONCURRENCY)
+
+
+def _panel_api(api_url: str) -> RemnawaveAPI:
+    """Создаёт клиент панели отложенным импортом её модуля."""
+    from panels.remnawave import RemnawaveAPI
+
+    return RemnawaveAPI(api_url)
+
 
 _PANEL_ERROR = object()
 
@@ -60,7 +73,7 @@ async def _fetch_profile_http_only(
     api_url: str, client_id: str, username: str | None = None
 ) -> dict[str, Any] | None | object:
     """Только HTTP к панели: логин + устройства + юзер. Без кэша и без resolve. Вызывается из потока."""
-    api = RemnawaveAPI(api_url)
+    api = _panel_api(api_url)
     try:
         logged_in = True
         if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
@@ -132,7 +145,7 @@ def _run_with_api_in_thread(
     """Синхронная обёртка: логин + operation(api) в отдельном event loop в потоке."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    api = RemnawaveAPI(api_url)
+    api = _panel_api(api_url)
     try:
         logged_in = True
         if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
@@ -272,7 +285,7 @@ async def fetch_all_remnawave_traffic(
         logger.warning("[Bulk Traffic] Нет доступных Remnawave-серверов")
         return {}
 
-    api = RemnawaveAPI(api_url)
+    api = _panel_api(api_url)
     try:
         all_users = await asyncio.wait_for(
             api.get_all_users_time(
@@ -292,7 +305,6 @@ async def fetch_all_remnawave_traffic(
 
     result: dict[str, int] = {}
     for user in all_users:
-        # в Remnawave 3.x поля uuid нет, наш client_id лежит в vlessUuid
         uuid = user.get("vlessUuid") or user.get("uuid")
         if not uuid:
             continue
@@ -308,7 +320,7 @@ async def fetch_all_remnawave_traffic(
 @asynccontextmanager
 async def remnawave_api(api_url: str):
     """Отдаёт клиент панели и закрывает его на выходе."""
-    api = RemnawaveAPI(api_url)
+    api = _panel_api(api_url)
     try:
         yield api
     finally:

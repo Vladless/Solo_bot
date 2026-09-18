@@ -186,7 +186,7 @@ async def user_key_addons_preview(
             )
         )
         extra_price_rub = int(max(0, total_price_rub - base_price_for_current))
-    final_extra_price_rub, discount_rub, _coupon_id, applied_coupon_code = await resolve_percent_coupon_pricing(
+    final_extra_price_rub, discount_rub, _coupon_id, applied_coupon_code = await resolve_percent_coupon_soft(
         session=session,
         billing_user_id=int(billing_user_id),
         base_price_rub=int(max(0, extra_price_rub)),
@@ -425,7 +425,7 @@ async def user_key_apply_addons(
         )
         if device_downgrade or traffic_downgrade:
             raise HTTPException(status_code=400, detail="Снижение параметров через сайт пока не поддерживается")
-    final_extra_price_rub, discount_rub, coupon_id, applied_coupon_code = await resolve_percent_coupon_pricing(
+    final_extra_price_rub, discount_rub, coupon_id, applied_coupon_code = await resolve_percent_coupon_soft(
         session=session,
         billing_user_id=int(billing_user_id),
         base_price_rub=int(max(0, extra_price_rub)),

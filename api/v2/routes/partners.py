@@ -147,7 +147,6 @@ async def _resolve_partner_user(session: AsyncSession, request: Request, identit
     ).first()
     if row is None:
         raise HTTPException(status_code=400, detail="Партнерский профиль недоступен")
-    # Партнёрские таблицы модуля ключуются tg_id — берём совместимый ref одной канонической точкой.
     return int(row[0]), await ensure_legacy_tg_ref(session, int(row[0]))
 
 

@@ -130,7 +130,12 @@ async def handle_percent_coupon_selection(callback_query: CallbackQuery, state: 
     text = menu_text(
         "Купон на скидку",
         "Пришлите данные одной строкой.",
-        quote("Формат: код, процент, лимит.\nНапример: <code>SALE20 20 10</code> — скидка 20%."),
+        quote(
+            "Формат: код, процент, лимит, минимальная сумма, максимальная скидка.\n"
+            "Последние два не обязательны.\n"
+            "Например: <code>SALE20 20 10</code> — скидка 20%.\n"
+            "<code>SALE20 20 10 1000 300</code> — та же скидка от 1000 ₽ и не больше 300 ₽."
+        ),
     )
     await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
     await state.set_state(AdminCouponsState.waiting_for_percent_data)
@@ -319,10 +324,10 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
     kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
     kb.adjust(1)
 
-    if len(parts) != 3:
+    if len(parts) not in (3, 4, 5):
         text = menu_text(
             "Купоны",
-            "❌ Нужны три значения через пробел.",
+            "❌ Нужны три значения через пробел, ещё два — по желанию.",
         )
         await message.answer(text=text, reply_markup=kb.as_markup())
         return
@@ -331,12 +336,21 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
         coupon_code = parts[0]
         percent = int(parts[1])
         usage_limit = int(parts[2])
+        min_order_amount = int(parts[3]) if len(parts) > 3 else None
+        max_discount_amount = int(parts[4]) if len(parts) > 4 else None
         if percent <= 0 or percent > 100:
             raise ValueError
         if usage_limit <= 0:
             raise ValueError
+        if min_order_amount is not None and min_order_amount < 0:
+            raise ValueError
+        if max_discount_amount is not None and max_discount_amount <= 0:
+            raise ValueError
     except ValueError:
-        text = menu_text("Купоны", "❌ Процент от 1 до 100, лимит — число больше нуля.")
+        text = menu_text(
+            "Купоны",
+            "❌ Процент от 1 до 100, лимит больше нуля, минимальная сумма от нуля, максимальная скидка больше нуля.",
+        )
         await message.answer(text=text, reply_markup=kb.as_markup())
         return
 
@@ -349,6 +363,8 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
             days=None,
             new_users_only=False,
             percent=percent,
+            min_order_amount=min_order_amount,
+            max_discount_amount=max_discount_amount,
         )
         if not ok:
             await message.answer(
@@ -360,7 +376,11 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
         text = menu_text(
             "Купоны",
             f"✅ Купон <b>{coupon_code}</b> создан.",
-            quote(f"Скидка: {percent}%\nЛимит: {usage_limit} раз"),
+            quote(
+                f"Скидка: {percent}%\nЛимит: {usage_limit} раз"
+                + (f"\nОт суммы: {min_order_amount} ₽" if min_order_amount else "")
+                + (f"\nНе больше: {max_discount_amount} ₽" if max_discount_amount else "")
+            ),
         )
 
         kb = InlineKeyboardBuilder()
@@ -481,24 +501,30 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         )
         return
 
-    percent_value = coupon.get("percent")
-    if percent_value is not None and int(percent_value) > 0:
-        await safe_answer_inline_query(
-            inline_query,
-            results=[],
-            switch_pm_text="Процентные купоны не публикуются ссылкой",
-            switch_pm_parameter="coupons",
-            cache_time=1,
-        )
-        return
-
     coupon_link = f"https://telegram.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
     title = f"Купон {coupon['code']}"
 
     days_value = coupon.get("days")
     amount_value = coupon.get("amount") or 0
+    percent_value = coupon.get("percent") or 0
 
-    if days_value is not None and int(days_value) > 0:
+    if int(percent_value) > 0:
+        percent_int = int(percent_value)
+        min_order = coupon.get("min_order_amount")
+        max_discount = coupon.get("max_discount_amount")
+        conditions = []
+        if min_order:
+            conditions.append(f"от {int(min_order)} рублей")
+        if max_discount:
+            conditions.append(f"не больше {int(max_discount)} рублей")
+        tail = f"\n📌 <b>Условия:</b> {', '.join(conditions)}" if conditions else ""
+        description = f"Скидка {percent_int}% на оплату!"
+        message_text = (
+            f"🎫 <b>Купон:</b> {coupon['code']}\n"
+            f"🔖 <b>Скидка:</b> {percent_int}%{tail}\n"
+            f"👇 Нажми, скидка применится при оплате!"
+        )
+    elif days_value is not None and int(days_value) > 0:
         days_int = int(days_value)
         description = f"Продли подписку на {format_days(days_int)}!"
         message_text = (

@@ -129,6 +129,8 @@ WEB_TITLES: Final[dict[str, str]] = {
     "WEB_NOTIFY_KEY_CREATED_MESSAGE": "Подписка создана — текст",
     "WEB_NOTIFY_KEY_EXPIRY_TITLE": "Подписка истекает — заголовок",
     "WEB_NOTIFY_KEY_EXPIRY_MESSAGE": "Подписка истекает — текст",
+    "WEB_NOTIFY_KEY_EXPIRED_TITLE": "Подписка истекла — заголовок",
+    "WEB_NOTIFY_KEY_EXPIRED_MESSAGE": "Подписка истекла — текст",
     "WEB_NOTIFY_KEY_RENEWED_TITLE": "Подписка продлена — заголовок",
     "WEB_NOTIFY_KEY_RENEWED_MESSAGE": "Подписка продлена — текст",
     "WEB_NOTIFY_GIFT_TITLE": "Подарок получен — заголовок",

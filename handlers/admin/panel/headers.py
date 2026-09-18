@@ -85,7 +85,6 @@ def wrap_text(text: str, width: float = MENU_TEXT_EM) -> str:
 
 RULE_CHAR_EM = 0.52
 
-# Широкий экран для редакторов: в ряду несколько кнопок, и подписям нужна ширина.
 WIDE_TEXT_EM = 26.0
 WIDE_QUOTE_TEXT_EM = 25.0
 

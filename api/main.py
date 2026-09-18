@@ -237,7 +237,6 @@ async def security_and_cache_middleware(request: Request, call_next):
         return StarletteResponse(content=body, status_code=200, headers=headers, media_type=response.media_type)
 
     response.headers.setdefault("Cache-Control", "no-store")
-    # Ответ зависит от сессии: без этого общий кеш по пути к клиенту может отдать чужой.
     response.headers.setdefault("Vary", "Cookie")
     return response
 

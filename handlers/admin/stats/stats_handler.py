@@ -295,8 +295,6 @@ def _render_stats_segment(index: int, ctx: dict) -> str:
 
     header = menu_title(STATS_SEGMENTS[index][2])
     content = "\n".join(b for b in blocks if b)
-    # прогноз (если он у сегмента есть) отделяем от контента пустой строкой;
-    # значения всех таблиц экрана выравниваем по одной вертикали.
     if content and forecast:
         body = align_screen(f"{content}\n\n{forecast}")
     else:

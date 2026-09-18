@@ -73,6 +73,7 @@ packs/
 reference/
 
 .license_state
+.solobot_docker.json
 .license_lease
 Solo_backup/
 

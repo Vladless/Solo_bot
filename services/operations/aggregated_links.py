@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MODES_CONFIG
 from database import filter_cluster_by_subgroup, get_key_details, get_tariff_by_id
 from logger import logger
-from panels._3xui import get_vless_link_for_client, get_xui_instance
+from panels._3xui import get_vless_link_for_client, get_xui_instance, resolve_inbound_host
 from panels.remnawave_runtime import with_remnawave_api
 from settings.config import HAPP_CRYPTOLINK, LEGACY_LINKS, PUBLIC_LINK, SUPERNODE
 
@@ -84,6 +84,7 @@ async def _try_build_3xui_vless(servers: list, email: str) -> str | None:
             from servers import extract_host
 
             host = extract_host(si.get("subscription_url") or si.get("api_url"))
+            host = await resolve_inbound_host(xui, si["api_url"], int(inbound_id), host)
             return await get_vless_link_for_client(
                 xui=xui,
                 inbound_id=int(inbound_id),

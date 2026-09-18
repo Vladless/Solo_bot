@@ -280,6 +280,7 @@ async def notify_web(
             "payment": ("WEB_NOTIFY_PAYMENT_TITLE", "WEB_NOTIFY_PAYMENT_MESSAGE"),
             "key_created": ("WEB_NOTIFY_KEY_CREATED_TITLE", "WEB_NOTIFY_KEY_CREATED_MESSAGE"),
             "key_expiry": ("WEB_NOTIFY_KEY_EXPIRY_TITLE", "WEB_NOTIFY_KEY_EXPIRY_MESSAGE"),
+            "key_expired": ("WEB_NOTIFY_KEY_EXPIRED_TITLE", "WEB_NOTIFY_KEY_EXPIRED_MESSAGE"),
             "key_renewed": ("WEB_NOTIFY_KEY_RENEWED_TITLE", "WEB_NOTIFY_KEY_RENEWED_MESSAGE"),
             "gift_received": ("WEB_NOTIFY_GIFT_TITLE", "WEB_NOTIFY_GIFT_MESSAGE"),
         }

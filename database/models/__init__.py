@@ -2,7 +2,7 @@ from ._base import Base, DictLikeMixin
 from .admin import Admin, Setting
 from .audit import AuditEvent
 from .bonuses import DailyBonusClaim
-from .coupons import Coupon, CouponUsage
+from .coupons import Coupon, CouponHold, CouponUsage
 from .gifts import Gift, GiftUsage
 from .identity import Identity
 from .identity_notif_prefs import IdentityNotifPref
@@ -61,6 +61,7 @@ __all__ = [
     "DailyBonusClaim",
     "Coupon",
     "CouponUsage",
+    "CouponHold",
     "Referral",
     "Notification",
     "ScheduledBroadcast",

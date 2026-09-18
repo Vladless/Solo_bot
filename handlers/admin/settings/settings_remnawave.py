@@ -14,7 +14,7 @@ from core.settings.remnawave_config import (
 )
 from database import async_session_maker, get_servers
 from logger import logger
-from panels.remnawave import RemnawaveAPI
+from panels import remnawave as remnawave_panel
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 
 from ..panel.headers import card, menu_text, quote, section
@@ -146,7 +146,7 @@ async def _fetch_all_hosts() -> list[tuple[str, dict[str, Any]]]:
             if not api_url or api_url in seen_panels:
                 continue
             seen_panels.add(api_url)
-            api = RemnawaveAPI(api_url)
+            api = remnawave_panel.RemnawaveAPI(api_url)
             try:
                 if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
                     ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
@@ -183,7 +183,7 @@ async def _fetch_all_nodes() -> list[tuple[str, dict[str, Any]]]:
             if not api_url or api_url in seen_panels:
                 continue
             seen_panels.add(api_url)
-            api = RemnawaveAPI(api_url)
+            api = remnawave_panel.RemnawaveAPI(api_url)
             try:
                 if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
                     ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)

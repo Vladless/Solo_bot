@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.depends import get_session, validate_redirect_url, verify_identity_admin, verify_identity_token
 from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from api.v2.base_crud import generate_crud_router
-from api.v2.routes.coupon_pricing import resolve_percent_coupon_pricing
 from api.v2.schemas import TariffBase, TariffResponse, TariffUpdate
 from api.v2.schemas.tariffs import TariffGroup, TariffPublic
 from api.v2.schemas.web_public import (
@@ -31,6 +30,7 @@ from database.models import Key, Server, Tariff
 from database.tariffs import get_tariff_by_id
 from database.temporary_data import create_temporary_data
 from logger import logger
+from services.coupons import resolve_percent_coupon_soft
 from services.errors import InsufficientFundsError
 from services.keys import create_vpn_key_headless
 from services.payments.payment_links import PaymentLinkRequest, create_payment_link
@@ -238,7 +238,7 @@ async def purchase_tariff_with_balance(
     price = int(calculate_config_price(tariff, body.selected_device_limit, body.selected_traffic_gb))
     if price <= 0:
         raise HTTPException(status_code=400, detail="Некорректная цена тарифа")
-    final_price, discount_rub, coupon_id, applied_coupon_code = await resolve_percent_coupon_pricing(
+    final_price, discount_rub, coupon_id, applied_coupon_code = await resolve_percent_coupon_soft(
         session=session,
         billing_user_id=int(tg_id),
         base_price_rub=int(price),

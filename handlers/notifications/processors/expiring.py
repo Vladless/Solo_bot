@@ -182,16 +182,7 @@ async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], ph
             "notification_id": notification_id,
         })
 
-        try:
-            await notify_web(
-                ctx.session,
-                user_ref=tg_id,
-                type="key_expiry",
-                template_vars={"email": email},
-                data={"email": email, "client_id": getattr(key, "client_id", None)},
-            )
-        except Exception as e:
-            logger.warning(f"[Notifications] web-уведомление key_expiry tg_id={tg_id}: {e}")
+        await _notify_web_expiry(ctx, key)
 
     if messages:
         results = await send_messages_with_limit(ctx.bot, messages)
@@ -201,10 +192,23 @@ async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], ph
                 logger.info(f"Уведомление {notify_type} отправлено {msg['tg_id']}")
 
 
+async def _notify_web_expiry(ctx: NotificationContext, key) -> None:
+    """Дублирует уведомление об истекающей подписке в веб-кабинет."""
+    email = key.email or ""
+    await notify_web(
+        ctx.session,
+        user_ref=key.tg_id,
+        type="key_expiry",
+        template_vars={"email": email},
+        data={"email": email, "client_id": getattr(key, "client_id", None)},
+    )
+
+
 async def _send_expiry_warning(ctx: NotificationContext, key, photo: str) -> bool:
     expiry_data = await prepare_key_expiry_data(key, ctx.session, ctx.current_time)
     text = _build_expiry_text(key.email or "", expiry_data)
     keyboard = build_notification_kb(key.email or "", getattr(key, "client_id", None))
+    await _notify_web_expiry(ctx, key)
     return await send_notification(ctx.bot, key.tg_id, photo, text, keyboard)
 
 
@@ -212,6 +216,7 @@ async def _send_change_tariff(ctx: NotificationContext, key, photo: str) -> bool
     expiry_data = await prepare_key_expiry_data(key, ctx.session, ctx.current_time)
     text = _build_expiry_text(key.email or "", expiry_data, cannot_renew=True)
     keyboard = build_change_tariff_kb(key.email or "", getattr(key, "client_id", None))
+    await _notify_web_expiry(ctx, key)
     return await send_notification(ctx.bot, key.tg_id, photo, text, keyboard)
 
 
@@ -242,4 +247,11 @@ async def _send_renewed(ctx: NotificationContext, key, tariff: dict, new_expiry_
     )
 
     keyboard = build_notification_expired_kb()
+    await notify_web(
+        ctx.session,
+        user_ref=key.tg_id,
+        type="key_renewed",
+        template_vars={"email": key.email or "", "expiry": formatted_expiry_date},
+        data={"email": key.email or "", "client_id": getattr(key, "client_id", None)},
+    )
     return await send_notification(ctx.bot, key.tg_id, "pic_renewed.jpg", text, keyboard)

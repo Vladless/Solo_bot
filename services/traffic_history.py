@@ -63,6 +63,7 @@ async def snapshot_all_key_traffic(session: AsyncSession) -> int:
 
 
 async def get_traffic_history(session: AsyncSession, client_id: str, days: int = 30) -> list[dict]:
+    """Отдаёт историю трафика за период, добивая дни без данных нулями."""
     days = max(1, min(365, days))
     today = _dt.datetime.utcnow().date()
     since = today - _dt.timedelta(days=days - 1)
@@ -85,8 +86,6 @@ async def get_traffic_history(session: AsyncSession, client_id: str, days: int =
         return []
 
     out: list[dict] = []
-    # Достраиваем ведущие дни без данных нулями — чтобы ось охватывала весь выбранный период
-    # (7д/30д/90д визуально соответствуют выбору, а не схлопываются к доступной истории).
     pad_day = since
     first_date = rows[0][0]
     while pad_day < first_date:

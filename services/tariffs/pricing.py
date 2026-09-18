@@ -89,7 +89,6 @@ def ensure_allowed_config(
         if value is None:
             return None
         value = int(value)
-        # Конфигуратора у тарифа нет — выбор клиента ни на что не влияет, лимит берётся из тарифа.
         if not allowed:
             return None
         if value in allowed or (base is not None and value == base):

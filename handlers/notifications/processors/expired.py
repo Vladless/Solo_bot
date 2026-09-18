@@ -13,6 +13,7 @@ from database import (
 )
 from database.models import Key
 from database.models.users import BlockedUser, ManualBan
+from database.web_notifications import notify_web
 from handlers.notifications.context import NotificationContext
 from handlers.notifications.keyboards import build_notification_expired_kb, build_notification_kb
 from handlers.notifications.renewal import RenewalStatus, try_auto_renew
@@ -36,6 +37,18 @@ def _format_remaining_time(total_minutes: int) -> str:
     if hours > 0:
         return format_hours(hours)
     return format_minutes(minutes)
+
+
+async def _notify_web_expired(ctx: NotificationContext, key) -> None:
+    """Дублирует уведомление об истёкшей подписке в веб-кабинет."""
+    email = key.email or ""
+    await notify_web(
+        ctx.session,
+        user_ref=key.tg_id,
+        type="key_expired",
+        template_vars={"email": email},
+        data={"email": email, "client_id": getattr(key, "client_id", None)},
+    )
 
 
 def _build_grace_message(key, remaining_minutes: int) -> dict:
@@ -150,6 +163,7 @@ async def process_expired_keys(
                 remaining_minutes = max(1, int(remaining_ms / (60 * 1000)))
                 messages.append(_build_grace_message(key, remaining_minutes))
                 pending_notifications.append((tg_id, notification_id))
+                await _notify_web_expired(ctx, key)
             continue
 
         if is_delete and notify_delete_key:
@@ -173,6 +187,7 @@ async def process_expired_keys(
         if last_notification_time is None and (tg_id, email) in users_set:
             messages.append(_build_expired_message(key, delete_delay_minutes))
             pending_notifications.append((tg_id, notification_id))
+            await _notify_web_expired(ctx, key)
 
     if messages:
         await send_messages_with_limit(ctx.bot, messages)

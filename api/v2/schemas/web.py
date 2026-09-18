@@ -88,38 +88,3 @@ class WebPageVariantsResponse(BaseModel):
 
 class WebUploadResponse(BaseModel):
     url: str
-
-
-class FlowStepConfig(BaseModel):
-    provider_ids: list[str] | None = None
-    tariff_group_code: str | None = None
-    tariff_ids: list[int] | None = None
-    display_mode: str | None = None
-    skippable: bool = False
-    auto_advance_if_single: bool = False
-
-
-class FlowStepSchema(BaseModel):
-    id: str = Field(..., max_length=64)
-    type: str = Field(..., max_length=32)
-    label: str = Field(..., max_length=255)
-    label_en: str | None = Field(default=None, max_length=255)
-    enabled: bool = True
-    page_slug: str | None = Field(default=None, max_length=64)
-    config: FlowStepConfig = Field(default_factory=FlowStepConfig)
-
-
-class FlowDefinitionSchema(BaseModel):
-    id: str = Field(..., max_length=64)
-    name: str = Field(..., max_length=255)
-    steps: list[FlowStepSchema] = Field(default_factory=list)
-    version: int = 1
-
-
-class FlowDefinitionResponse(FlowDefinitionSchema):
-    pass
-
-
-class FlowDefinitionUpdate(BaseModel):
-    name: str | None = Field(default=None, max_length=255)
-    steps: list[FlowStepSchema] = Field(default_factory=list)
