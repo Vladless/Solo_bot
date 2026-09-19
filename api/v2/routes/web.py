@@ -2195,6 +2195,35 @@ async def install_default_design(
     return {"ok": True, "seeded": seeded}
 
 
+_SHOWCASE_SETTING_KEY = "web_showcase_mode"
+
+
+@router.get("/api/web/showcase")
+async def get_showcase_mode(
+    session: AsyncSession = Depends(get_session),
+    _identity=Depends(verify_identity_designer),
+):
+    """Состояние режима витрины: серверный флаг, действует в кабинетах администратора на любом устройстве."""
+    from database.settings import get_setting
+
+    return {"on": bool(await get_setting(session, _SHOWCASE_SETTING_KEY, False))}
+
+
+@router.post("/api/web/showcase")
+async def set_showcase_mode(
+    payload: dict,
+    session: AsyncSession = Depends(get_session),
+    _identity=Depends(verify_identity_designer),
+):
+    """Включает или выключает режим витрины для кабинетов администратора."""
+    from database.settings import set_setting
+
+    on = bool((payload or {}).get("on"))
+    await set_setting(session, _SHOWCASE_SETTING_KEY, on, description="Режим витрины кабинета для администратора")
+    await _audit_web_admin(session, _identity, "design.showcase", entity_type="site", entity_id="showcase")
+    return {"ok": True, "on": on}
+
+
 _PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 

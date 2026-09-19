@@ -185,8 +185,13 @@ async def site_config(session: AsyncSession = Depends(get_session)):
                     break
         await cache_set(trial_key, trial_flow_ids, 300)
 
+    from database.settings import get_setting
+
+    showcase_mode = bool(await get_setting(session, "web_showcase_mode", False))
+
     return {
         "bot_username": bot_username or None,
+        "showcase_mode": showcase_mode,
         "telegram_web_app_short_name": webapp_short,
         "telegram_web_app_return_base": webapp_return_base,
         "project_name": (PROJECT_NAME or "Solo").strip() if isinstance(PROJECT_NAME, str) else "Solo",

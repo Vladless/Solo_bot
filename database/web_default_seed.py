@@ -28,12 +28,33 @@ def has_builtin_pack_file(pack_id: str) -> bool:
 DEFAULT_PACK_ID = "default"
 
 
-async def _ensure_pack_seed(pack_id: str) -> dict | None:
-    """Дизайн набора приезжает из источника наборов: в репозитории бота сидов нет."""
+async def _pack_update_available(pack_id: str) -> bool:
+    """Правда, если каталог наборов знает более новую версию, чем установленная локально."""
+    try:
+        from core.rpc import get_entitled_pack_meta, refresh_entitled_packs
+        from services.web_packs import installed_pack_version
+
+        await refresh_entitled_packs()
+        available = str((get_entitled_pack_meta().get(pack_id) or {}).get("version") or "").strip()
+        return bool(available) and available != installed_pack_version(pack_id)
+    except Exception as e:
+        logger.warning("[Seed] Проверка версии набора {} не удалась: {}", pack_id, e)
+        return False
+
+
+async def _ensure_pack_seed(pack_id: str, refresh: bool = False) -> dict | None:
+    """Дизайн набора приезжает из источника наборов; при refresh перекачивается, если в каталоге версия новее."""
     from services.web_packs import download_and_install_pack, load_pack_seed
 
     seed = load_pack_seed(pack_id)
     if seed is not None:
+        if refresh and await _pack_update_available(pack_id):
+            result = await download_and_install_pack(pack_id)
+            if result.ok:
+                return load_pack_seed(pack_id)
+            logger.warning(
+                "[Seed] Обновление набора {} не удалось, оставляю локальную версию: {}", pack_id, result.error
+            )
         return seed
 
     result = await download_and_install_pack(pack_id)
@@ -43,8 +64,8 @@ async def _ensure_pack_seed(pack_id: str) -> dict | None:
     return load_pack_seed(pack_id)
 
 
-async def _ensure_default_pack() -> dict | None:
-    return await _ensure_pack_seed(DEFAULT_PACK_ID)
+async def _ensure_default_pack(refresh: bool = False) -> dict | None:
+    return await _ensure_pack_seed(DEFAULT_PACK_ID, refresh=refresh)
 
 
 def _split_site(raw: dict | None) -> tuple[dict, dict, list]:
@@ -136,7 +157,7 @@ async def seed_default_site(session: AsyncSession, force: bool = False) -> bool:
         if (existing.scalar() or 0) > 0:
             return False
 
-    theme, pages, flows = _split_site(await _ensure_default_pack())
+    theme, pages, flows = _split_site(await _ensure_default_pack(refresh=force))
     if not pages:
         return False
     theme_tokens = theme or BLACK_ORANGE_THEME
