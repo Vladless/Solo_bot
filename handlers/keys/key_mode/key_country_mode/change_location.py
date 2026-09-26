@@ -1,5 +1,6 @@
 from ._common import *  # noqa: F401,F403
 from ._common import router  # noqa: F401
+from .finalize import check_server_availability
 
 
 @router.callback_query(F.data.startswith("change_location|"), flags={"popup": True})

@@ -342,7 +342,7 @@ async def handle_recreate_key_confirm(
                 )
                 return
 
-            api = RemnawaveAPI(api_url)
+            api = remnawave_panel.RemnawaveAPI(api_url)
             try:
                 if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
                     await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)

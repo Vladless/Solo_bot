@@ -1,5 +1,6 @@
 from ._common import *  # noqa: F401,F403
 from ._common import router  # noqa: F401
+from .finalize import check_server_availability, finalize_key_creation
 
 
 async def key_country_mode(

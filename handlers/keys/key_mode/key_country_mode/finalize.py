@@ -133,7 +133,7 @@ async def finalize_key_creation(
                                 update(Key).where(Key.user_id == uid, Key.email == email).values(key=None)
                             )
                         elif old_server_info.panel_type.lower() == "remnawave":
-                            remna_del = RemnawaveAPI(old_server_info.api_url)
+                            remna_del = remnawave_panel.RemnawaveAPI(old_server_info.api_url)
                             if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                                 await remna_del.delete_user(client_id, username=email)
                                 await session.execute(
@@ -147,7 +147,7 @@ async def finalize_key_creation(
         panel_type = server_info.panel_type.lower()
 
         if panel_type == "remnawave" or is_full_remnawave:
-            remna = RemnawaveAPI(server_info.api_url)
+            remna = remnawave_panel.RemnawaveAPI(server_info.api_url)
             if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                 raise ValueError(f"❌ Не удалось авторизоваться в Remnawave ({server_info.server_name})")
 
@@ -183,7 +183,7 @@ async def finalize_key_creation(
             remnawave_link = None
             if need_vless_key:
                 try:
-                    vless_link = await get_vless_link_for_remnawave_by_username(remna, email, email)
+                    vless_link = await remnawave_panel.get_vless_link_for_remnawave_by_username(remna, email, email)
                 except Exception:
                     vless_link = None
                 if vless_link:
@@ -437,7 +437,7 @@ async def _legacy_check_server_availability(server_info: dict, session: AsyncSes
 
     try:
         if panel_type == "remnawave":
-            remna = RemnawaveAPI(server_info["api_url"])
+            remna = remnawave_panel.RemnawaveAPI(server_info["api_url"])
             await asyncio.wait_for(remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD), timeout=5.0)
             logger.info(f"[Ping] Remnawave сервер {server_name} доступен.")
             return True

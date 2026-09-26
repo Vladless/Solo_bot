@@ -2,6 +2,7 @@ import time
 
 from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
 from .._common import (
+    _extract_key_actions_from_markup,
     _is_renew_available,
     _key_actions_config,
     user_router,

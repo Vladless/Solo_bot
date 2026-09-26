@@ -2228,18 +2228,42 @@ _PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 
 _BUILTIN_PACK_IDS = {"core", "default"}
+# Держим ссылки на фоновые сверки выдач, чтобы задача не была собрана GC до завершения.
+_PACK_BG_TASKS: set = set()
 
 _BUILTIN_DESIGN_PACK_IDS = ()
 
 
 @router.get("/api/web/packs/available")
-async def list_available_packs_route(_identity=Depends(verify_identity_designer)):
+async def list_available_packs_route(fresh: bool = False, _identity=Depends(verify_identity_designer)):
     """Наборы со своими блоками, доступные этому боту. Стоковые сюда не попадают:
-    их блоки уже в ядре, им нужен только сид, и тот приезжает при установке."""
-    from core.rpc import get_entitled_pack_meta, refresh_entitled_packs
+    их блоки уже в ядре, им нужен только сид, и тот приезжает при установке.
+
+    fresh=1 — сверка с сайтом лицензирования прямо сейчас (минуя TTL): клиент шлёт её при
+    заходе во вкладку наборов, чтобы сразу увидеть только что загруженную версию."""
+    import asyncio
+
+    from core.rpc import (
+        entitled_packs_are_fresh,
+        get_entitled_pack_meta,
+        get_entitled_packs,
+        refresh_entitled_packs,
+    )
     from services.web_packs import installed_pack_version
 
-    entitled = await refresh_entitled_packs()
+    # По умолчанию меню открывается мгновенно и никогда не висит на сетевой сверке: отдаём
+    # кешированный список выдач, а устаревший кеш освежаем в фоне. При fresh=1 админ осознанно
+    # ждёт живую сверку — тогда ходим на сайт лицензирования синхронно (с таймаутом внутри).
+    if fresh:
+        await refresh_entitled_packs(force=True)
+    elif not entitled_packs_are_fresh():
+        try:
+            task = asyncio.create_task(refresh_entitled_packs())
+            _PACK_BG_TASKS.add(task)
+            task.add_done_callback(_PACK_BG_TASKS.discard)
+        except RuntimeError:
+            pass
+    entitled = get_entitled_packs()
     meta = get_entitled_pack_meta()
 
     packs = []
