@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import DailyBonusClaim, Key, User
 
 
-_LOCK_NAMESPACE = 0x62_6F_6E_75  # "bonu"
+_LOCK_NAMESPACE = 0x62_6F_6E_75
 
 
 async def lock_user_bonus(session: AsyncSession, user_id: int) -> None:

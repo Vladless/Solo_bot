@@ -655,7 +655,7 @@ async def user_key_apply_addons(
                 source=client_origin(),
             )
         except Exception as error:
-            logger.warning("[Addons] событие покупки допов не записано: {}", error)
+            logger.warning("[Site:Subs] Событие докупки не записано: {}", error)
     if coupon_id is not None:
         await mark_coupon_used(session, int(coupon_id), int(billing_user_id))
     return AccountKeyApplyAddonsResponse(

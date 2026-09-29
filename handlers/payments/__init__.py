@@ -74,6 +74,4 @@ router.include_router(gift_router)
 router.include_router(pay_router)
 router.include_router(fast_payment_flow_router)
 
-# Анти-тампер и bootstrap-валидация лицензии: запускаются последними, когда пакет gifts
-# и все платёжные провайдеры полностью загружены (иначе циклический импорт gifts↔yookassa).
 from .gifts import runtime as _gifts_runtime  # noqa: E402,F401

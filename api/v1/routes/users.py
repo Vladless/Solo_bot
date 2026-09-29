@@ -53,12 +53,12 @@ async def delete_user(
             ]
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
-            logger.error(f"[DELETE] Ошибка при удалении ключей с серверов для пользователя {tg_id}: {e}")
+            logger.error(f"[Site:Clients] Не удалось снести подписки с серверов при удалении клиента {tg_id}: {e}")
 
         await delete_user_data(session, tg_id)
 
         return {"detail": f"Пользователь {tg_id} и его ключи успешно удалены."}
 
     except Exception as e:
-        logger.error(f"[DELETE] Ошибка при удалении пользователя {tg_id}: {e}")
+        logger.error(f"[Site:Clients] Не удалось удалить клиента {tg_id}: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при удалении пользователя")

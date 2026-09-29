@@ -39,6 +39,7 @@ from database.access.resolution import resolve_user_optional
 from database.models import Gift, GiftUsage, Tariff, User
 from database.tariffs import get_tariff_by_id
 from database.temporary_data import create_temporary_data
+from logger import logger
 from services.errors import NotFoundError, ValidationError
 from services.formatting import get_site_gift_link
 from services.gifts import (
@@ -403,11 +404,21 @@ async def redeem_gift(
     try:
         result = await service_redeem_gift(session, body.gift_code, billing_user_id)
     except ValidationError as e:
+        logger.warning("[Site:Pay] Подарок {} активировать нельзя: {}", body.gift_code, e)
         raise HTTPException(status_code=400, detail=str(e)) from None
     except NotFoundError as e:
+        logger.warning("[Site:Pay] Подарок {} не найден: {}", body.gift_code, e)
         raise HTTPException(status_code=404, detail=str(e)) from None
     except Exception:
+        logger.exception("[Site:Pay] Активация подарка {} сорвалась", body.gift_code)
         raise HTTPException(status_code=500, detail="Не удалось активировать подарок") from None
+    logger.info(
+        "[Site:Pay] Клиент {} активировал подарок {}: тариф {}, {} дн.",
+        billing_user_id,
+        body.gift_code,
+        result.tariff_id,
+        result.duration_days,
+    )
     return GiftRedeemResponse(
         ok=True,
         message=result.message,

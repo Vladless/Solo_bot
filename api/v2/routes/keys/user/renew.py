@@ -68,6 +68,10 @@ async def user_key_renew(
     )
     server_tariff_group = (server_tariff_group_row.scalar() or "").strip()
 
+    key_tariff = await get_tariff_by_id(session, int(tariff_id))
+    key_tariff_group = (key_tariff.get("group_code") or "").strip() if key_tariff else ""
+    subscription_group = key_tariff_group or server_tariff_group
+
     if body.tariff_id:
         chosen_tariff = await get_tariff_by_id(session, int(body.tariff_id))
         if not chosen_tariff or not chosen_tariff.get("is_active", True):
@@ -76,13 +80,11 @@ async def user_key_renew(
         if (
             not chosen_group_code
             or chosen_group_code in forbidden_renewal_groups
-            or (server_tariff_group and chosen_group_code != server_tariff_group)
+            or (subscription_group and chosen_group_code != subscription_group)
         ):
             raise HTTPException(status_code=400, detail="Тариф недоступен для этой подписки")
         effective_tariff_id = int(body.tariff_id)
     else:
-        key_tariff = await get_tariff_by_id(session, int(tariff_id))
-        key_tariff_group = (key_tariff.get("group_code") or "").strip() if key_tariff else ""
         if not key_tariff_group or key_tariff_group in forbidden_renewal_groups:
             return AccountKeyRenewResponse(
                 ok=True,
@@ -90,7 +92,7 @@ async def user_key_renew(
                 client_id=str(client_id),
                 tariff_id=0,
                 requires_tariff_selection=True,
-                available_tariff_group=server_tariff_group or None,
+                available_tariff_group=subscription_group or None,
                 payment_required=False,
             )
         effective_tariff_id = int(tariff_id)
@@ -220,6 +222,14 @@ async def user_key_renew(
                 "coupon_id": quote.coupon_id,
             },
         )
+        logger.info(
+            "[Site:Subs] Клиенту {} выставлен счёт на продление подписки {}: к оплате {} ₽ из {} ₽ (тариф {})",
+            billing_user_id,
+            client_id,
+            required_amount,
+            int(net_cost),
+            effective_tariff_id,
+        )
         return AccountKeyRenewResponse(
             ok=True,
             message="Требуется оплата для продления подписки",
@@ -263,7 +273,20 @@ async def user_key_renew(
             coupon_id=quote.coupon_id,
         )
     except ServiceError as e:
+        logger.warning(
+            "[Site:Subs] Продление подписки {} не прошло: {}",
+            client_id,
+            e.message,
+        )
         raise HTTPException(status_code=400, detail=e.message)
+    logger.info(
+        "[Site:Subs] Клиент {} продлил подписку {}: тариф {}, списано {} ₽, {}",
+        billing_user_id,
+        result.client_id,
+        result.tariff_id,
+        int(result.charged_rub),
+        "смена тарифа" if quote.is_switch else "то же продление",
+    )
     return AccountKeyRenewResponse(
         ok=True,
         message="Подписка продлена",

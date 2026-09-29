@@ -187,6 +187,32 @@ def _sanitize_svg(data: bytes) -> bytes:
 router = APIRouter(tags=["Web"])
 
 
+_ADMIN_ACTION_PHRASES = {
+    "page.create": "создал страницу",
+    "page.update": "сохранил страницу",
+    "page.delete": "удалил страницу",
+    "page.theme.update": "сохранил тему страницы",
+    "page.title.update": "переименовал страницу",
+    "variant.create": "создал вариант страницы",
+    "variant.update": "сохранил вариант страницы",
+    "variant.delete": "удалил вариант страницы",
+    "design.install_default": "поставил оформление по умолчанию",
+    "design.install_pack": "поставил оформление набора",
+    "design.create_pack": "создал свой набор",
+    "design.delete_pack": "удалил набор",
+    "design.capture_pack": "снял слепок оформления набора",
+    "design.import_pack_file": "импортировал набор файлом",
+    "design.import_pack_zip": "импортировал набор архивом",
+    "design.pack_settings": "изменил настройки набора",
+    "design.rollback": "откатил оформление",
+    "design.showcase": "переключил режим витрины",
+    "blocks.import_pack": "импортировал блоки набора",
+    "notify.rules.update": "изменил правила уведомлений",
+    "analytics.reset": "сбросил аналитику сайта",
+    "pwa_icon.set": "сменил иконку приложения",
+}
+
+
 async def _audit_web_admin(
     session: AsyncSession,
     identity,
@@ -196,7 +222,14 @@ async def _audit_web_admin(
     entity_id: str | int | None = None,
     metadata: dict | None = None,
 ) -> None:
-    """Пишет действие админа над сайтом в журнал аудита (event_type=web_admin_action)."""
+    """Пишет действие админа над сайтом в журнал аудита (event_type=web_admin_action) и в лог."""
+    target = f" «{entity_id}»" if entity_id not in (None, "") else ""
+    phrase = _ADMIN_ACTION_PHRASES.get(action)
+    who = getattr(identity, "email", None) or getattr(identity, "id", None) or "админ"
+    if phrase:
+        logger.info("[Site:Admin] {} {}{}", who, phrase, target)
+    else:
+        logger.debug("[Site:Admin] {} выполнил действие {}{}", who, action, target)
     try:
         from audit import safe_record_audit_event
 
@@ -677,7 +710,7 @@ async def update_web_page_theme(
     current, _ = await _resolve_variant(session, slug, variant)
     cleaned_tokens, replaced = migrate_json_data_uris(body.tokens)
     if replaced:
-        logger.info("[web] theme PUT slug={} replaced {} data: URI(s)", slug, replaced)
+        logger.info("[Site:Design] Тема страницы «{}»: {} картинок перенесено из данных в файлы", slug, replaced)
     current.theme_tokens = cleaned_tokens
     await session.flush()
     await bump_site_revision(session)
@@ -829,7 +862,7 @@ async def update_web_page(
         current.theme_tokens = cleaned_theme
 
     if total_replaced:
-        logger.info("[web] page PUT slug={} replaced {} data: URI(s)", slug, total_replaced)
+        logger.info("[Site:Design] Страница «{}»: {} картинок перенесено из данных в файлы", slug, total_replaced)
 
     await session.flush()
     await bump_site_revision(session)
@@ -867,7 +900,7 @@ async def get_web_page_variants(
     except Exception as exc:
         from logger import logger
 
-        logger.warning("[web] variants resolve failed for slug={}: {}", slug, exc)
+        logger.warning("[Site:Design] Не удалось разобрать варианты страницы «{}»: {}", slug, exc)
         raise HTTPException(status_code=404, detail="Страница или вариант не найдены")
     active = next((item for item in variants if item.is_active), current)
     return WebPageVariantsResponse(
@@ -1047,7 +1080,7 @@ async def upload_media(
     await run_io(Path(path).write_bytes, file_data)
     url = f"/api/web/uploads/{name}"
     logger.info(
-        "[WebUpload] admin={} file={} -> {} ({} bytes)",
+        "[Site:Files] Админ {} загрузил файл {} → {} ({} байт)",
         identity.id,
         file.filename,
         name,
@@ -1987,7 +2020,7 @@ async def _alert_web_error(name: str, message: str, url: str | None, count: int,
 
         await send_admin_alert("\n".join(parts))
     except Exception as exc:
-        logger.warning("[WebErrorAlert] не удалось отправить алерт: {}", exc)
+        logger.warning("[Site:Errors] Не удалось отправить админу уведомление об ошибке сайта: {}", exc)
 
 
 @router.post("/api/web/error-reports")
@@ -2188,7 +2221,7 @@ async def install_default_design(
         seeded = await seed_default_site(session, force=True)
         await session.flush()
     except Exception as e:
-        logger.exception("[install_default_design] seed_default_site упал: %s", e)
+        logger.exception("[Site:Design] Установка оформления по умолчанию сорвалась: %s", e)
         raise HTTPException(status_code=500, detail=f"install_default_design: {type(e).__name__}: {e}")
     await bump_site_revision(session)
     await _audit_web_admin(session, _identity, "design.install_default", entity_type="site", entity_id="default")
@@ -2228,7 +2261,6 @@ _PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 
 _BUILTIN_PACK_IDS = {"core", "default"}
-# Держим ссылки на фоновые сверки выдач, чтобы задача не была собрана GC до завершения.
 _PACK_BG_TASKS: set = set()
 
 _BUILTIN_DESIGN_PACK_IDS = ()
@@ -2251,9 +2283,6 @@ async def list_available_packs_route(fresh: bool = False, _identity=Depends(veri
     )
     from services.web_packs import installed_pack_version
 
-    # По умолчанию меню открывается мгновенно и никогда не висит на сетевой сверке: отдаём
-    # кешированный список выдач, а устаревший кеш освежаем в фоне. При fresh=1 админ осознанно
-    # ждёт живую сверку — тогда ходим на сайт лицензирования синхронно (с таймаутом внутри).
     if fresh:
         await refresh_entitled_packs(force=True)
     elif not entitled_packs_are_fresh():
@@ -2496,7 +2525,7 @@ async def create_custom_pack(
         await capture_and_store_pack_design(session, pack_id, name=name, description=description)
         await session.flush()
     except Exception as e:
-        logger.exception("[create_custom_pack] упал: %s", e)
+        logger.exception("[Site:Packs] Создание своего набора сорвалось: %s", e)
         raise HTTPException(status_code=500, detail=f"create_custom_pack: {type(e).__name__}: {e}")
     await _audit_web_admin(session, _identity, "design.create_pack", entity_type="pack", entity_id=pack_id)
     return {"ok": True, "id": pack_id, "name": name}
@@ -2517,7 +2546,7 @@ async def capture_pack_design(
         site = await capture_and_store_pack_design(session, pack)
         await session.flush()
     except Exception as e:
-        logger.exception("[capture_pack_design] упал: %s", e)
+        logger.exception("[Site:Packs] Снимок оформления набора не сделан: %s", e)
         raise HTTPException(status_code=500, detail=f"capture_pack_design: {type(e).__name__}: {e}")
     await _audit_web_admin(session, _identity, "design.capture_pack", entity_type="pack", entity_id=pack)
     pages_count = sum(1 for k, v in site.items() if not k.startswith("_") and isinstance(v, list))
@@ -2981,7 +3010,7 @@ async def install_pack_design_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("[install_pack_design] упал: %s", e)
+        logger.exception("[Site:Packs] Установка оформления набора сорвалась: %s", e)
         raise HTTPException(status_code=500, detail=f"install_pack_design: {type(e).__name__}: {e}")
     await bump_site_revision(session)
     await _audit_web_admin(session, _identity, "design.install_pack", entity_type="pack", entity_id=pack)
@@ -3039,6 +3068,7 @@ async def web_admin_audit(
 
 
 _BOT_LOG_PATH = Path("logs/logging.log")
+_SITE_LOG_PATH = Path("logs/site.log")
 _LEVEL_RANK = {"DEBUG": 0, "TRACE": 0, "INFO": 1, "SUCCESS": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
 
 
@@ -3080,11 +3110,16 @@ def _parse_log_line(raw: str) -> dict:
         if token in up:
             level = mapped
             break
-    return {"ts": "", "level": level, "loc": "", "text": raw.strip()}
+    text = raw.strip()
+    stamp = re.match(r"^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+", text)
+    if stamp:
+        return {"ts": stamp.group(1), "level": level, "loc": "", "text": text[stamp.end() :]}
+    return {"ts": "", "level": level, "loc": "", "text": text}
 
 
 def _is_api_log(entry: dict) -> bool:
-    return "[API]" in (entry.get("text") or "") or "log_api_access" in (entry.get("loc") or "")
+    text = entry.get("text") or ""
+    return "[Site" in text or "[API]" in text or "log_api_access" in (entry.get("loc") or "")
 
 
 def _site_log_token() -> str:
@@ -3110,10 +3145,10 @@ async def _fetch_site_log_lines(max_lines: int) -> tuple[list[str], bool, str | 
     base = (get_site_url() or "").rstrip("/")
     token = _site_log_token()
     if not base:
-        logger.warning("[logs] site-log: SITE_URL пуст (Настройки → Сайт), запрос не отправлен")
+        logger.warning("[Site:Logs] Адрес сайта не задан (Настройки → Сайт), логи сайта не запрошены")
         return [], False, "SITE_URL не задан (Настройки → Сайт)."
     if not token:
-        logger.warning("[logs] site-log: PLUGIN_BUILDER_TOKEN пуст (config.py / WEB_CONFIG), запрос не отправлен")
+        logger.warning("[Site:Logs] Токен доступа к сайту не задан (config.py / WEB_CONFIG), логи сайта не запрошены")
         return [], False, "PLUGIN_BUILDER_TOKEN не задан на боте (config.py / WEB_CONFIG)."
     import aiohttp
 
@@ -3125,7 +3160,7 @@ async def _fetch_site_log_lines(max_lines: int) -> tuple[list[str], bool, str | 
                 if resp.status != 200:
                     body = (await resp.text())[:200]
                     logger.warning(
-                        "[logs] site-log: {} вернул HTTP {} (токен len={}); ответ: {}",
+                        "[Site:Logs] Сайт {} ответил кодом {} (длина токена {}); ответ: {}",
                         url,
                         resp.status,
                         len(token),
@@ -3144,7 +3179,7 @@ async def _fetch_site_log_lines(max_lines: int) -> tuple[list[str], bool, str | 
         lines = data.get("lines") if isinstance(data.get("lines"), list) else []
         return [str(line) for line in lines], bool(data.get("available", True)), None
     except Exception as e:
-        logger.warning("[logs] site-log: запрос к {} не удался: {}: {}", url, type(e).__name__, e)
+        logger.warning("[Site:Logs] Запрос логов сайта по адресу {} не удался: {}: {}", url, type(e).__name__, e)
         return [], False, f"Не удалось связаться с веб-аппом ({type(e).__name__}). Проверь SITE_URL."
 
 
@@ -3167,11 +3202,15 @@ async def get_logs(
 ):
     note: str | None = None
     if source == "site":
-        raw_lines, available, note = await _fetch_site_log_lines(min(limit * 3, 6000))
+        browser_lines, browser_available, note = await _fetch_site_log_lines(min(limit * 3, 6000))
+        backend_lines = _tail_lines(_SITE_LOG_PATH, min(limit * 3, 6000))
+        entries = [_parse_log_line(line) for line in (*backend_lines, *browser_lines) if line.strip()]
+        entries.sort(key=lambda e: e["ts"])
+        available = browser_available or _SITE_LOG_PATH.exists()
     else:
         raw_lines = _tail_lines(_BOT_LOG_PATH, min(limit * 6, 6000))
         available = _BOT_LOG_PATH.exists()
-    entries = [_parse_log_line(line) for line in raw_lines if line.strip()]
+        entries = [_parse_log_line(line) for line in raw_lines if line.strip()]
     if source == "api":
         entries = [e for e in entries if _is_api_log(e)]
         if not _api_logging_enabled():
@@ -3204,9 +3243,10 @@ async def get_logs_health(_identity=Depends(verify_identity_designer)):
     out["api"] = {"available": bot_available, **_count([e for e in bot_lines if _is_api_log(e)])}
     out["bot"] = {"available": bot_available, **_count([e for e in bot_lines if not _is_api_log(e)])}
 
-    site_raw, site_available, _site_note = await _fetch_site_log_lines(500)
+    browser_raw, browser_available, _site_note = await _fetch_site_log_lines(500)
+    site_raw = [*_tail_lines(_SITE_LOG_PATH, 500), *browser_raw]
     site_lines = [_parse_log_line(line) for line in site_raw if line.strip()]
-    out["site"] = {"available": site_available, **_count(site_lines)}
+    out["site"] = {"available": browser_available or _SITE_LOG_PATH.exists(), **_count(site_lines)}
     try:
         from utils.versioning import get_version
 

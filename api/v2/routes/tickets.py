@@ -14,6 +14,7 @@ from core.executor import run_io
 from core.settings.modes_config import MODES_CONFIG
 from database import async_session_maker
 from database.models import Admin, Identity, Ticket, TicketMessage, User
+from logger import logger
 from services import tickets as svc
 from services.tickets.events import TICKETS_EVENTS_CHANNEL, tickets_client_channel
 from settings.config import REDIS_URL
@@ -367,10 +368,8 @@ def _sse_response(request: Request, channel: str) -> StreamingResponse:
                     continue
                 yield ": keepalive\n\n"
                 await asyncio.sleep(0.1)
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Site:Tickets] Поток обновлений оборвался: {}", e)
         finally:
             if pubsub is not None:
                 try:

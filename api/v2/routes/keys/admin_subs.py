@@ -193,7 +193,7 @@ async def sub_change_expiry(
     total_gb, hwid = _limits_for(key, tariff)
     key.expiry_time = new_expiry
     await _renew_apply(session, key, new_expiry=new_expiry, total_gb=total_gb, hwid=hwid, reset_traffic=False)
-    logger.info(f"[API] Срок подписки {client_id} изменён ({op}) → {new_expiry}")
+    logger.info(f"[Site:Subs] Срок подписки {client_id} изменён ({op}) → {new_expiry}")
     return {"expiry_time": new_expiry}
 
 
@@ -208,7 +208,7 @@ async def sub_reset_traffic(
     from services.operations.traffic import reset_traffic_in_cluster
 
     await reset_traffic_in_cluster(key.server_id, key.email, session)
-    logger.info(f"[API] Трафик подписки {client_id} сброшен")
+    logger.info(f"[Site:Subs] Трафик подписки {client_id} сброшен")
     return {"message": "Трафик сброшен"}
 
 
@@ -243,7 +243,7 @@ async def sub_change_tariff(
     await _renew_apply(
         session, key, new_expiry=int(key.expiry_time or 0), total_gb=total_gb, hwid=hwid, reset_traffic=False
     )
-    logger.info(f"[API] Тариф подписки {client_id} → {tariff_id}")
+    logger.info(f"[Site:Subs] Тариф подписки {client_id} сменён на {tariff_id}")
     return {"message": "Тариф изменён", "tariff_id": tariff_id}
 
 
@@ -267,7 +267,7 @@ async def sub_set_limits(
     await _renew_apply(
         session, key, new_expiry=int(key.expiry_time or 0), total_gb=total_gb, hwid=hwid, reset_traffic=False
     )
-    logger.info(f"[API] Лимиты подписки {client_id}: dev={device_limit} gb={traffic_limit}")
+    logger.info(f"[Site:Subs] Лимиты подписки {client_id}: устройств {device_limit}, трафик {traffic_limit} ГБ")
     return {"device_limit": key.current_device_limit, "traffic_limit": key.current_traffic_limit}
 
 
@@ -351,7 +351,7 @@ async def sub_change_location(
     from services.operations.update import update_subscription
 
     await update_subscription(key.user_id, key.email, session, cluster_override=cluster, country_override=country)
-    logger.info(f"[API] Подписка {client_id} перенесена: cluster={cluster} country={country}")
+    logger.info(f"[Site:Subs] Подписка {client_id} перенесена: кластер {cluster}, страна {country}")
     return {"message": "Локация изменена"}
 
 
@@ -368,7 +368,7 @@ async def sub_reissue(
     from services.operations.update import update_subscription
 
     await update_subscription(key.user_id, key.email, session, cluster_override=cluster)
-    logger.info(f"[API] Подписка {client_id} перевыпущена на {cluster}")
+    logger.info(f"[Site:Subs] Подписка {client_id} перевыпущена на кластере {cluster}")
     return {"message": "Подписка перевыпущена"}
 
 
@@ -384,7 +384,7 @@ async def sub_delete(
 
     await delete_key_from_cluster(session=session, email=key.email, client_id=key.client_id, cluster_id=key.server_id)
     await session.delete(key)
-    logger.info(f"[API] Подписка {client_id} удалена")
+    logger.info(f"[Site:Subs] Подписка {client_id} удалена")
     return {"message": "Подписка удалена"}
 
 
@@ -396,6 +396,7 @@ async def sub_hwid_devices(
 ):
     """Список HWID-устройств подписки (Remnawave)."""
     from panels.remnawave_runtime import remnawave_api
+
     key = await _resolve(session, client_id)
     from database.servers import get_servers
     from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
@@ -416,7 +417,7 @@ async def sub_hwid_devices(
     except HTTPException:
         raise
     except Exception as e:
-        logger.debug(f"[API] hwid list {client_id}: {e}")
+        logger.debug(f"[Site:Subs] Не удалось получить устройства подписки {client_id}: {e}")
         return {"devices": [], "supported": True}
 
 
@@ -429,6 +430,7 @@ async def sub_hwid_unbind(
 ):
     """Отвязать одно HWID-устройство."""
     from panels.remnawave_runtime import remnawave_api
+
     key = await _resolve(session, client_id)
     hwid = str(payload.get("hwid") or "").strip()
     if not hwid:
@@ -458,6 +460,7 @@ async def sub_hwid_reset(
 ):
     """Сбросить все HWID-устройства подписки."""
     from panels.remnawave_runtime import remnawave_api
+
     key = await _resolve(session, client_id)
     from database.servers import get_servers
     from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD

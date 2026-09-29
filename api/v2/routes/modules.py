@@ -43,6 +43,6 @@ async def control_module(module_name: str, payload: ModuleAction, identity=Depen
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
-        logger.error("[Modules] action failed for {}: {}", name, exc)
+        logger.error("[Site:Modules] Действие модуля {} не выполнено: {}", name, exc)
         raise HTTPException(status_code=500, detail="Ошибка при выполнении операции модуля") from exc
     return {"item": module_state(name)}

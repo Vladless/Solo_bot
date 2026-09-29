@@ -44,11 +44,11 @@ async def delete_key_by_email(
             cluster_id=db_key.server_id,
         )
         await session.delete(db_key)
-        logger.info(f"[API] Ключ удалён: {db_key.client_id}")
+        logger.info(f"[Site:Subs] Подписка удалена: {db_key.client_id}")
         return {"message": "Ключ успешно удалён"}
 
     except Exception as e:
-        logger.error(f"[API] Ошибка при удалении ключа: {e}")
+        logger.error(f"[Site:Subs] Не удалось удалить подписку: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при удалении ключа")
 
 
@@ -108,11 +108,11 @@ async def edit_key_by_email(
             reset_traffic=True,
         )
 
-        logger.info(f"[API] Ключ обновлён: {db_key.client_id}")
+        logger.info(f"[Site:Subs] Подписка обновлена: {db_key.client_id}")
         return db_key
 
     except Exception as e:
-        logger.error(f"[API] Ошибка при обновлении ключа: {e}")
+        logger.error(f"[Site:Subs] Не удалось обновить подписку: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при обновлении ключа")
 
 
@@ -139,5 +139,5 @@ async def create_key_api(
         return {"message": "Ключ успешно создан"}
 
     except Exception as e:
-        logger.error(f"[API] Ошибка при создании ключа: {e}")
+        logger.error(f"[Site:Subs] Не удалось создать подписку: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при создании ключа")

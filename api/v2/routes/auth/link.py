@@ -132,5 +132,5 @@ async def link_email_confirm(
         except Exception as e:
             from logger import logger
 
-            logger.debug("[Auth] panel identity sync failed: {}", e)
+            logger.debug("[Site:Auth] Не удалось синхронизировать клиента с панелью: {}", e)
     return IdentityResponse.model_validate(result)

@@ -89,8 +89,8 @@ async def user_key_change_location(
                     )
         except Exception as exc:
             logger.warning(
-                f"[location] не удалось удалить клиента {getattr(db_key, 'client_id', '')} "
-                f"со старой панели {old_panel_type}: {exc}"
+                f"[Site:Subs] Не удалось снести подписку {getattr(db_key, 'client_id', '')} "
+                f"со старой панели {old_panel_type} при смене локации: {exc}"
             )
     target_server_info = (
         await session.execute(select(Server).where(Server.server_name == target_server).limit(1))

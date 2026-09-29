@@ -173,7 +173,7 @@ async def apply_rules_on_login(
     try:
         rules = await load_rules(session)
     except Exception as exc:
-        logger.warning(f"[WebNotifyRules] правила не прочитаны: {exc}")
+        logger.warning(f"[Site:Notify] Правила уведомлений не прочитаны: {exc}")
         return []
 
     fired: list[dict] = []

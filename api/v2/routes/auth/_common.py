@@ -101,7 +101,7 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
                 )
             ).first()
     except Exception as e:
-        logger.warning("[Auth] partner snapshot: не удалось прочитать partner-поля users: {}", e)
+        logger.warning("[Site:Partner] Не удалось прочитать партнёрские поля клиента: {}", e)
         partner_row = None
     if partner_row is None:
         return payload
@@ -122,7 +122,7 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
                 )
                 await session.flush()
         except Exception as e:
-            logger.warning("[Auth] Ошибка сохранения partner_code для billing_user_id={}: {}", billing_user_id, e)
+            logger.warning("[Site:Partner] Не удалось сохранить партнёрский код клиента {}: {}", billing_user_id, e)
     payout_method = str(partner_row[5] or "").strip() or None
     referred_total = 0
     referred_paid = 0
@@ -139,7 +139,7 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
                     or 0
                 )
         except Exception as e:
-            logger.warning("[Auth] partner snapshot: не удалось посчитать referred_total: {}", e)
+            logger.warning("[Site:Partner] Не удалось посчитать приглашённых: {}", e)
             referred_total = 0
         try:
             async with session.begin_nested():
@@ -162,7 +162,7 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
                     or 0
                 )
         except Exception as e:
-            logger.warning("[Auth] partner snapshot: не удалось посчитать referred_paid: {}", e)
+            logger.warning("[Site:Partner] Не удалось посчитать оплативших приглашённых: {}", e)
             referred_paid = 0
     payload.update({
         "partner_enabled": bool(

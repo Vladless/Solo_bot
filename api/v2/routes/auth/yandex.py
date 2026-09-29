@@ -80,7 +80,7 @@ async def yandex_authorize(
         "force_confirm": "yes",
     }
     url = f"{YANDEX_AUTH_ENDPOINT}?{urlencode(params)}"
-    logger.info("[Auth] Yandex authorize: ip={}", _client_ip(request))
+    logger.info("[Site:Auth] Через Яндекс: клиент отправлен на страницу согласия, ip {}", _client_ip(request))
     resp = RedirectResponse(url, status_code=302)
     resp.set_cookie(
         key=_YANDEX_NONCE_COOKIE,
@@ -107,18 +107,18 @@ async def yandex_callback(
     if not yandex_configured():
         raise HTTPException(status_code=503, detail="Вход через Яндекс не настроен на этом сервере")
     if error:
-        logger.warning("[Auth] Yandex callback error: {} ip={}", error, _client_ip(request))
+        logger.warning("[Site:Auth] Яндекс отказал во входе: {}, ip {}", error, _client_ip(request))
         return RedirectResponse(f"/login?error=yandex_{error}", status_code=302)
     if not code or not state:
         raise HTTPException(status_code=400, detail="Отсутствует code или state")
     verified = verify_state(_YANDEX_STATE_SECRET, state, _OAUTH_SUCCESS_URI)
     if verified is None:
-        logger.warning("[Auth] Yandex callback: invalid/expired state ip={}", _client_ip(request))
+        logger.warning("[Site:Auth] Яндекс: метка запроса просрочена или подделана, ip {}", _client_ip(request))
         raise HTTPException(status_code=400, detail="Неверный или просроченный state")
     return_to, state_nonce = verified
     cookie_nonce = (request.cookies.get(_YANDEX_NONCE_COOKIE) or "").strip()
     if not cookie_nonce or not hmac.compare_digest(cookie_nonce, state_nonce):
-        logger.warning("[Auth] Yandex callback: state/cookie nonce mismatch ip={}", _client_ip(request))
+        logger.warning("[Site:Auth] Яндекс: метка запроса не совпала с куки, ip {}", _client_ip(request))
         raise HTTPException(status_code=400, detail="Неверный или просроченный state")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -134,10 +134,12 @@ async def yandex_callback(
                 headers={"Accept": "application/json"},
             )
         except httpx.HTTPError as e:
-            logger.warning("[Auth] Yandex token exchange network error: {}", e)
+            logger.warning("[Site:Auth] Яндекс недоступен при обмене кода на токен: {}", e)
             raise HTTPException(status_code=502, detail="Не удалось связаться с Яндекс") from e
         if token_res.status_code != 200:
-            logger.warning("[Auth] Yandex token exchange failed: {} {}", token_res.status_code, token_res.text[:200])
+            logger.warning(
+                "[Site:Auth] Яндекс не выдал токен, ответ {}: {}", token_res.status_code, token_res.text[:200]
+            )
             raise HTTPException(status_code=401, detail="Яндекс отклонил токен")
         token_payload = token_res.json()
         access_token = token_payload.get("access_token")
@@ -151,7 +153,7 @@ async def yandex_callback(
                 params={"format": "json"},
             )
         except httpx.HTTPError as e:
-            logger.warning("[Auth] Yandex userinfo network error: {}", e)
+            logger.warning("[Site:Auth] Яндекс недоступен при запросе профиля: {}", e)
             raise HTTPException(status_code=502, detail="Не удалось получить профиль Яндекс") from e
 
     if info_res.status_code != 200:
@@ -170,7 +172,7 @@ async def yandex_callback(
     await bind_identity_actor(request, session, identity)
     token = await idb.issue_token_for_identity(session, identity, request=request)
     logger.info(
-        "[Auth] Login success: identity={}, yandex_sub={}, ip={}, method=yandex",
+        "[Site:Auth] Вошёл через Яндекс: клиент {}, внешний id {}, ip {}",
         identity.id,
         yandex_sub,
         _client_ip(request),

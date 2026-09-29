@@ -5,6 +5,7 @@ from api.depends import get_session, verify_identity_token
 from api.shared.billing_actor import resolve_billing_actor
 from api.v2.schemas.web_public import DailyBonusClaimResponse, DailyBonusStateResponse
 from database.web_layout import DAILY_BONUS_BLOCK_TYPES, find_block_locations
+from logger import logger
 from services.daily_bonus import DailyBonusState, claim_daily_bonus, get_daily_bonus_state
 from services.errors import ServiceError
 
@@ -61,7 +62,18 @@ async def claim_my_daily_bonus(
         raise HTTPException(status_code=400, detail=e.message) from e
     except Exception as e:
         await session.rollback()
+        logger.exception("[Site:Pay] Ежедневный бонус клиенту {} не начислен", user_id)
         raise HTTPException(status_code=500, detail="Не удалось начислить бонус") from e
+    if result.ok:
+        logger.info(
+            "[Site:Pay] Клиент {} забрал ежедневный бонус: {} ₽, серия {} дн., баланс {} ₽",
+            user_id,
+            result.amount,
+            result.streak,
+            result.balance,
+        )
+    else:
+        logger.debug("[Site:Pay] Клиенту {} бонус не положен: {}", user_id, result.reason)
     return DailyBonusClaimResponse(
         ok=result.ok,
         reason=result.reason,

@@ -54,6 +54,51 @@ LOG_ROTATION_TIME = getattr(cfg, "LOG_ROTATION_TIME", "1 day")
 log_folder = "logs"
 os.makedirs(log_folder, exist_ok=True)
 
+
+def _log_file_owner() -> tuple[int, int] | None:
+    """Хозяин файлов лога: под sudo — тот, кто запустил бота, иначе владельца не меняем."""
+    if os.name != "posix" or not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return None
+    raw_uid = os.environ.get("SUDO_UID")
+    if not raw_uid:
+        return None
+    try:
+        uid = int(raw_uid)
+        gid = int(os.environ.get("SUDO_GID") or uid)
+    except ValueError:
+        return None
+    return uid, gid
+
+
+_LOG_OWNER = _log_file_owner()
+
+
+def _hand_over(path: str) -> None:
+    """Возвращает файл или каталог тому, кто запустил бота, чтобы логи читались без sudo."""
+    if _LOG_OWNER is None:
+        return
+    try:
+        os.chown(path, *_LOG_OWNER)
+    except OSError:
+        pass
+
+
+def _open_log_file(path, flags):
+    """Файл лога открываем сами: сразу с читаемыми правами и нужным владельцем."""
+    descriptor = os.open(path, flags, 0o644)
+    if _LOG_OWNER is not None:
+        try:
+            os.fchown(descriptor, *_LOG_OWNER)
+        except OSError:
+            pass
+    return descriptor
+
+
+if _LOG_OWNER is not None:
+    _hand_over(log_folder)
+    for _name in os.listdir(log_folder):
+        _hand_over(os.path.join(log_folder, _name))
+
 logger.remove()
 
 logger.configure(
@@ -172,12 +217,30 @@ def _filter(record):
     return extra["throttle_verdict"]
 
 
-def _file_filter(record):
-    """Пишет строки [API] в файл при любом уровне логирования, остальное — по настроенному."""
-    if "[API]" not in record["message"]:
-        level_no = getattr(record.get("level"), "no", 20)
-        if level_no < BASE_LEVEL:
-            return False
+SITE_LOG_TAG = "[Site]"
+SITE_LOG_PREFIX = "[Site"
+
+
+def is_site_record(record) -> bool:
+    """Строка сайта: её ставят метки вида [Site] и [Site:Auth]."""
+    message = record.get("message")
+    return isinstance(message, str) and SITE_LOG_PREFIX in message
+
+
+def _bot_file_filter(record):
+    """Файл бота: всё, кроме строк сайта, и не ниже настроенного уровня."""
+    if is_site_record(record):
+        return False
+    level_no = getattr(record.get("level"), "no", 20)
+    if level_no < BASE_LEVEL:
+        return False
+    return _filter(record)
+
+
+def _site_file_filter(record):
+    """Файл сайта: только его строки и при любом уровне логирования."""
+    if not is_site_record(record):
+        return False
     return _filter(record)
 
 
@@ -196,7 +259,19 @@ logger.add(
     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {extra[module_tag]} {message}",
     rotation=LOG_ROTATION_TIME,
     retention=timedelta(days=3),
-    filter=_file_filter,
+    filter=_bot_file_filter,
+    opener=_open_log_file,
+)
+
+site_log_file_path = os.path.join(log_folder, "site.log")
+logger.add(
+    site_log_file_path,
+    level=0,
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {extra[module_tag]} {message}",
+    rotation=LOG_ROTATION_TIME,
+    retention=timedelta(days=3),
+    filter=_site_file_filter,
+    opener=_open_log_file,
 )
 
 logger = logger

@@ -134,8 +134,8 @@ async def register_by_email(
             await email_verify.store_code(email, code)
             await send_email_verify_code_email(email, code)
         except Exception as e:
-            logger.warning("[Auth] Не удалось отправить код подтверждения email при регистрации: {}", e)
-    logger.info("[Auth] Register success: identity={}, email={}, ip={}", identity.id, email, _client_ip(request))
+            logger.warning("[Site:Auth] Не удалось отправить код подтверждения почты при регистрации: {}", e)
+    logger.info("[Site:Auth] Регистрация: клиент {}, почта {}, ip {}", identity.id, email, _client_ip(request))
     set_auth_cookie(response, token, request)
     set_is_admin_cookie(response, identity, request)
     return RegisterResponse(identity_id=identity.id)
@@ -170,7 +170,7 @@ async def login(
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning("[Auth] Ошибка rate-limit проверки для email-логина: {}", e)
+        logger.warning("[Site:Auth] Проверка частоты попыток входа сорвалась: {}", e)
     result = await idb.login_by_email(session, email, body.password, request=request)
     if not result:
         from database.setup.web_admin_bootstrap import ensure_web_admin
@@ -180,7 +180,7 @@ async def login(
             await session.flush()
             result = await idb.login_by_email(session, email, body.password, request=request)
         except Exception as exc:
-            logger.warning("[Auth] lazy web-admin bootstrap failed: {}", exc)
+            logger.warning("[Site:Auth] Не удалось выдать права веб-админа: {}", exc)
     if not result:
         try:
             from core.redis_cache import cache_incr, cache_set
@@ -191,6 +191,7 @@ async def login(
                 await cache_set(f"login_lockout:{email}", "1", 900)
         except Exception:
             pass
+        logger.warning("[Site:Auth] Неверный пароль при входе: почта {}, ip {}", email, _client_ip(request))
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
     try:
         from core.redis_cache import cache_delete
@@ -204,7 +205,7 @@ async def login(
         from database.site_state import mark_site_initialized
 
         await mark_site_initialized(session)
-    logger.info("[Auth] Login success: identity={}, email={}, ip={}, method=password", identity.id, email, ip)
+    logger.info("[Site:Auth] Вошёл по паролю: клиент {}, почта {}, ip {}", identity.id, email, ip)
     set_auth_cookie(response, token, request)
     set_is_admin_cookie(response, identity, request)
     return build_login_response(identity)
@@ -311,9 +312,11 @@ async def login_by_code(
             detail="Слишком много попыток. Запросите новый код.",
         )
     if not await login_codes.verify_and_consume_code(email_norm, body.code.strip()):
+        logger.warning("[Site:Auth] Неверный или просроченный код входа: почта {}", email_norm)
         raise HTTPException(status_code=401, detail="Неверный код или срок действия истёк")
     identity = await idb.get_identity_by_email(session, email_norm)
     if not identity:
+        logger.warning("[Site:Auth] Вход по коду: аккаунта с почтой {} нет", email_norm)
         raise HTTPException(status_code=401, detail="Аккаунт не найден")
     if not getattr(identity, "email_verified", False):
         from sqlalchemy import update as sa_update
@@ -329,7 +332,7 @@ async def login_by_code(
         from database.site_state import mark_site_initialized
 
         await mark_site_initialized(session)
-    logger.info("[Auth] Login success: identity={}, email={}, method=code", identity.id, email_norm)
+    logger.info("[Site:Auth] Вошёл по коду из письма: клиент {}, почта {}", identity.id, email_norm)
     set_auth_cookie(response, token, request)
     set_is_admin_cookie(response, identity, request)
     return build_login_response(identity)

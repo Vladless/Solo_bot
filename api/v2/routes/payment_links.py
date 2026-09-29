@@ -250,11 +250,11 @@ async def payment_events_stream(request: Request):
             redis_client = from_url(REDIS_URL, encoding="utf-8", decode_responses=True, max_connections=8)
             pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
             await pubsub.subscribe(channel)
-            logger.info(f"[Payments] SSE subscribed: user_ref={billing_user_ref}, channel={channel}")
+            logger.info(f"[Site:Pay] Клиент {billing_user_ref} ждёт ответа кассы (канал {channel})")
             yield "retry: 1500\n\n"
             while True:
                 if await request.is_disconnected():
-                    logger.info(f"[Payments] SSE disconnected by client: user_ref={billing_user_ref}")
+                    logger.info(f"[Site:Pay] Клиент {billing_user_ref} закрыл ожидание платежа")
                     break
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
                 if message and message.get("type") == "message":
@@ -262,8 +262,8 @@ async def payment_events_stream(request: Request):
                     payload = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
                     if isinstance(payload, dict):
                         logger.info(
-                            f"[Payments] SSE emit: user_ref={billing_user_ref}, "
-                            f"status={payload.get('status')}, flow={payload.get('flow')}"
+                            f"[Site:Pay] Клиенту {billing_user_ref} ушёл статус платежа: "
+                            f"{payload.get('status')}, сценарий {payload.get('flow')}"
                         )
                         yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
                         continue
@@ -324,7 +324,7 @@ async def get_link_status(
                     await update_payment_status(session, int(internal_id), "cancelled")
                 status = "cancelled"
         except Exception as e:
-            logger.warning(f"[PaymentLinks] Сверка платежа {payment_id} с провайдером не удалась: {e}")
+            logger.warning(f"[Site:Pay] Не удалось сверить платёж {payment_id} с кассой: {e}")
     return PaymentLinkStatusResponse(
         success=True,
         payment_id=payment_id,

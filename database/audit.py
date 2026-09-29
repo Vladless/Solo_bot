@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import (
     DateTime as SQLADateTime,
@@ -37,7 +37,7 @@ async def delete_old_audit_events_db(
     older_than_days: int = 90,
 ) -> int:
     await ensure_audit_table(session)
-    threshold = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    threshold = datetime.utcnow() - timedelta(days=older_than_days)
     stmt = delete(AuditEvent).where(AuditEvent.created_at < threshold)
     result = await session.execute(stmt)
     return result.rowcount or 0

@@ -124,10 +124,10 @@ async def trigger_backup(admin=Depends(verify_admin_token)):
         try:
             exception = await backup_database()
         except Exception as error:
-            logger.opt(exception=error).error("[Management] Backup crashed: {}", error)
+            logger.opt(exception=error).error("[Site:Admin] Резервная копия упала с ошибкой: {}", error)
             return
         if exception:
-            logger.error(f"[Management] Backup finished with error: {exception}")
+            logger.error(f"[Site:Admin] Резервная копия завершилась с ошибкой: {exception}")
 
     spawn(_run_backup())
     return {"status": "backup_started"}

@@ -1,0 +1,1773 @@
+{
+  "defaultAdminTools": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 3,
+    "monoFontFamily": "",
+    "panelHeader": "Администратор",
+    "adminPanelLabel": "Веб-админка",
+    "adminPanelHref": "/admin",
+    "hint": "Видно только администраторам сайта",
+    "analyticsLabel": "Аналитика",
+    "logsLabel": "Логи и здоровье",
+    "auditLabel": "Журнал действий"
+  },
+  "defaultAppDownload": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 8,
+    "monoFontFamily": "",
+    "viewMode": "steps",
+    "panelHeader": "Установка приложения",
+    "hint": "",
+    "platformTitle": "Выберите устройство",
+    "clientTitle": "Выберите приложение",
+    "stepsTitle": "Что делать",
+    "downloadLabel": "Скачать",
+    "installLabel": "Установить {app}",
+    "backLabel": "Назад",
+    "restartLabel": "Выбрать другое приложение",
+    "counterFormat": "Шаг {n} из {total}",
+    "noClientsText": "Для этой платформы приложений пока нет",
+    "noStepsText": "Инструкция появится после выбора приложения",
+    "labelIos": "iPhone / iPad",
+    "labelAndroid": "Android",
+    "labelWindows": "Windows",
+    "labelMacos": "macOS",
+    "labelLinux": "Linux",
+    "showSteps": true,
+    "showDownload": true,
+    "apps": [
+      {
+        "id": "happ",
+        "name": "Happ",
+        "note": "Простое приложение, подходит новичкам",
+        "badge": "Рекомендуем",
+        "platforms": [
+          "ios",
+          "android"
+        ],
+        "links": {
+          "ios": "https://apps.apple.com/app/id6504287215",
+          "android": "https://play.google.com/store/apps/details?id=com.happ.vpn"
+        },
+        "deepLink": "happ://import/{URL}"
+      },
+      {
+        "id": "v2raytun",
+        "name": "v2rayTUN",
+        "note": "",
+        "badge": "",
+        "platforms": [
+          "ios",
+          "android",
+          "windows",
+          "macos"
+        ],
+        "links": {
+          "ios": "https://apps.apple.com/app/id6476628951",
+          "android": "https://play.google.com/store/apps/details?id=com.v2raytun.android",
+          "windows": "https://github.com/nicetry-code/v2rayTun/releases",
+          "macos": "https://apps.apple.com/app/id6476628951"
+        },
+        "deepLink": "v2raytun://import/{URL}"
+      },
+      {
+        "id": "hiddify",
+        "name": "Hiddify",
+        "note": "",
+        "badge": "",
+        "platforms": [
+          "ios",
+          "android",
+          "windows",
+          "macos",
+          "linux"
+        ],
+        "links": {
+          "ios": "https://apps.apple.com/app/id6596777532",
+          "android": "https://play.google.com/store/apps/details?id=app.hiddify.com",
+          "windows": "https://github.com/hiddify/hiddify-app/releases",
+          "macos": "https://github.com/hiddify/hiddify-app/releases",
+          "linux": "https://github.com/hiddify/hiddify-app/releases"
+        },
+        "deepLink": "hiddify://import/{URL}"
+      }
+    ],
+    "steps": [
+      {
+        "title": "Скачайте приложение",
+        "text": "Откройте ссылку и установите приложение для своего устройства.",
+        "platform": "",
+        "appId": ""
+      },
+      {
+        "title": "Разрешите установку",
+        "text": "При первом запуске подтвердите запросы системы — без них подключение не заработает.",
+        "platform": "",
+        "appId": ""
+      },
+      {
+        "title": "Добавьте подписку",
+        "text": "Нажмите «Подключить» — ссылка откроется в приложении и добавит подписку.",
+        "platform": "",
+        "appId": ""
+      }
+    ]
+  },
+  "defaultBackdrop": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 14,
+    "monoFontFamily": "",
+    "statusLeft": "Онлайн",
+    "statusCenter": "Защищённое соединение",
+    "statusRight": "v4.2",
+    "showStatusBar": true,
+    "showCanvas": true,
+    "showLiveTime": false,
+    "cols": 18,
+    "rows": 9,
+    "hotRatio": 0.04
+  },
+  "defaultBalanceTopUp": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 5,
+    "monoFontFamily": "",
+    "panelHeader": "Пополнить баланс",
+    "panelHeaderHint": "Выберите или введите сумму",
+    "amountPlaceholder": "500",
+    "submitLabel": "Пополнить",
+    "presetAmounts": [
+      100,
+      300,
+      500,
+      1000
+    ],
+    "minAmount": 50
+  },
+  "defaultChangePassword": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 12,
+    "rowSpan": 5,
+    "monoFontFamily": "",
+    "panelHeader": "Смена пароля",
+    "hint": "",
+    "currentLabel": "Текущий пароль",
+    "newLabel": "Новый пароль",
+    "confirmLabel": "Повторите новый пароль",
+    "submitLabel": "Сменить пароль"
+  },
+  "defaultCheckout": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 14,
+    "headerLabel": "К оплате",
+    "orderId": "",
+    "couponPlaceholder": "Промокод",
+    "couponApplyLabel": "Применить",
+    "couponOkPrefix": "✓",
+    "couponOkSuffix": "применён",
+    "couponErrorText": "Код неверен",
+    "couponLineLabel": "Промокод",
+    "totalLabel": "Итого",
+    "totalMeta": "оплата единоразовая",
+    "currency": "₽",
+    "baseAmount": 2988,
+    "payLabel": "Оплатить",
+    "termsText": "Нажимая «Оплатить», вы принимаете условия покупки и политику.",
+    "secureLeft": "Защищённый платёж",
+    "secureRight": "Visa · MC · МИР · USDT",
+    "successRedirect": "/dashboard",
+    "monoFontFamily": "",
+    "priceRows": [
+      {
+        "label": "Цена за месяц",
+        "value": "399 ₽",
+        "variant": "strike"
+      },
+      {
+        "label": "Цена · 12 мес",
+        "value": "2 988 ₽",
+        "variant": "base"
+      }
+    ],
+    "coupons": [
+      {
+        "code": "SOLO20",
+        "discountPercent": 20
+      },
+      {
+        "code": "FRIEND15",
+        "discountPercent": 15
+      },
+      {
+        "code": "WELCOME",
+        "discountPercent": 10
+      }
+    ]
+  },
+  "defaultCheckoutBanner": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 12,
+    "useFlowData": true,
+    "breadcrumb": [
+      "Кабинет",
+      "Подписки",
+      "Оплата"
+    ],
+    "headlineText": "Оплата",
+    "showDot": false,
+    "subtitle": "Доступ откроется в течение минуты после подтверждения платежа.",
+    "planCells": [
+      {
+        "label": "Тариф",
+        "value": "PRO"
+      },
+      {
+        "label": "Период",
+        "value": "12 мес"
+      },
+      {
+        "label": "Устройств",
+        "value": "5"
+      },
+      {
+        "label": "Трафик",
+        "value": "Безлимит",
+        "accent": true
+      }
+    ],
+    "monoFontFamily": ""
+  },
+  "defaultCheckoutProvider": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 4,
+    "monoFontFamily": "",
+    "title": "Способ оплаты",
+    "subtitle": "",
+    "noProvidersText": "Нет доступных способов оплаты",
+    "defaultProvider": "",
+    "showSingleProvider": true,
+    "providerLabels": {}
+  },
+  "defaultCheckoutTrust": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 20,
+    "rowSpan": 4,
+    "monoFontFamily": "",
+    "items": [
+      {
+        "title": "Безопасная оплата",
+        "desc": "Платёж проходит по защищённому каналу, данные карты мы не видим и не храним."
+      },
+      {
+        "title": "Мгновенная активация",
+        "desc": "Подписка включается автоматически в течение минуты после оплаты."
+      },
+      {
+        "title": "Поддержка рядом",
+        "desc": "Если что-то пойдёт не так — напишите нам, разберёмся быстро."
+      }
+    ],
+    "methodsLabel": "Принимаем",
+    "methodsText": "Visa · Mastercard · МИР · СБП · USDT"
+  },
+  "defaultConnectCta": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 7,
+    "monoFontFamily": "",
+    "panelHint": "Подключение к VPN",
+    "fallbackTitle": "VPN",
+    "noKeysText": "Нет активной подписки",
+    "loadingText": "Загрузка...",
+    "connectLabel": "Подключить",
+    "copyLabel": "Копировать",
+    "copiedLabel": "Скопировано",
+    "shareLabel": "Поделиться",
+    "shareTitle": "Подключение к VPN",
+    "qrLabel": "QR-код",
+    "qrCloseLabel": "Закрыть QR",
+    "qrErrorText": "Не удалось загрузить QR",
+    "showConnect": true,
+    "showCopy": true,
+    "showLink": true,
+    "showShare": true,
+    "showQr": true,
+    "viewMode": "all",
+    "showAppPicker": true,
+    "platformTitle": "Ваше устройство",
+    "clientTitle": "Приложение",
+    "connectTitle": "Подключение",
+    "stepsTitle": "Что делать",
+    "downloadLabel": "Скачать",
+    "backLabel": "Назад",
+    "counterFormat": "Шаг {n} из {total}",
+    "noClientsText": "Для этой платформы приложений пока нет",
+    "labelIos": "iPhone / iPad",
+    "labelAndroid": "Android",
+    "labelWindows": "Windows",
+    "labelMacos": "macOS",
+    "labelLinux": "Linux",
+    "apps": [
+      {
+        "id": "happ",
+        "name": "Happ",
+        "note": "Простое приложение, подходит новичкам",
+        "badge": "Рекомендуем",
+        "platforms": [
+          "ios",
+          "android"
+        ],
+        "links": {
+          "ios": "https://apps.apple.com/app/id6504287215",
+          "android": "https://play.google.com/store/apps/details?id=com.happ.vpn"
+        },
+        "deepLink": "happ://import/{URL}"
+      },
+      {
+        "id": "v2raytun",
+        "name": "v2rayTUN",
+        "note": "",
+        "badge": "",
+        "platforms": [
+          "ios",
+          "android",
+          "windows",
+          "macos"
+        ],
+        "links": {
+          "ios": "https://apps.apple.com/app/id6476628951",
+          "android": "https://play.google.com/store/apps/details?id=com.v2raytun.android",
+          "windows": "https://github.com/nicetry-code/v2rayTun/releases",
+          "macos": "https://apps.apple.com/app/id6476628951"
+        },
+        "deepLink": "v2raytun://import/{URL}"
+      },
+      {
+        "id": "hiddify",
+        "name": "Hiddify",
+        "note": "",
+        "badge": "",
+        "platforms": [
+          "ios",
+          "android",
+          "windows",
+          "macos",
+          "linux"
+        ],
+        "links": {
+          "ios": "https://apps.apple.com/app/id6596777532",
+          "android": "https://play.google.com/store/apps/details?id=app.hiddify.com",
+          "windows": "https://github.com/hiddify/hiddify-app/releases",
+          "macos": "https://github.com/hiddify/hiddify-app/releases",
+          "linux": "https://github.com/hiddify/hiddify-app/releases"
+        },
+        "deepLink": "hiddify://import/{URL}"
+      }
+    ],
+    "steps": [
+      {
+        "title": "Нажмите «Подключить»",
+        "text": "Ссылка откроется в приложении и добавит подписку.",
+        "platform": "",
+        "appId": ""
+      },
+      {
+        "title": "Включите соединение",
+        "text": "В приложении выберите добавленную подписку и включите VPN.",
+        "platform": "",
+        "appId": ""
+      }
+    ]
+  },
+  "defaultCtaBanner": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 20,
+    "rowSpan": 5,
+    "monoFontFamily": "",
+    "title": "Готовы попробовать?",
+    "subtitle": "Пробный период бесплатно. Подключение за пару минут, отмена в один клик.",
+    "ctaLabel": "Начать бесплатно",
+    "noteText": "Карта не требуется",
+    "ctaActionType": "flow",
+    "ctaFlowId": "trial"
+  },
+  "defaultDailyBonus": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 9,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "Ежедневный бонус",
+    "panelHeaderHintFmt": "серия {streak}",
+    "introText": "Забирай бонус на баланс каждый день — чем дольше серия, тем больше сумма.",
+    "amountFmt": "{amount} ₽",
+    "amountRangeFmt": "{min}–{max} ₽",
+    "claimLabel": "Забрать бонус",
+    "claimingLabel": "Начисляем...",
+    "successFmt": "✓ Начислено {amount} ₽",
+    "errorText": "✕ Не удалось начислить бонус",
+    "loadingText": "Загрузка...",
+    "waitLabel": "Следующий бонус через",
+    "countdownFmt": "{hh}:{mm}:{ss}",
+    "reasonCooldownText": "Бонус на сегодня уже получен",
+    "reasonLimitText": "Лимит бонусов за период исчерпан",
+    "reasonSubscriptionText": "Бонус доступен с активной подпиской",
+    "reasonAccountAgeText": "Бонус откроется чуть позже после регистрации",
+    "reasonDisabledText": "Ежедневный бонус сейчас недоступен",
+    "showStreak": true,
+    "showLadder": true,
+    "ladderTitle": "Серия",
+    "ladderDayFmt": "{days} д",
+    "ladderMaxItems": 7,
+    "showTotal": true,
+    "totalFmt": "всего получено {total} ₽",
+    "showClaimsLeft": true,
+    "claimsLeftFmt": "осталось бонусов: {left}",
+    "backendVisibilityKey": "dailyBonusEnabled",
+    "respectBackendVisibility": true
+  },
+  "defaultDeviceList": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 8,
+    "monoFontFamily": "",
+    "panelHeader": "Устройства",
+    "hintFormat": "{count} / {limit}",
+    "emptyText": "Нет подключённых устройств",
+    "errorText": "Не удалось загрузить устройства",
+    "loadingText": "Загрузка...",
+    "noKeysText": "Нет активной подписки",
+    "deleteLabel": "Отвязать",
+    "deleteBusyLabel": "…",
+    "deleteSuccessText": "Устройство отвязано",
+    "deleteErrorText": "Не удалось отвязать устройство",
+    "pageSize": 4
+  },
+  "defaultFaq": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 20,
+    "rowSpan": 8,
+    "monoFontFamily": "",
+    "gap": 12,
+    "items": [
+      {
+        "title": "Что будет после пробного периода?",
+        "content": "Ничего. Подписка не продлевается автоматически — вы сами решаете, продолжать или нет."
+      },
+      {
+        "title": "На скольких устройствах работает?",
+        "content": "Зависит от тарифа. Дополнительные устройства можно докупить в любой момент."
+      },
+      {
+        "title": "Как быстро происходит подключение?",
+        "content": "Сразу после оплаты: ключ появляется в кабинете, подключение занимает пару минут."
+      }
+    ]
+  },
+  "defaultFeaturesGrid": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 10,
+    "monoFontFamily": "",
+    "hoverEnabled": true,
+    "hoverTransitionMs": 200,
+    "padding": 28,
+    "iconSize": 56,
+    "iconStroke": 1.6,
+    "items": [
+      {
+        "code": "Защита",
+        "title": "Шифрование",
+        "desc": "AES-256-GCM поверх WireGuard. Новые ключи при каждом подключении — приватность по умолчанию.",
+        "metricValue": "AES-256",
+        "metricLabel": "GCM / X25519",
+        "iconKey": "lock"
+      },
+      {
+        "code": "Без утечек",
+        "title": "Zero Leak",
+        "desc": "Killswitch на ядре. Утечки DNS, IPv6 и WebRTC заблокированы — упал туннель, встал и трафик.",
+        "metricValue": "0%",
+        "metricLabel": "утечек за 90 дней",
+        "iconKey": "shield"
+      },
+      {
+        "code": "Скорость",
+        "title": "Быстро",
+        "desc": "Магистрали 10G в каждом регионе. Multi-hop без потери пакетов, реальные 940+ Мбит/с.",
+        "metricValue": "940",
+        "metricLabel": "Мбит/с p50",
+        "iconKey": "chart"
+      }
+    ]
+  },
+  "defaultFriendsList": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "Приведённые друзья",
+    "panelHeaderHintFormat": "{count} человек",
+    "emptyText": "Пока нет рефералов",
+    "items": [
+      {
+        "name": "solo_anya",
+        "plan": "PRIME · 12 мес",
+        "bonus": "+30 дн",
+        "ts": "2 дня назад"
+      },
+      {
+        "name": "mr_quiet",
+        "plan": "CORE · 6 мес",
+        "bonus": "+30 дн",
+        "ts": "1 нед назад"
+      },
+      {
+        "name": "ave",
+        "plan": "PROBE",
+        "bonus": "—",
+        "ts": "1 мес назад"
+      }
+    ]
+  },
+  "defaultGiftCardsGrid": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 14,
+    "monoFontFamily": "",
+    "source": "tariffs",
+    "tariffsGroupCode": "",
+    "tariffCheckoutSlug": "checkout",
+    "tariffCtaLabel": "Подарить",
+    "tariffTagLabel": "Тариф",
+    "tariffLoadingText": "Загрузка тарифов...",
+    "tariffEmptyText": "Нет доступных тарифов",
+    "tariffPeriodFmt": "{days} дн",
+    "tariffDevicesFmt": "{n} устр.",
+    "tariffTrafficFmt": "{n} ГБ",
+    "tariffUnlimitedText": "∞",
+    "cards": []
+  },
+  "defaultGiftCta": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 5,
+    "monoFontFamily": "",
+    "panelHint": "Подари подписку",
+    "title": "Подарить подписку",
+    "titleAccent": "",
+    "description": "Выберите тариф — получатель активирует код в один клик. Работает для любого нового аккаунта.",
+    "ctaLabel": "Выбрать подарок",
+    "groupCode": "gifts",
+    "checkoutSlug": "checkout",
+    "emptyText": "Нет доступных тарифов",
+    "loadingText": "Загрузка тарифов...",
+    "errorText": "Не удалось загрузить тарифы",
+    "pickLabel": "Подарить →",
+    "backLabel": "← Назад",
+    "perDayLabel": "в день",
+    "unlimitedText": "∞",
+    "perPage": 5,
+    "prevLabel": "← Пред",
+    "nextLabel": "След →",
+    "pageFormat": "{page} / {total}"
+  },
+  "defaultGiftHistory": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "История",
+    "panelHeaderHintFormat": "активировано {used} из {total}",
+    "emptyText": "Пока нет подарков",
+    "loadingText": "Загрузка...",
+    "unauthenticatedText": "Войдите в аккаунт",
+    "unusedLabel": "Ожидает",
+    "usedLabel": "Использован",
+    "maxItems": 100
+  },
+  "defaultGiftRedeem": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 4,
+    "monoFontFamily": "",
+    "panelHeader": "Активировать подарок",
+    "panelHeaderHint": "",
+    "description": "Введите код подарка от другого пользователя — после активации новый ключ появится в вашем кабинете.",
+    "placeholder": "Ссылка или код подарка",
+    "submitLabel": "Активировать",
+    "submittingLabel": "Активируем...",
+    "successText": "✓ Подарок активирован",
+    "notFoundText": "✕ Код не найден или уже использован",
+    "errorText": "✕ Не удалось активировать",
+    "invalidFormatText": "✕ Только латинские буквы, цифры, дефис",
+    "minLength": 3
+  },
+  "defaultHapticSettings": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 12,
+    "rowSpan": 2,
+    "monoFontFamily": "",
+    "panelHeader": "Вибрация",
+    "hint": "отклик",
+    "offLabel": "Выкл",
+    "lightLabel": "Слабый",
+    "mediumLabel": "Средний",
+    "heavyLabel": "Сильный",
+    "unsupportedLabel": "Устройство не поддерживает вибрацию — отклик будет только в приложении Telegram."
+  },
+  "defaultHero": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 10,
+    "monoFontFamily": "",
+    "pillText": "Без логов · Без ограничений",
+    "title": "Быстрый и безопасный интернет",
+    "titleAccent": "без границ",
+    "subtitle": "Подключение за пару минут на любом устройстве. Современные протоколы, стабильная скорость и поддержка, которая отвечает.",
+    "trustText": "Пробный период — бесплатно. Отмена в один клик.",
+    "primaryLabel": "Попробовать бесплатно",
+    "primaryActionType": "flow",
+    "primaryFlowId": "trial",
+    "secondaryLabel": "Смотреть тарифы",
+    "secondaryLink": "#Тарифы"
+  },
+  "defaultInvoiceList": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "Транзакции",
+    "panelHeaderHintFormat": "{count} записей",
+    "emptyText": "Платежей пока нет",
+    "loadingText": "Загрузка...",
+    "unauthenticatedText": "Войдите, чтобы увидеть историю",
+    "paidLabel": "Оплачен",
+    "pendingLabel": "PENDING",
+    "failedLabel": "FAIL",
+    "cancelledLabel": "CANCEL",
+    "pdfLabel": "PDF",
+    "maxItems": 20,
+    "showAdjustments": false
+  },
+  "defaultLoginBanner": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 14,
+    "monoFontFamily": "",
+    "logoText": "",
+    "title": "Рады видеть вас",
+    "subtitle": "Войдите, чтобы управлять подписками, ключами и устройствами.",
+    "footnote": "Подключение занимает пару минут",
+    "bullets": [
+      {
+        "title": "Без логов",
+        "desc": "Мы не храним историю ваших подключений."
+      },
+      {
+        "title": "Любые устройства",
+        "desc": "Телефон, компьютер, роутер и даже телевизор."
+      },
+      {
+        "title": "Поддержка 24/7",
+        "desc": "Отвечаем быстро и по делу."
+      }
+    ]
+  },
+  "defaultLoginForm": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 12,
+    "headTag": "SN · /AUTH",
+    "title": "Вход",
+    "subtitle": "▸ Подключение к личному кабинету",
+    "tabPasswordLabel": "Пароль",
+    "tabCodeLabel": "Код на e-mail",
+    "emailLabel": "E-mail",
+    "emailPlaceholder": "you@solonet.io",
+    "passwordLabel": "Пароль",
+    "passwordPlaceholder": "••••••••••••",
+    "codeLabel": "Код из письма",
+    "codePlaceholder": "123456",
+    "showPwLabel": "показать",
+    "hidePwLabel": "скрыть",
+    "rememberLabel": "Запомнить",
+    "forgotLabel": "Забыли пароль?",
+    "forgotHref": "/reset-password",
+    "submitLabel": "Войти",
+    "sendCodeLabel": "Получить код",
+    "requestNewCodeLabel": "Запросить новый код",
+    "successLabel": "OK · туннель открыт",
+    "orLabel": "или",
+    "telegramLabel": "Telegram",
+    "googleLabel": "Google",
+    "yandexLabel": "Yandex",
+    "showPasswordLogin": true,
+    "showCodeLogin": true,
+    "showTelegramLogin": true,
+    "showGoogleLogin": true,
+    "showYandexLogin": true,
+    "legalText": "",
+    "successRedirect": "/dashboard",
+    "monoFontFamily": "JetBrains Mono, ui-monospace, monospace"
+  },
+  "defaultLoginHistory": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "История входов",
+    "allLabel": "Все сессии",
+    "allHref": "",
+    "emptyText": "История пуста",
+    "loadingText": "Загрузка...",
+    "unauthenticatedText": "Войдите в аккаунт",
+    "currentSuffix": "сейчас",
+    "revokeLabel": "Завершить",
+    "maxItems": 100
+  },
+  "defaultNodeStatus": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 9,
+    "monoFontFamily": "",
+    "panelHeader": "Статус серверов",
+    "hint": "",
+    "onlineLabel": "Работает",
+    "offlineLabel": "Не работает",
+    "checkingLabel": "Проверка…",
+    "pingFormat": "≈ {ms} мс",
+    "fastestFormat": "⚡ Самый быстрый: {name} · ≈ {ms} мс",
+    "recommendFormat": "🚀 Рекомендуем: {name} (меньше всего нагрузка)",
+    "probePort": 8443,
+    "probeEnabled": true,
+    "emptyText": "Нет данных о серверах",
+    "loadingText": "Загрузка…",
+    "totalFormat": "Всего {total} · онлайн {online} · недоступно {offline}",
+    "pageSize": 6,
+    "prevLabel": "Назад",
+    "nextLabel": "Вперёд",
+    "items": []
+  },
+  "defaultNotifChannels": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "Каналы доставки",
+    "panelHeaderHint": "куда присылать",
+    "channels": [
+      {
+        "kind": "email",
+        "name": "E-mail",
+        "defaultOn": true
+      },
+      {
+        "kind": "telegram",
+        "name": "Telegram",
+        "defaultOn": true
+      },
+      {
+        "kind": "push",
+        "name": "Push в приложении",
+        "staticValue": "на устройства",
+        "defaultOn": true
+      },
+      {
+        "kind": "sms",
+        "name": "SMS",
+        "staticValue": "не подключено",
+        "defaultOn": false
+      }
+    ]
+  },
+  "defaultNotifFeed": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 8,
+    "monoFontFamily": "",
+    "panelHeader": "",
+    "filterAllFormat": "Все · {count}",
+    "filterUnreadFormat": "Новые · {count}",
+    "filterImportantFormat": "Важные · {count}",
+    "markAllLabel": "Пометить как прочитанные",
+    "markAllBusyLabel": "...",
+    "markAllSuccessText": "Прочитано",
+    "markAllErrorText": "Не удалось",
+    "emptyText": "Уведомлений нет",
+    "unauthenticatedText": "Войдите в аккаунт",
+    "loadingText": "Загрузка...",
+    "maxItems": 30,
+    "deleteLabel": "Удалить",
+    "expandLabel": "Подробнее",
+    "collapseLabel": "Свернуть"
+  },
+  "defaultOrbit": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 8,
+    "rowSpan": 8,
+    "monoFontFamily": "",
+    "centerLabel": "",
+    "nodeLabels": "AMS, FRA, NYC, LON, TYO, SGP",
+    "spinSeconds": 46,
+    "showPulse": true
+  },
+  "defaultPageHeader": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 18,
+    "rowSpan": 3,
+    "monoFontFamily": "",
+    "source": "auto",
+    "title": "Заголовок",
+    "subtitle": "",
+    "meta": ""
+  },
+  "defaultPartnerPayouts": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 18,
+    "rowSpan": 7,
+    "monoFontFamily": "",
+    "panelHeader": "Заявки на вывод",
+    "panelHeaderHintFmt": "баланс {balance} ₽",
+    "amountLabel": "Сумма к выводу",
+    "amountPlaceholder": "0",
+    "submitLabel": "Запросить",
+    "submittingLabel": "Отправляем...",
+    "successText": "✓ Заявка создана",
+    "errorText": "✕ Не удалось создать заявку",
+    "emptyText": "Заявок пока нет",
+    "loadingText": "Загрузка...",
+    "historyHeader": "История",
+    "statusPendingLabel": "В обработке",
+    "statusApprovedLabel": "Одобрено",
+    "statusRejectedLabel": "Отклонено",
+    "statusPaidLabel": "Выплачено",
+    "maxItems": 20,
+    "minAmount": 100,
+    "notEnoughBalanceText": "На балансе недостаточно средств",
+    "belowMinText": "Минимальная сумма {min} ₽"
+  },
+  "defaultPaymentMethod": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 10,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "Способ оплаты",
+    "panelHeaderHint": "основной",
+    "cardMask": "•••• •••• •••• 4 829",
+    "cardMeta": "Visa · истекает 11/28",
+    "changeLabel": "Сменить",
+    "changeHref": "/dashboard/profile",
+    "altMethodsLabel": "Другие методы",
+    "altMethods": [
+      {
+        "label": "SBP"
+      },
+      {
+        "label": "BTC"
+      },
+      {
+        "label": "USDT"
+      },
+      {
+        "label": "MONERO"
+      }
+    ]
+  },
+  "defaultPayoutHistory": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 9,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "История выводов",
+    "panelHeaderHintFmt": "всего {count}",
+    "emptyText": "Заявок пока нет",
+    "loadingText": "Загрузка...",
+    "statusPendingLabel": "В обработке",
+    "statusApprovedLabel": "Одобрено",
+    "statusRejectedLabel": "Отклонено",
+    "statusPaidLabel": "Выплачено",
+    "maxItems": 20,
+    "pageSize": 4,
+    "pagePrevLabel": "Назад",
+    "pageNextLabel": "Вперёд",
+    "pageLabelFormat": "{page} / {total}"
+  },
+  "defaultPayoutRequest": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 9,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "Запрос на вывод",
+    "panelHeaderHintFmt": "баланс {balance} ₽",
+    "amountLabel": "Сумма к выводу",
+    "amountPlaceholder": "0",
+    "submitLabel": "Запросить",
+    "submittingLabel": "Отправляем...",
+    "successText": "✓ Заявка создана",
+    "errorText": "✕ Не удалось создать заявку",
+    "loadingText": "Загрузка...",
+    "minAmount": 100,
+    "notEnoughBalanceText": "На балансе недостаточно средств",
+    "belowMinText": "Минимальная сумма {min} ₽",
+    "setupHint": "Чтобы выводить средства, укажите способ вывода и реквизиты.",
+    "setupCtaLabel": "Установить способ вывода",
+    "noMethodsText": "Способы вывода не настроены администратором.",
+    "methodSelectLabel": "Способ вывода",
+    "requisitesLabel": "Реквизиты",
+    "saveMethodLabel": "Сохранить",
+    "savingMethodLabel": "Сохраняем...",
+    "cancelLabel": "Отмена",
+    "changeMethodLabel": "изменить",
+    "methodSavedFmt": "{method} · {masked}"
+  },
+  "defaultProfileCard": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 7,
+    "monoFontFamily": "",
+    "showAvatar": true,
+    "showJoinedSince": true,
+    "joinedPrefix": "с",
+    "joinedSincePrefix": "С нами",
+    "daysSinceSuffix": "дн",
+    "verifiedBadgeText": "Подтверждён",
+    "loadingText": "Загрузка...",
+    "emptyAuthText": "Войдите в аккаунт",
+    "bindLabel": "Привязать",
+    "bindEmailHref": "",
+    "bindTelegramHref": "",
+    "fields": [
+      {
+        "kind": "email",
+        "label": "E-mail",
+        "showVerifiedBadge": true
+      },
+      {
+        "kind": "telegram",
+        "label": "Telegram",
+        "showVerifiedBadge": true
+      },
+      {
+        "kind": "identity",
+        "label": "ID"
+      },
+      {
+        "kind": "language",
+        "label": "Язык",
+        "value": "Русский"
+      }
+    ]
+  },
+  "defaultPromoActivate": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 4,
+    "monoFontFamily": "",
+    "panelHeader": "Активировать промокод",
+    "panelHeaderHint": "",
+    "placeholder": "PROMO-XXXX-XXXX",
+    "submitLabel": "Активировать",
+    "submittingLabel": "Активируем...",
+    "successText": "✓ Промокод применён",
+    "errorText": "✕ Неверный или истёкший код"
+  },
+  "defaultPushPermission": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 12,
+    "rowSpan": 3,
+    "monoFontFamily": "",
+    "panelHeader": "Уведомления",
+    "hint": "доступ",
+    "description": "Разреши push-уведомления, чтобы не пропустить окончание подписки, оплаты и важные события.",
+    "enableLabel": "Разрешить уведомления",
+    "grantedLabel": "Уведомления разрешены",
+    "deniedLabel": "Уведомления заблокированы в настройках браузера",
+    "unsupportedLabel": "Уведомления не поддерживаются в этом браузере",
+    "subscribeErrorLabel": "Разрешение получено, но подписку не удалось сохранить. Попробуйте ещё раз."
+  },
+  "defaultPwaInstall": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 12,
+    "rowSpan": 3,
+    "monoFontFamily": "",
+    "panelHeader": "Приложение",
+    "hint": "PWA",
+    "description": "Установи кабинет как приложение — быстрый доступ с домашнего экрана, без браузера.",
+    "installLabel": "Установить приложение",
+    "installedLabel": "Приложение установлено",
+    "unavailableLabel": "Установка недоступна в этом браузере"
+  },
+  "defaultQuickActions": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 18,
+    "rowSpan": 5,
+    "monoFontFamily": "",
+    "panelHeader": "Быстрые действия",
+    "panelHeaderHint": "",
+    "emptyText": "Действия не настроены",
+    "maxColumns": 3,
+    "items": [
+      {
+        "icon": "🔑",
+        "title": "Моя подписка",
+        "subtitle": "Тариф, продление, ключ",
+        "linkType": "tab",
+        "cabinetTabId": "keys"
+      },
+      {
+        "icon": "⬇️",
+        "title": "Установка",
+        "subtitle": "Приложение и настройка",
+        "linkType": "tab",
+        "cabinetTabId": "instructions"
+      },
+      {
+        "icon": "🎁",
+        "title": "Подарки",
+        "subtitle": "Промокоды и сертификаты",
+        "linkType": "tab",
+        "cabinetTabId": "gifts"
+      }
+    ]
+  },
+  "defaultReferralCard": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 7,
+    "monoFontFamily": "",
+    "panelHint": "Ваша реферальная ссылка",
+    "linkPrefix": "solonet.io/r/",
+    "copyLabel": "Копировать",
+    "copiedLabel": "Скопировано",
+    "shareLabel": "Поделиться",
+    "qrLabel": "QR-код",
+    "showShare": true,
+    "showQr": true
+  },
+  "defaultReferralTier": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 10,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "panelHeader": "Условия программы",
+    "panelHeaderHint": "",
+    "conditionsLabel": "Условия",
+    "showConditions": true,
+    "rows": [
+      {
+        "label": "Приглашено",
+        "value": "0"
+      },
+      {
+        "label": "Активных",
+        "value": "0"
+      },
+      {
+        "label": "Заработано",
+        "value": "0 ₽"
+      }
+    ]
+  },
+  "defaultSectionTabs": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 1,
+    "monoFontFamily": "",
+    "tabsGroup": "section",
+    "defaultScreenId": "main",
+    "displayMode": "text",
+    "orientation": "horizontal",
+    "tabs": []
+  },
+  "defaultSecurityPanel": {
+    "panelHeader": "Безопасность",
+    "panelHeaderHint": "",
+    "sessionsLabel": "Активные сессии",
+    "sessionsDesc": "Сколько устройств вошли в аккаунт прямо сейчас.",
+    "revokeOthersLabel": "Завершить другие",
+    "revokeBusyLabel": "Завершаем...",
+    "revokeOnlyLabel": "Только это устройство",
+    "revokeOkText": "Другие сессии завершены",
+    "revokeErrorText": "Не удалось завершить сессии",
+    "passwordLabel": "Пароль",
+    "passwordSetDesc": "Установлен. Можно сменить в любой момент.",
+    "passwordEmptyDesc": "Не установлен. Войти можно только через почту или Telegram.",
+    "changePasswordLabel": "Сменить",
+    "setPasswordLabel": "Установить",
+    "passwordHref": "/forgot-password",
+    "bindingsLabel": "Привязки",
+    "bindingsDescFmt": "Почта: {email} · Telegram: {tg}",
+    "bindingsManageLabel": "Управлять",
+    "bindingsHref": "#bind-account",
+    "presentLabel": "✓",
+    "absentLabel": "—",
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 8,
+    "monoFontFamily": ""
+  },
+  "defaultSidebar": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "vs_radius": "none",
+    "colSpan": 6,
+    "rowSpan": 24,
+    "monoFontFamily": "",
+    "animationType": "slideEdgeLeft",
+    "animationTrigger": "load",
+    "animationDuration": 420,
+    "brandName": "",
+    "brandVersion": "",
+    "showConnCard": true,
+    "connTunnelLabel": "",
+    "connTunnelValue": "WG-01",
+    "connStatusConnectedLabel": "Подключено",
+    "connStatusDisconnectedLabel": "Отключено",
+    "connLocLabel": "AMS-03 · Амстердам · 14 ms",
+    "tabGroupId": "cabinet",
+    "items": [
+      {
+        "id": "profile",
+        "num": "01",
+        "label": "Профиль",
+        "icon": "prof"
+      },
+      {
+        "id": "keys",
+        "num": "02",
+        "label": "Подписки",
+        "icon": "bill"
+      },
+      {
+        "id": "partners",
+        "num": "03",
+        "label": "Партнёрка",
+        "icon": "ref"
+      },
+      {
+        "id": "gifts",
+        "num": "04",
+        "label": "Подарки",
+        "icon": "gift",
+        "badgeKey": "giftsClaimed"
+      },
+      {
+        "id": "notifications",
+        "num": "05",
+        "label": "Уведомления",
+        "icon": "bell",
+        "badgeKey": "unreadNotifications"
+      }
+    ],
+    "showUserFooter": true,
+    "userPlanFormat": "PRIME · 247 дн",
+    "logoutLabel": "↗"
+  },
+  "defaultStatRow": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 18,
+    "rowSpan": 4,
+    "monoFontFamily": "",
+    "borderWidth": 1,
+    "padding": 20,
+    "gap": 24,
+    "items": [
+      {
+        "label": "Скорость",
+        "value": "10",
+        "suffix": "Гбит/с"
+      },
+      {
+        "label": "Серверов",
+        "value": "412"
+      },
+      {
+        "label": "Логов",
+        "value": "0"
+      }
+    ]
+  },
+  "defaultStatStrip": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 3,
+    "monoFontFamily": "",
+    "tiles": [
+      {
+        "metric": "balance",
+        "label": "Баланс"
+      },
+      {
+        "metric": "keysTotal",
+        "label": "Подписки"
+      },
+      {
+        "metric": "referralsTotal",
+        "label": "Рефералы"
+      },
+      {
+        "metric": "referralBonusTotal",
+        "label": "Бонус"
+      }
+    ]
+  },
+  "defaultSteps": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 20,
+    "rowSpan": 6,
+    "monoFontFamily": "",
+    "padding": 26,
+    "gap": 18,
+    "items": [
+      {
+        "num": "01",
+        "title": "Выберите тариф",
+        "desc": "Пробный период бесплатно — карта не нужна."
+      },
+      {
+        "num": "02",
+        "title": "Получите ключ",
+        "desc": "Ключ доступа появится в личном кабинете сразу после оплаты."
+      },
+      {
+        "num": "03",
+        "title": "Подключитесь",
+        "desc": "Отсканируйте QR или вставьте ключ в приложение — готово."
+      }
+    ]
+  },
+  "defaultSupport": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 9,
+    "monoFontFamily": "",
+    "panelHeader": "Поддержка",
+    "panelSubheader": "Задайте вопрос — ответим как можно скорее",
+    "newButtonLabel": "Новое обращение",
+    "subjectLabel": "Тема",
+    "subjectPlaceholder": "Коротко о проблеме",
+    "categoryLabel": "Категория",
+    "messageLabel": "Сообщение",
+    "messagePlaceholder": "Опишите, что случилось и что вы уже пробовали",
+    "sendLabel": "Отправить",
+    "replyPlaceholder": "Ваш ответ…",
+    "backLabel": "← К списку",
+    "emptyText": "Обращений пока нет",
+    "loadingText": "Загрузка…",
+    "unauthenticatedText": "Войдите в аккаунт, чтобы обратиться в поддержку",
+    "disabledText": "Поддержка временно недоступна",
+    "createTitle": "Новое обращение",
+    "closedText": "Обращение закрыто",
+    "maxItems": 20
+  },
+  "defaultTariffPanel": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 14,
+    "rowSpan": 8,
+    "monoFontFamily": "",
+    "panelHeader": "Текущий тариф",
+    "panelHeaderHint": "PRIME",
+    "pricePrimary": "399",
+    "pricePeriodLabel": "₽ / мес",
+    "renewalText": "Списание 4 788 ₽ — 12 АПР 2027",
+    "features": [
+      {
+        "label": "Серверы",
+        "value": "412"
+      },
+      {
+        "label": "Устройств",
+        "value": "10"
+      },
+      {
+        "label": "Multi-hop",
+        "value": "2 узла"
+      },
+      {
+        "label": "Поддержка",
+        "value": "Live · 24/7"
+      }
+    ],
+    "primaryButtonLabel": "Продлить",
+    "primaryButtonHref": "",
+    "addonsButtonLabel": "Докупить",
+    "addonsButtonHref": "",
+    "switchTariffLabel": "Сменить тариф",
+    "switchTariffHref": "/tariffs",
+    "switchTariffMode": "inside",
+    "switchTariffGroupCode": "",
+    "switchTariffEmptyText": "Доступных тарифов нет",
+    "switchTariffCurrentBadge": "Текущий",
+    "switchTariffUpgradeLabel": "Перейти →",
+    "switchTariffSelectLabel": "Выбрать",
+    "switchTariffBackLabel": "← Назад",
+    "switchTariffPerDayLabel": "в день",
+    "switchTariffsPerPage": 5,
+    "switchTariffPrevLabel": "← Пред",
+    "switchTariffNextLabel": "След →",
+    "switchTariffPageFormat": "{page} / {total}",
+    "checkoutSlug": "checkout",
+    "noKeysText": "Нет активной подписки",
+    "buyTariffLabel": "Купить тариф",
+    "renewalPrefix": "Истекает",
+    "labelDevices": "Устройств",
+    "labelTraffic": "Трафик",
+    "labelExpiry": "До",
+    "labelAlias": "Имя",
+    "trafficUnlimitedText": "∞",
+    "addonsDialogTitle": "Докупить опции",
+    "addonsDialogHint": "Доп. устройства/трафик к текущему тарифу",
+    "addonsDevicesLabel": "Устройства",
+    "addonsTrafficLabel": "Трафик",
+    "addonsTotalLabel": "Итого к оплате",
+    "addonsSubmitLabel": "Оформить",
+    "addonsCancelLabel": "Отмена",
+    "addonsUnavailableText": "Для текущего тарифа нет доступных опций"
+  },
+  "defaultTariffsGrid": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 16,
+    "monoFontFamily": "",
+    "padding": 28,
+    "hoverEnabled": true,
+    "hoverTransitionMs": 200,
+    "checkoutSlug": "checkout",
+    "items": [
+      {
+        "code": "Старт",
+        "name": "PROBE",
+        "desc": "Для разовых сессий и теста скорости.",
+        "price": "99",
+        "currency": "₽",
+        "period": "/ 1 месяц",
+        "features": [
+          {
+            "label": "Серверы",
+            "value": "40+"
+          },
+          {
+            "label": "Устройств",
+            "value": "2"
+          },
+          {
+            "label": "Скорость",
+            "value": "до 1 Гбит/с"
+          },
+          {
+            "label": "Поддержка",
+            "value": "Email · 48ч"
+          }
+        ],
+        "ctaLabel": "Начать"
+      },
+      {
+        "code": "База",
+        "name": "CORE",
+        "badge": "Базовый",
+        "desc": "Базовая защита для нескольких устройств.",
+        "price": "249",
+        "currency": "₽",
+        "period": "/ 6 месяцев",
+        "features": [
+          {
+            "label": "Серверы",
+            "value": "180+"
+          },
+          {
+            "label": "Устройств",
+            "value": "5"
+          },
+          {
+            "label": "Скорость",
+            "value": "до 5 Гбит/с"
+          },
+          {
+            "label": "Killswitch",
+            "value": "Да"
+          },
+          {
+            "label": "Поддержка",
+            "value": "Email · 24ч"
+          }
+        ],
+        "ctaLabel": "Подписаться"
+      },
+      {
+        "code": "Хит",
+        "name": "PRIME",
+        "badge": "Популярный",
+        "highlighted": true,
+        "desc": "Самый ходовой. Multi-hop и приоритет в очереди.",
+        "price": "399",
+        "currency": "₽",
+        "period": "/ 12 месяцев",
+        "features": [
+          {
+            "label": "Серверы",
+            "value": "412"
+          },
+          {
+            "label": "Устройств",
+            "value": "10"
+          },
+          {
+            "label": "Скорость",
+            "value": "до 10 Гбит/с"
+          },
+          {
+            "label": "Multi-hop",
+            "value": "2 узла"
+          },
+          {
+            "label": "Killswitch",
+            "value": "Да"
+          },
+          {
+            "label": "Поддержка",
+            "value": "24/7"
+          }
+        ],
+        "ctaLabel": "Выбрать PRIME"
+      },
+      {
+        "code": "Макс",
+        "name": "SHADOW",
+        "desc": "Triple-hop, выделенный IP, обфускация трафика.",
+        "price": "899",
+        "currency": "₽",
+        "period": "/ 12 месяцев",
+        "features": [
+          {
+            "label": "Серверы",
+            "value": "412 + выделенный"
+          },
+          {
+            "label": "Устройств",
+            "value": "∞"
+          },
+          {
+            "label": "Скорость",
+            "value": "до 10 Гбит/с"
+          },
+          {
+            "label": "Triple-hop",
+            "value": "Да"
+          },
+          {
+            "label": "Обфускация",
+            "value": "XOR + TLS"
+          },
+          {
+            "label": "Выделенный IP",
+            "value": "Да"
+          },
+          {
+            "label": "Поддержка",
+            "value": "24/7"
+          }
+        ],
+        "ctaLabel": "Получить SHADOW"
+      }
+    ]
+  },
+  "defaultTariffSwitcher": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 7,
+    "monoFontFamily": "",
+    "panelHeader": "Сменить тариф",
+    "panelHeaderHint": "",
+    "emptyText": "Тарифы не найдены",
+    "loadingText": "Загрузка...",
+    "errorText": "Не удалось загрузить тарифы",
+    "currentBadge": "Текущий",
+    "upgradeLabel": "Перейти →",
+    "downgradeLabel": "Сменить",
+    "switchLabel": "Выбрать",
+    "selectLabel": "Купить",
+    "checkoutSlug": "checkout",
+    "groupCode": "",
+    "showGroupTabs": true,
+    "perDayLabel": "в день",
+    "devicesLabel": "устр.",
+    "trafficLabel": "ГБ",
+    "unlimitedText": "∞"
+  },
+  "defaultThemeMode": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 12,
+    "rowSpan": 2,
+    "monoFontFamily": "",
+    "panelHeader": "Тема",
+    "hint": "вид",
+    "lightLabel": "Светлая",
+    "darkLabel": "Тёмная",
+    "autoLabel": "Системная"
+  },
+  "defaultTopbar": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 18,
+    "rowSpan": 2,
+    "monoFontFamily": "",
+    "searchPlaceholder": "Поиск по кабинету…",
+    "showSearch": true,
+    "actions": [
+      {
+        "label": "Помощь",
+        "variant": "ghost",
+        "href": "/dashboard/instructions"
+      },
+      {
+        "label": "Купить трафик",
+        "variant": "red",
+        "href": "/tariffs"
+      }
+    ]
+  },
+  "defaultTrafficTrend": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 4,
+    "monoFontFamily": "",
+    "panelHeader": "Использование трафика",
+    "emptyText": "Данные появятся в течение нескольких дней.",
+    "unitLabel": "ГБ",
+    "peakLabel": "Пик",
+    "lastLabel": "Сейчас"
+  },
+  "defaultTrafficUsage": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 2,
+    "monoFontFamily": "",
+    "panelHeader": "Трафик",
+    "usedFormat": "{used} / {limit} ГБ",
+    "remainingFormat": "Осталось {left} ГБ",
+    "unlimitedText": "Безлимитный трафик",
+    "unlimitedHint": "∞",
+    "noKeysText": "Нет активной подписки",
+    "loadingText": "Загрузка...",
+    "lowWarnPercent": 90
+  },
+  "defaultTrialCard": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 12,
+    "rowSpan": 5,
+    "panelHint": "Пробный доступ",
+    "titleText": "Пробный период",
+    "freeLabel": "Бесплатно",
+    "ctaLabel": "Попробовать",
+    "usedLabel": "Уже использован",
+    "noTrialText": "Нет пробного тарифа в группе trial",
+    "loadingText": "Загрузка...",
+    "devicesUnit": "устр.",
+    "trafficUnit": "ГБ",
+    "unlimitedText": "Безлимит",
+    "backendVisibilityKey": "trialEnabled",
+    "respectBackendVisibility": true
+  },
+  "defaultUsageRings": {
+    "col": 0,
+    "row": 0,
+    "zIndex": 0,
+    "fontScale": 1,
+    "colSpan": 24,
+    "rowSpan": 11,
+    "monoFontFamily": "",
+    "panelHeader": "Трафик и устройства",
+    "trafficLabel": "Трафик",
+    "trafficUnitFormat": "из {limit} ГБ",
+    "trafficUnlimitedText": "Безлимит",
+    "devicesLabel": "Устройства",
+    "devicesSubLabel": "подключено",
+    "devicesUnlimitedText": "∞",
+    "unitGb": "ГБ",
+    "devicesListTitle": "Подключённые устройства",
+    "emptyDevicesText": "Нет подключённых устройств",
+    "deleteLabel": "Отвязать",
+    "deleteBusyLabel": "…",
+    "deleteSuccessText": "Устройство отвязано",
+    "deleteErrorText": "Не удалось отвязать устройство",
+    "noKeysText": "Нет активной подписки",
+    "loadingText": "Загрузка...",
+    "lowWarnPercent": 90,
+    "pageSize": 3
+  }
+}

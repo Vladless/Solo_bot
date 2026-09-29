@@ -28,11 +28,19 @@ from database.audit import (
 from database.models import AuditEvent
 from logger import logger
 
+from .access_log import (
+    SITE_LOG_TAG,
+    describe_action,
+    describe_actor,
+    describe_duration,
+    describe_status,
+)
 from .rules import (
     AUDIT_STEP_LABELS,
     DEFAULT_FUNNEL_STEPS,
     _funnel_step_counts,
     _is_ignored_analytics_event,
+    _is_noise_api_access,
     _normalize_path_to_step,
     _normalize_path_to_steps,
 )
@@ -268,11 +276,7 @@ def get_telegram_context(audit_context: AuditContext | dict[str, Any] | None) ->
 
 
 def _format_actor(tg_id: int | None, identity_id: str | None) -> str:
-    if tg_id:
-        return f"tg {tg_id}"
-    if identity_id:
-        return f"id {str(identity_id)[:8]}"
-    return "anon"
+    return describe_actor(tg_id, identity_id)
 
 
 def log_api_access(
@@ -285,14 +289,18 @@ def log_api_access(
 ) -> None:
     context = ensure_api_context(request)
     client_ip = request.client.host if request.client else "-"
-    actor = _format_actor(context.actor_tg_id, context.actor_identity_id)
+    actor = describe_actor(context.actor_tg_id, context.actor_identity_id)
+    action = describe_action(request.method, context.path_or_handler)
     line = (
-        f"[API] {request.method} {context.path_or_handler} → {status_code} {result} │ "
-        f"{duration_ms}ms │ ip {client_ip} │ {actor} │ req {str(context.request_id)[:8]}"
+        f"{SITE_LOG_TAG} {actor} {action} · {describe_status(status_code)} · "
+        f"{describe_duration(duration_ms)} · ip {client_ip} · запрос {str(context.request_id)[:8]}"
     )
-    if reason:
-        line += f" │ {reason}"
-    logger.debug(line)
+    if reason and str(reason) != str(status_code):
+        line += f" · {reason}"
+    if status_code >= 500:
+        logger.warning(line)
+    else:
+        logger.debug(line)
 
 
 def log_telegram_access(
@@ -378,7 +386,7 @@ async def safe_record_audit_event(session: AsyncSession, **kwargs: Any) -> Audit
     try:
         return await record_audit_event(session, **kwargs)
     except Exception as exc:
-        logger.warning(f"[Audit] Не удалось записать событие {kwargs.get('event_type')}: {exc}")
+        logger.warning(f"[Site:Audit] Событие {kwargs.get('event_type')} не записано: {exc}")
         return None
 
 
@@ -532,6 +540,13 @@ async def record_api_access_event_background(
     status_code: int = 200,
 ) -> None:
     context = ensure_api_context(request)
+    if _is_noise_api_access(
+        method=request.method,
+        path=request.url.path,
+        status_code=status_code,
+        has_actor=bool(context.actor_identity_id or context.actor_tg_id),
+    ):
+        return
     path_or_handler = f"{request.method} {request.url.path}"
     if request.url.query:
         path_or_handler = f"{path_or_handler}?{request.url.query}"
@@ -547,7 +562,7 @@ async def record_api_access_event_background(
                 reason=reason,
             )
         except Exception as exc:
-            logger.warning("[Audit] Запись api_access в Redis-буфер не удалась: {}", exc)
+            logger.warning("[Site:Audit] Запрос сайта не попал в буфер Redis: {}", exc)
         return
     try:
         async with session_factory() as session:
@@ -566,7 +581,7 @@ async def record_api_access_event_background(
             await session.commit()
     except Exception as exc:
         logger.warning(
-            "[Audit] Фоновая запись api_access не удалась: %s",
+            "[Site:Audit] Фоновая запись запроса сайта не удалась: %s",
             exc,
             extra={"path_or_handler": path_or_handler[:80] if path_or_handler else None},
         )
@@ -594,7 +609,7 @@ async def record_telegram_access_event_background(
             )
             return
         except Exception as exc:
-            logger.warning(f"[Audit] Запись в Redis-буфер не удалась, пишем в БД: {exc}")
+            logger.warning(f"[Site:Audit] Буфер Redis недоступен, пишем событие сразу в базу: {exc}")
     try:
         async with session_factory() as session:
             await ensure_audit_table(session)
@@ -612,7 +627,7 @@ async def record_telegram_access_event_background(
             await session.commit()
     except Exception as exc:
         logger.warning(
-            "[Audit] Фоновая запись telegram_access не удалась: %s",
+            "[Site:Audit] Фоновая запись события Telegram не удалась: %s",
             exc,
             extra={"path_or_handler": path_or_handler[:80] if path_or_handler else None},
         )
@@ -999,7 +1014,7 @@ async def drain_audit_redis_to_db(session_factory: Any) -> int:
     from core.redis_cache import cache_delete, cache_lmove_batch, cache_lpop_batch, cache_lrange, cache_setnx
 
     if not await cache_setnx(_AUDIT_REDIS_DRAIN_LOCK_KEY, 1, _AUDIT_REDIS_DRAIN_LOCK_TTL_SEC):
-        logger.info("[Audit] drain_audit_redis_to_db пропущен: уже выполняется другой drain")
+        logger.info("[Site:Audit] Перенос событий из Redis пропущен: он уже идёт")
         return 0
     total = 0
     try:
@@ -1015,9 +1030,7 @@ async def drain_audit_redis_to_db(session_factory: Any) -> int:
                 break
             batch = [rec for rec in raw_batch if isinstance(rec, dict)]
             if not batch:
-                logger.warning(
-                    "[Audit] drain_audit_redis_to_db: отброшен пустой/битый батч ({} элементов)", len(raw_batch)
-                )
+                logger.warning("[Site:Audit] Отброшена пустая или битая пачка событий ({} шт.)", len(raw_batch))
                 await cache_lpop_batch(_AUDIT_REDIS_PROCESSING_KEY, len(raw_batch))
                 continue
             try:
@@ -1079,12 +1092,12 @@ async def drain_audit_redis_to_db(session_factory: Any) -> int:
                 await cache_lpop_batch(_AUDIT_REDIS_PROCESSING_KEY, len(raw_batch))
                 total += inserted_count
             except Exception as exc:
-                logger.warning("[Audit] drain_audit_redis_to_db батч не записан, разбираю поштучно: {}", exc)
+                logger.warning("[Site:Audit] Пачка событий не записалась, разбираю по одному: {}", exc)
                 written, poisoned = await _drain_batch_one_by_one(session_factory, batch)
                 total += written
                 if poisoned:
                     logger.error(
-                        "[Audit] {} событий не принимает база и они отброшены, иначе очередь стоит навсегда: {}",
+                        "[Site:Audit] База не приняла {} событий, они отброшены, иначе очередь встанет навсегда: {}",
                         len(poisoned),
                         poisoned[:3],
                     )

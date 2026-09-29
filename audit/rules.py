@@ -297,6 +297,20 @@ def _match_step_rules(
     return None
 
 
+_NOISE_API_STATUSES: frozenset[int] = frozenset({401, 403, 404})
+
+
+def _is_noise_api_access(*, method: str, path: str, status_code: int, has_actor: bool) -> bool:
+    """Отсекает анонимный поллинг публичных чтений: без актора у события нет флоу пользователя."""
+    if has_actor or (method or "").upper() != "GET":
+        return False
+    if status_code in _NOISE_API_STATUSES:
+        return True
+    if status_code == 429 or status_code >= 500:
+        return False
+    return _api_step(f"get {(path or '').lower()}") == "api_other"
+
+
 def _is_ignored_analytics_event(path: str) -> bool:
     """Исключает чисто навигационные события из аналитики шагов и воронки."""
     p = (path or "").lower().strip()

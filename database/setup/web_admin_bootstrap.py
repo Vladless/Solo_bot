@@ -39,10 +39,10 @@ async def ensure_web_admin(session: AsyncSession) -> None:
             onboarding_stage="done",
         )
         session.add(identity)
-        logger.info("[web-admin] created admin identity {}", email)
+        logger.info("[Site:Auth] Создан админский аккаунт сайта {}", email)
     else:
         identity.password_hash = password_hash
         identity.is_admin = True
         if identity.onboarding_completed_at is None and identity.onboarding_stage != "done":
             identity.onboarding_stage = "done"
-        logger.info("[web-admin] synced password for {}", email)
+        logger.info("[Site:Auth] Пароль админского аккаунта сайта {} синхронизирован", email)

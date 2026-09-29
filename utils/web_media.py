@@ -55,7 +55,7 @@ async def host_telegram_photo(bot, file_id: str | None) -> str | None:
         await run_io((WEB_UPLOAD_DIR / name).write_bytes, data)
         return f"/api/web/uploads/{name}"
     except Exception as e:
-        logger.warning(f"[WebMedia] Не удалось разместить медиа рассылки на сайте: {e}")
+        logger.warning(f"[Site:Files] Не удалось разместить медиа рассылки на сайте: {e}")
         return None
 
 
@@ -79,5 +79,5 @@ async def host_telegram_document(bot, file_id: str | None, file_name: str | None
         await run_io((WEB_UPLOAD_DIR / name).write_bytes, data)
         return f"/api/web/uploads/{name}"
     except Exception as e:
-        logger.warning(f"[WebMedia] Не удалось разместить документ на сайте: {e}")
+        logger.warning(f"[Site:Files] Не удалось разместить документ на сайте: {e}")
         return None

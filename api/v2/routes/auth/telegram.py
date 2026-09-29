@@ -64,7 +64,7 @@ async def login_telegram(
     await bind_identity_actor(request, session, identity)
     token = await idb.issue_token_for_identity(session, identity, request=request)
     logger.info(
-        "[Auth] Login success: identity={}, tg_id={}, ip={}, method=telegram_widget",
+        "[Site:Auth] Вошёл через виджет Telegram: клиент {}, tg {}, ip {}",
         identity.id,
         body.id,
         _client_ip(request),
@@ -94,7 +94,7 @@ async def login_telegram_webapp(
     await bind_identity_actor(request, session, identity)
     token = await idb.issue_token_for_identity(session, identity, request=request)
     logger.info(
-        "[Auth] Login success: identity={}, tg_id={}, ip={}, method=telegram_webapp",
+        "[Site:Auth] Вошёл из Telegram-приложения: клиент {}, tg {}, ip {}",
         identity.id,
         tg_id,
         _client_ip(request),
@@ -119,7 +119,7 @@ async def _resolve_tg_id_from_oidc_code(body: LoginTelegramOIDCRequest) -> int:
 
     client_id, client_secret = _get_oidc_credentials()
     if not client_id or not client_secret:
-        logger.warning("[Auth] Telegram OIDC credentials missing in config")
+        logger.warning("[Site:Auth] Вход через Telegram не настроен: нет ключей в настройках")
         raise HTTPException(status_code=503, detail="Вход через Telegram временно недоступен")
 
     token_data = {
@@ -137,7 +137,7 @@ async def _resolve_tg_id_from_oidc_code(body: LoginTelegramOIDCRequest) -> int:
         async with http.post("https://oauth.telegram.org/token", data=token_data, headers=headers) as resp:
             if resp.status != 200:
                 err_text = await resp.text()
-                logger.warning("[Auth] Telegram OIDC token exchange failed: {} {}", resp.status, err_text[:200])
+                logger.warning("[Site:Auth] Telegram не выдал токен, ответ {}: {}", resp.status, err_text[:200])
                 raise HTTPException(status_code=401, detail="Не удалось обменять код авторизации")
             token_response = await resp.json()
 
@@ -173,11 +173,11 @@ async def _resolve_tg_id_from_oidc_code(body: LoginTelegramOIDCRequest) -> int:
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="ID токен истёк") from None
     except pyjwt.InvalidTokenError as exc:
-        logger.warning("[Auth] Telegram OIDC JWT invalid: {}", exc)
+        logger.warning("[Site:Auth] Telegram прислал негодный токен: {}", exc)
         raise HTTPException(status_code=401, detail="Невалидный ID токен") from exc
 
     logger.info(
-        "[Auth] Telegram OIDC claims: {}",
+        "[Site:Auth] Telegram передал данные входа: {}",
         {k: v for k, v in claims.items() if k not in ("iat", "exp", "iss", "aud")},
     )
 
@@ -214,7 +214,7 @@ async def login_telegram_oidc(
         await mark_site_initialized(session)
 
     logger.info(
-        "[Auth] Login success: identity={}, tg_id={}, ip={}, method=telegram_oidc",
+        "[Site:Auth] Вошёл через Telegram: клиент {}, tg {}, ip {}",
         identity.id,
         tg_id_int,
         _client_ip(request),
@@ -250,9 +250,9 @@ async def link_telegram_oidc(
 
         await push_identity_to_panel(session, tg_id_int)
     except Exception as e:
-        logger.debug("[Auth] panel identity sync failed: {}", e)
+        logger.debug("[Site:Auth] Не удалось синхронизировать клиента с панелью: {}", e)
     logger.info(
-        "[Auth] Telegram linked: identity={}, tg_id={}, ip={}, method=telegram_oidc_link",
+        "[Site:Auth] Telegram привязан к аккаунту: клиент {}, tg {}, ip {}",
         result.id,
         tg_id_int,
         _client_ip(request),
@@ -287,5 +287,5 @@ async def link_telegram(
 
         await push_identity_to_panel(session, int(body.id))
     except Exception as e:
-        logger.debug("[Auth] panel identity sync failed: {}", e)
+        logger.debug("[Site:Auth] Не удалось синхронизировать клиента с панелью: {}", e)
     return IdentityResponse.model_validate(result)

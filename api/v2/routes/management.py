@@ -213,7 +213,7 @@ async def trigger_backup(identity=Depends(verify_identity_admin)):
     async def _run_backup() -> None:
         exception = await backup_database()
         if exception:
-            logger.error(f"[Management] Backup finished with error: {exception}")
+            logger.error(f"[Site:Admin] Резервная копия завершилась с ошибкой: {exception}")
 
     spawn(_run_backup())
     return {"status": "backup_started"}
@@ -285,7 +285,7 @@ async def post_audit_drain(identity=Depends(verify_identity_admin_short)):
         count = await drain_audit_redis_to_db(async_session_maker)
         return {"success": True, "drained": count}
     except Exception as exc:
-        logger.warning("audit-drain failed: {}", exc)
+        logger.warning("[Site:Audit] Перенос событий из Redis в базу не удался: {}", exc)
         raise HTTPException(status_code=500, detail="Внутренняя ошибка при дренаже аудита") from exc
 
 
@@ -415,7 +415,7 @@ async def send_broadcast_schedule_now(
     try:
         result = await execute_scheduled_broadcast(item, bot=get_broadcast_bot())
     except Exception as exc:
-        logger.error("[Broadcast] send-now failed for {}: {}", broadcast_id, exc)
+        logger.error("[Site:Broadcast] Немедленная отправка рассылки {} не удалась: {}", broadcast_id, exc)
         await mark_scheduled_broadcast_failed(session, broadcast_id, str(exc))
         raise HTTPException(status_code=500, detail="Ошибка при выполнении рассылки") from exc
     if result.get("success"):

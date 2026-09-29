@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pytz import timezone as tz_moscow
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, validate_redirect_url, verify_identity_admin, verify_identity_token
@@ -26,7 +26,7 @@ from database import (
     identities as idb,
 )
 from database.coupons import mark_coupon_used
-from database.models import Key, Server, Tariff
+from database.models import Key, Server, ServerSubgroup, Tariff
 from database.tariffs import get_tariff_by_id
 from database.temporary_data import create_temporary_data
 from logger import logger
@@ -212,8 +212,18 @@ async def purchase_tariff_with_balance(
     tariff_group_code = (tariff.get("group_code") or "").strip()
     if not tariff_group_code:
         raise HTTPException(status_code=404, detail="Тариф не найден")
+    subgroup_title = str(tariff.get("subgroup_title") or "").strip()
+    bind_values = [str(body.tariff_id)]
+    if subgroup_title:
+        bind_values.append(subgroup_title)
     tariff_is_purchasable = await session.scalar(
-        select(Server.id).where(Server.tariff_group == tariff_group_code, Server.enabled.is_(True)).limit(1)
+        select(Server.id)
+        .outerjoin(ServerSubgroup, ServerSubgroup.server_id == Server.id)
+        .where(
+            Server.enabled.is_(True),
+            or_(Server.tariff_group == tariff_group_code, ServerSubgroup.subgroup_title.in_(bind_values)),
+        )
+        .limit(1)
     )
     if not tariff_is_purchasable:
         raise HTTPException(status_code=404, detail="Тариф не найден")
@@ -342,8 +352,17 @@ async def purchase_tariff_with_balance(
     except InsufficientFundsError:
         raise HTTPException(status_code=402, detail="Недостаточно средств на балансе") from None
     except Exception:
-        logger.exception("web tariff purchase failed")
+        logger.exception("[Site:Pay] Покупка тарифа с сайта сорвалась")
         raise HTTPException(status_code=500, detail="Не удалось оформить подписку") from None
+    logger.info(
+        "[Site:Pay] Клиент {} купил тариф {} с баланса: списано {} ₽ (цена {} ₽, скидка {} ₽, купон {})",
+        tg_id,
+        body.tariff_id,
+        int(final_price),
+        int(price),
+        int(discount_rub),
+        applied_coupon_code or "нет",
+    )
     return TariffPurchaseResponse(
         ok=True,
         message="Подписка оформлена. Ключ в разделе «Мои ключи».",
@@ -403,8 +422,9 @@ async def activate_trial(
             )
             await update_trial(session, tg_id, 1)
         except Exception:
-            logger.exception("web trial activation failed")
+            logger.exception("[Site:Pay] Выдача пробного периода сорвалась")
             raise HTTPException(status_code=500, detail="Ошибка активации триала") from None
+        logger.info("[Site:Pay] Клиент {} получил бесплатный пробный период по тарифу {}", tg_id, tariff["id"])
         return TariffPurchaseResponse(
             ok=True,
             message="Пробная подписка активирована!",
@@ -432,8 +452,14 @@ async def activate_trial(
         except InsufficientFundsError:
             raise HTTPException(status_code=402, detail="Недостаточно средств на балансе") from None
         except Exception:
-            logger.exception("web paid trial activation failed")
+            logger.exception("[Site:Pay] Выдача платного пробного периода сорвалась")
             raise HTTPException(status_code=500, detail="Ошибка активации триала") from None
+        logger.info(
+            "[Site:Pay] Клиент {} оплатил пробный период по тарифу {}: списано {} ₽",
+            tg_id,
+            tariff["id"],
+            int(price),
+        )
         return TariffPurchaseResponse(
             ok=True,
             message="Пробная подписка активирована!",

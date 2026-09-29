@@ -82,7 +82,7 @@ async def google_authorize(
         "prompt": "select_account",
     }
     url = f"{GOOGLE_AUTH_ENDPOINT}?{urlencode(params)}"
-    logger.info("[Auth] Google authorize: ip={}", _client_ip(request))
+    logger.info("[Site:Auth] Через Google: клиент отправлен на страницу согласия, ip {}", _client_ip(request))
     resp = RedirectResponse(url, status_code=302)
     resp.set_cookie(
         key=_GOOGLE_NONCE_COOKIE,
@@ -109,18 +109,18 @@ async def google_callback(
     if not google_configured():
         raise HTTPException(status_code=503, detail="Google Sign-In не настроен на этом сервере")
     if error:
-        logger.warning("[Auth] Google callback error: {} ip={}", error, _client_ip(request))
+        logger.warning("[Site:Auth] Google отказал во входе: {}, ip {}", error, _client_ip(request))
         return RedirectResponse(f"/login?error=google_{error}", status_code=302)
     if not code or not state:
         raise HTTPException(status_code=400, detail="Отсутствует code или state")
     verified = verify_state(_GOOGLE_STATE_SECRET, state, _OAUTH_SUCCESS_URI)
     if verified is None:
-        logger.warning("[Auth] Google callback: invalid/expired state ip={}", _client_ip(request))
+        logger.warning("[Site:Auth] Google: метка запроса просрочена или подделана, ip {}", _client_ip(request))
         raise HTTPException(status_code=400, detail="Неверный или просроченный state")
     return_to, state_nonce = verified
     cookie_nonce = (request.cookies.get(_GOOGLE_NONCE_COOKIE) or "").strip()
     if not cookie_nonce or not hmac.compare_digest(cookie_nonce, state_nonce):
-        logger.warning("[Auth] Google callback: state/cookie nonce mismatch ip={}", _client_ip(request))
+        logger.warning("[Site:Auth] Google: метка запроса не совпала с куки, ip {}", _client_ip(request))
         raise HTTPException(status_code=400, detail="Неверный или просроченный state")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -137,10 +137,12 @@ async def google_callback(
                 headers={"Accept": "application/json"},
             )
         except httpx.HTTPError as e:
-            logger.warning("[Auth] Google token exchange network error: {}", e)
+            logger.warning("[Site:Auth] Google недоступен при обмене кода на токен: {}", e)
             raise HTTPException(status_code=502, detail="Не удалось связаться с Google") from e
         if token_res.status_code != 200:
-            logger.warning("[Auth] Google token exchange failed: {} {}", token_res.status_code, token_res.text[:200])
+            logger.warning(
+                "[Site:Auth] Google не выдал токен, ответ {}: {}", token_res.status_code, token_res.text[:200]
+            )
             raise HTTPException(status_code=401, detail="Google отклонил токен")
         token_payload = token_res.json()
         access_token = token_payload.get("access_token")
@@ -153,7 +155,7 @@ async def google_callback(
                 headers={"Authorization": f"Bearer {access_token}"},
             )
         except httpx.HTTPError as e:
-            logger.warning("[Auth] Google userinfo network error: {}", e)
+            logger.warning("[Site:Auth] Google недоступен при запросе профиля: {}", e)
             raise HTTPException(status_code=502, detail="Не удалось получить профиль Google") from e
 
     if info_res.status_code != 200:
@@ -173,7 +175,7 @@ async def google_callback(
     await bind_identity_actor(request, session, identity)
     token = await idb.issue_token_for_identity(session, identity, request=request)
     logger.info(
-        "[Auth] Login success: identity={}, google_sub={}, ip={}, method=google",
+        "[Site:Auth] Вошёл через Google: клиент {}, внешний id {}, ip {}",
         identity.id,
         google_sub,
         _client_ip(request),

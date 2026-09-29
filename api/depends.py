@@ -26,7 +26,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     try:
         await maybe_sync_runtime_configs()
     except Exception as exc:
-        logger.debug("[Depends] runtime config sync failed: {}", exc)
+        logger.debug("[Site] Не удалось подтянуть свежие настройки бота: {}", exc)
     async with async_session_maker() as session:
         try:
             yield session
@@ -182,9 +182,7 @@ def _auth_cache_key(token_hash: str) -> str:
     return cache_key("auth_actor", token_hash)
 
 
-async def _identity_from_auth_cache(
-    session: AsyncSession, request: Request | None, token_hash: str
-) -> Identity | None:
+async def _identity_from_auth_cache(session: AsyncSession, request: Request | None, token_hash: str) -> Identity | None:
     cached = await cache_get(_auth_cache_key(token_hash))
     if not isinstance(cached, dict):
         return None

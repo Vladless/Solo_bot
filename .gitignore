@@ -69,7 +69,10 @@ modules/*
 !modules/partner_program/
 storage/
 static/
-packs/
+packs/*
+!packs/default/
+packs/default/dist/
+packs/default/node_modules/
 reference/
 
 .license_state

@@ -21,10 +21,10 @@ async def delete_key_by_email(
             cluster_id=db_key.server_id,
         )
         await session.delete(db_key)
-        logger.info(f"[API] Ключ удалён: {db_key.client_id}")
+        logger.info(f"[Site:Subs] Подписка удалена: {db_key.client_id}")
         return {"message": "Ключ успешно удалён"}
     except Exception as e:
-        logger.error(f"[API] Ошибка при удалении ключа: {e}")
+        logger.error(f"[Site:Subs] Не удалось удалить подписку: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при удалении ключа")
 
 
@@ -50,7 +50,7 @@ async def freeze_key_by_email(
         raise HTTPException(status_code=502, detail="Не удалось отключить клиента на панели")
     time_left = max(0, int(record["expiry_time"]) - int(_time.time() * 1000))
     await mark_key_as_frozen(session, record["tg_id"], record["client_id"], time_left)
-    logger.info(f"[API] Подписка заморожена: {record['client_id']}")
+    logger.info(f"[Site:Subs] Подписка заморожена: {record['client_id']}")
     return {"message": "Подписка заморожена"}
 
 
@@ -98,7 +98,7 @@ async def unfreeze_key_by_email(
         reset_traffic=False,
         plan=record.get("tariff_id"),
     )
-    logger.info(f"[API] Подписка разморожена: {record['client_id']}")
+    logger.info(f"[Site:Subs] Подписка разморожена: {record['client_id']}")
     return {"message": "Подписка разморожена"}
 
 
@@ -155,10 +155,10 @@ async def edit_key_by_email(
             hwid_device_limit=getattr(db_key, "device_limit", None),
             reset_traffic=True,
         )
-        logger.info(f"[API] Ключ обновлён: {db_key.client_id}")
+        logger.info(f"[Site:Subs] Подписка обновлена: {db_key.client_id}")
         return db_key
     except Exception as e:
-        logger.error(f"[API] Ошибка при обновлении ключа: {e}")
+        logger.error(f"[Site:Subs] Не удалось обновить подписку: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при обновлении ключа")
 
 
@@ -185,5 +185,5 @@ async def create_key_api(
         )
         return {"message": "Ключ успешно создан"}
     except Exception as e:
-        logger.error(f"[API] Ошибка при создании ключа: {e}")
+        logger.error(f"[Site:Subs] Не удалось создать подписку: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при создании ключа")

@@ -58,18 +58,18 @@ def verify_webapp_init_data(
     parsed = parse_qs(init_data, keep_blank_values=True)
     received_hash = parsed.get("hash", [""])[0]
     if not received_hash:
-        logger.warning("[tg-webapp] initData без hash")
+        logger.warning("[Site:Auth] Telegram-приложение прислало данные входа без подписи")
         return None
 
     auth_date_str = parsed.get("auth_date", [""])[0]
     try:
         auth_date = int(auth_date_str)
     except (TypeError, ValueError):
-        logger.warning("[tg-webapp] initData без корректного auth_date")
+        logger.warning("[Site:Auth] В данных входа из Telegram нет отметки времени")
         return None
     if auth_date < time.time() - max_age_seconds:
         logger.warning(
-            "[tg-webapp] initData устарел: возраст {} c (лимит {} c)",
+            "[Site:Auth] Данные входа из Telegram просрочены: им {} с при лимите {} с",
             int(time.time() - auth_date),
             max_age_seconds,
         )
@@ -83,7 +83,7 @@ def verify_webapp_init_data(
         return hmac.compare_digest(computed, received_hash)
 
     if not (_hmac_ok({"hash"}) or _hmac_ok({"hash", "signature"})):
-        logger.warning("[tg-webapp] initData: неверный HMAC (подпись не совпала)")
+        logger.warning("[Site:Auth] Подпись данных входа из Telegram не совпала")
         return None
 
     user_raw = parsed.get("user", [""])[0]

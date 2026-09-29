@@ -12,6 +12,7 @@ from api.v2.schemas.web_public import CouponApplyRequest, CouponApplyResponse
 from database.coupons import get_coupon_by_code_ci
 from database.models import Coupon, CouponUsage
 from database.users import get_balance
+from logger import logger
 from services.coupons import apply_fixed_coupon, drop_percent_coupon, hold_percent_coupon
 from services.errors import ServiceError
 
@@ -126,6 +127,7 @@ async def apply_coupon(
         coupon = await get_coupon_by_code_ci(session, code)
         if coupon is not None and getattr(coupon, "percent", None) is not None:
             held = await hold_percent_coupon(session=session, user_id=user_id, code=code)
+            logger.info("[Site:Pay] Клиент {} применил купон {} на {}% скидки", user_id, held.coupon_code, held.percent)
             return CouponApplyResponse(
                 ok=True,
                 message=f"Скидка {held.percent}% сохранена — применится при оплате",

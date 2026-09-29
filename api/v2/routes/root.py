@@ -189,6 +189,9 @@ async def site_config(session: AsyncSession = Depends(get_session)):
 
     showcase_mode = bool(await get_setting(session, "web_showcase_mode", False))
 
+    from api.v2.routes.auth.google import google_configured
+    from api.v2.routes.auth.yandex import yandex_configured
+
     return {
         "bot_username": bot_username or None,
         "showcase_mode": showcase_mode,
@@ -202,6 +205,8 @@ async def site_config(session: AsyncSession = Depends(get_session)):
             "email_code_login_enabled": (
                 False if is_webapp_only() else bool(MODES_CONFIG.get("WEB_EMAIL_CODE_LOGIN_ENABLED", True))
             ),
+            "google_login_enabled": False if is_webapp_only() else google_configured(),
+            "yandex_login_enabled": False if is_webapp_only() else yandex_configured(),
         },
         "webapp_only": {
             "title": str(WEB_CONFIG.get("WEBAPP_ONLY_TITLE") or DEFAULT_WEB_CONFIG["WEBAPP_ONLY_TITLE"]),

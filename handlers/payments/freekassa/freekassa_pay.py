@@ -259,7 +259,6 @@ async def freekassa_webhook(request: web.Request):
         if not result.ok:
             return web.Response(status=500, text="Internal server error")
 
-
         try:
             async with async_session_maker() as session:
                 await clear_temporary_data(session, tg_id_int)
