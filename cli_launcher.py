@@ -128,7 +128,6 @@ _bootstrap_rpc()
 from core.rpc import (  # noqa: E402
     adopt_beta_files,
     cli_gate,
-    extract_version,
     get_settings_builder_url,
     local_version,
     migrate_settings_layout,
@@ -2411,26 +2410,32 @@ def get_last_update_date():
     return datetime.fromtimestamp(latest_mtime).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def get_remote_version(branch="main"):
+def get_remote_commit(branch="main"):
     try:
-        url = f"https://raw.githubusercontent.com/Vladless/Solo_bot/{branch}/utils/versioning.py"
+        url = f"https://api.github.com/repos/Vladless/Solo_bot/commits/{branch}"
         response = http_get(url, timeout=10)
         if response.status_code == 200:
-            version = extract_version(response.text)
-            if version:
-                return version
+            commit = response.json().get("sha")
+            if isinstance(commit, str) and re.fullmatch(r"[0-9a-fA-F]{40}", commit):
+                return commit[:8]
     except Exception:
         pass
+    return None
+
+
+def get_local_commit(project_dir):
     try:
-        url = f"https://raw.githubusercontent.com/Vladless/Solo_bot/{branch}/bot.py"
-        response = http_get(url, timeout=10)
-        if response.status_code == 200:
-            for line in response.text.splitlines():
-                match = re.search(r'version\s*=\s*["\'](.+?)["\']', line)
-                if match:
-                    return match.group(1)
+        result = subprocess.run(
+            ["git", "-C", str(project_dir), "rev-parse", "--short=8", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        commit = result.stdout.strip()
+        if result.returncode == 0 and re.fullmatch(r"[0-9a-fA-F]{8}", commit):
+            return commit
     except Exception:
-        return None
+        pass
     return None
 
 
@@ -2458,8 +2463,8 @@ def _prompt_config_update() -> None:
 
 
 def update_from_beta():
-    installed_version = local_version(PROJECT_DIR)
-    remote_version = get_remote_version(branch="dev")
+    installed_commit = get_local_commit(PROJECT_DIR)
+    remote_commit = get_remote_commit(branch="dev")
 
     console.print(
         Panel(
@@ -2479,9 +2484,11 @@ def update_from_beta():
         )
     )
 
-    if installed_version and remote_version:
-        console.print(f"[accent]Локальная версия: {installed_version} | Последняя в dev: {remote_version}[/accent]")
-        if installed_version == remote_version:
+    if installed_commit and remote_commit:
+        console.print(
+            f"[accent]Локальный commit: {installed_commit} | Последний commit в dev: {remote_commit}[/accent]"
+        )
+        if installed_commit == remote_commit:
             if not safe_confirm("Версия актуальна. Обновить всё равно?"):
                 return
 
