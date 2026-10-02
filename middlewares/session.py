@@ -95,12 +95,27 @@ class _SessionProxy:
     async def release_early(self) -> bool:
         if self._released:
             return False
-        self._released = True
         try:
             await self._session.commit()
-            await _flush_cache_purges(self._session)
-        except Exception:
-            await self._session.rollback()
+        except Exception as commit_err:
+            try:
+                await self._session.rollback()
+            except Exception as rollback_err:
+                logger.warning(
+                    "Session rollback failed after early commit failure — %s: %s",
+                    type(rollback_err).__name__,
+                    rollback_err,
+                    exc_info=True,
+                )
+            logger.warning(
+                "Early session commit failed — error=%s: %s",
+                type(commit_err).__name__,
+                commit_err,
+                exc_info=True,
+            )
+            raise
+        self._released = True
+        await _flush_cache_purges(self._session)
         try:
             await self._session.close()
         except Exception:
@@ -167,44 +182,44 @@ class SessionMiddleware(BaseMiddleware):
             proxy = _SessionProxy(session, self.sessionmaker, data)
             data["session"] = proxy
             committed = False
+            handler_returned = False
             try:
                 result = await handler(event, data)
+                handler_returned = True
                 if data.get("_session_released_early"):
                     committed = True
                     return result
-                try:
-                    await session.commit()
-                    committed = True
-                    await _flush_cache_purges(session)
-                    return result
-                except Exception as commit_err:
+                await session.commit()
+                committed = True
+                await _flush_cache_purges(session)
+                return result
+            except Exception as e:
+                if handler_returned:
                     logger.warning(
                         "Session commit failed, rolling back — handler=%s, event=%s, error=%s: %s",
-                        handler_name,
-                        event_type,
-                        type(commit_err).__name__,
-                        commit_err,
-                        exc_info=True,
-                    )
-                    await self._rollback(session, "commit failure")
-                    return result
-            except Exception as e:
-                if _is_bot_blocked_error(e):
-                    logger.debug(
-                        "Session rollback: пользователь заблокировал бота — handler={}, event={}",
-                        handler_name,
-                        event_type,
-                    )
-                else:
-                    logger.warning(
-                        "Session rollback: ошибка при обработке — handler={}, event={}, error={}: {}",
                         handler_name,
                         event_type,
                         type(e).__name__,
                         e,
                         exc_info=True,
                     )
-                await self._rollback(session, "handler failure")
+                else:
+                    if _is_bot_blocked_error(e):
+                        logger.debug(
+                            "Session rollback: пользователь заблокировал бота — handler={}, event={}",
+                            handler_name,
+                            event_type,
+                        )
+                    else:
+                        logger.warning(
+                            "Session rollback: ошибка при обработке — handler={}, event={}, error={}: {}",
+                            handler_name,
+                            event_type,
+                            type(e).__name__,
+                            e,
+                            exc_info=True,
+                        )
+                await self._rollback(session, "commit failure" if handler_returned else "handler failure")
                 raise
             finally:
                 if not committed and not data.get("_session_released_early"):

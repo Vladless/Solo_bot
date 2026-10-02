@@ -5,10 +5,10 @@ import multiprocessing
 import os
 import tempfile
 import threading
+import time
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from functools import partial
 from typing import Literal
 
 from aiogram import Bot
@@ -30,6 +30,13 @@ LoopRunner = Callable[[Bot, async_sessionmaker], Awaitable[None]]
 ThreadLoopRunner = Callable[[threading.Event, Bot, async_sessionmaker], None]
 CronRunner = Callable[[], Awaitable[None]] | Callable[[], None]
 CronExecutionMode = Literal["async", "thread", "process"]
+_LOOP_RESTART_BASE_DELAY_SEC = 5
+_LOOP_RESTART_MAX_DELAY_SEC = 300
+_LOOP_RESTART_STABLE_RUNTIME_SEC = 300
+
+
+def _loop_restart_delay(failures: int) -> int:
+    return min(_LOOP_RESTART_BASE_DELAY_SEC * (2 ** min(failures, 6)), _LOOP_RESTART_MAX_DELAY_SEC)
 
 
 @dataclass
@@ -66,7 +73,8 @@ class RunningThreadLoopTask:
 
 @dataclass
 class RunningProcessLoopTask:
-    process: multiprocessing.Process
+    process: multiprocessing.Process | None
+    monitor_task: asyncio.Task | None = None
 
 
 def _run_process_loop_task(task_id: str, runner: LoopRunner) -> None:
@@ -92,7 +100,7 @@ async def _run_process_loop_task_async(task_id: str, runner: LoopRunner) -> None
             bot.default.protect_content = resolve_protect_content()
         await runner(bot, async_session_maker)
     except Exception as error:
-        logger.error("[PeriodicManager] Ошибка process-loop задачи {}: {}", task_id, error)
+        logger.opt(exception=error).error("[PeriodicManager] Ошибка process-loop задачи {}", task_id)
         raise
     finally:
         try:
@@ -216,16 +224,32 @@ class PeriodicTaskManager:
             pass
         self._process_lock_file = None
 
-    @staticmethod
-    def _report_loop_exit(task_id: str, task: asyncio.Task) -> None:
-        """Упавший цикл иначе исчезает молча: никто его не перезапускает и не замечает."""
-        if task.cancelled():
-            return
-        error = task.exception()
-        if error is not None:
-            logger.opt(exception=error).error("[PeriodicManager] Цикл {} упал и больше не работает", task_id)
-        else:
-            logger.warning("[PeriodicManager] Цикл {} завершился сам и больше не работает", task_id)
+    async def _run_async_loop_task(
+        self,
+        loop_task: ManagedLoopTask,
+        bot: Bot,
+        sessionmaker: async_sessionmaker,
+    ) -> None:
+        failures = 0
+        while True:
+            started_at = time.monotonic()
+            try:
+                await loop_task.runner(bot, sessionmaker)
+                logger.warning("[PeriodicManager] Цикл {} завершился", loop_task.task_id)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.opt(exception=error).error("[PeriodicManager] Цикл {} упал", loop_task.task_id)
+            if time.monotonic() - started_at >= _LOOP_RESTART_STABLE_RUNTIME_SEC:
+                failures = 0
+            delay = _loop_restart_delay(failures)
+            failures = min(failures + 1, 6)
+            logger.warning(
+                "[PeriodicManager] Цикл {} перезапустится через {} сек.",
+                loop_task.task_id,
+                delay,
+            )
+            await asyncio.sleep(delay)
 
     def _build_scheduler(self) -> AsyncIOScheduler:
         from settings.config import EXECUTOR_POOL_SIZE, PROCESS_POOL_SIZE
@@ -259,10 +283,27 @@ class PeriodicTaskManager:
         bot: Bot,
         sessionmaker: async_sessionmaker,
     ) -> None:
-        try:
-            runner(stop_event, bot, sessionmaker)
-        except Exception as error:
-            logger.error("[PeriodicManager] Ошибка thread-loop задачи {}: {}", task_id, error)
+        failures = 0
+        while not stop_event.is_set():
+            started_at = time.monotonic()
+            try:
+                runner(stop_event, bot, sessionmaker)
+                if stop_event.is_set():
+                    return
+                logger.warning("[PeriodicManager] Thread-loop задача {} завершилась", task_id)
+            except Exception as error:
+                logger.opt(exception=error).error("[PeriodicManager] Ошибка thread-loop задачи {}", task_id)
+            if time.monotonic() - started_at >= _LOOP_RESTART_STABLE_RUNTIME_SEC:
+                failures = 0
+            delay = _loop_restart_delay(failures)
+            failures = min(failures + 1, 6)
+            logger.warning(
+                "[PeriodicManager] Thread-loop задача {} перезапустится через {} сек.",
+                task_id,
+                delay,
+            )
+            if stop_event.wait(delay):
+                return
 
     async def _join_thread_task(self, task_id: str, running_task: RunningThreadLoopTask) -> None:
         running_task.stop_event.set()
@@ -272,6 +313,8 @@ class PeriodicTaskManager:
 
     async def _stop_process_task(self, task_id: str, running_task: RunningProcessLoopTask) -> None:
         process = running_task.process
+        if process is None:
+            return
         if not process.is_alive():
             await asyncio.to_thread(process.join, 1)
             return
@@ -282,6 +325,62 @@ class PeriodicTaskManager:
             await asyncio.to_thread(process.join, 5)
         if process.is_alive():
             logger.warning("[PeriodicManager] Process-loop задача {} не завершилась вовремя", task_id)
+
+    async def _watch_process_loop(
+        self,
+        loop_task: ManagedProcessLoopTask,
+        running_task: RunningProcessLoopTask,
+    ) -> None:
+        failures = 0
+        started_at = time.monotonic()
+        while self._started:
+            process = running_task.process
+            if process is not None:
+                while process.is_alive() and self._started:
+                    await asyncio.sleep(1)
+                if not self._started:
+                    return
+                exit_code = process.exitcode
+                await asyncio.to_thread(process.join, 1)
+                running_task.process = None
+                if time.monotonic() - started_at >= _LOOP_RESTART_STABLE_RUNTIME_SEC:
+                    failures = 0
+                if exit_code == 0:
+                    logger.warning("[PeriodicManager] Process-loop задача {} завершилась", loop_task.task_id)
+                else:
+                    logger.error(
+                        "[PeriodicManager] Process-loop задача {} завершилась с кодом {}",
+                        loop_task.task_id,
+                        exit_code,
+                    )
+
+            delay = _loop_restart_delay(failures)
+            failures = min(failures + 1, 6)
+            logger.warning(
+                "[PeriodicManager] Process-loop задача {} перезапустится через {} сек.",
+                loop_task.task_id,
+                delay,
+            )
+            await asyncio.sleep(delay)
+            if not self._started:
+                return
+
+            try:
+                ctx = multiprocessing.get_context("spawn")
+                process = ctx.Process(
+                    target=_run_process_loop_task,
+                    args=(loop_task.task_id, loop_task.runner),
+                    name=f"periodic-{loop_task.task_id}",
+                    daemon=True,
+                )
+                process.start()
+                running_task.process = process
+                started_at = time.monotonic()
+            except Exception as error:
+                logger.opt(exception=error).error(
+                    "[PeriodicManager] Не удалось перезапустить process-loop задачу {}",
+                    loop_task.task_id,
+                )
 
     async def start(self, bot: Bot, sessionmaker: async_sessionmaker) -> None:
         async with self._lock:
@@ -304,8 +403,7 @@ class PeriodicTaskManager:
             scheduler.start()
             self._scheduler = scheduler
             for loop_task in self._loop_tasks.values():
-                task = asyncio.create_task(loop_task.runner(bot, sessionmaker))
-                task.add_done_callback(partial(self._report_loop_exit, loop_task.task_id))
+                task = asyncio.create_task(self._run_async_loop_task(loop_task, bot, sessionmaker))
                 self._running_tasks[loop_task.task_id] = task
             for loop_task in self._thread_loop_tasks.values():
                 stop_event = threading.Event()
@@ -329,7 +427,9 @@ class PeriodicTaskManager:
                     daemon=True,
                 )
                 process.start()
-                self._running_process_tasks[loop_task.task_id] = RunningProcessLoopTask(process=process)
+                running_task = RunningProcessLoopTask(process=process)
+                self._running_process_tasks[loop_task.task_id] = running_task
+                running_task.monitor_task = asyncio.create_task(self._watch_process_loop(loop_task, running_task))
             self._started = True
             logger.info(
                 "[PeriodicManager] Запущен: async-loop=%s thread-loop=%s process-loop=%s cron=%s",
@@ -343,6 +443,7 @@ class PeriodicTaskManager:
         async with self._lock:
             if not self._started:
                 return
+            self._started = False
             if self._scheduler is not None:
                 try:
                     self._scheduler.shutdown(wait=False)
@@ -365,11 +466,19 @@ class PeriodicTaskManager:
             process_tasks = list(self._running_process_tasks.items())
             self._running_process_tasks.clear()
             if process_tasks:
+                monitor_tasks = [
+                    running_task.monitor_task
+                    for _, running_task in process_tasks
+                    if running_task.monitor_task is not None
+                ]
+                for monitor_task in monitor_tasks:
+                    monitor_task.cancel()
+                if monitor_tasks:
+                    await asyncio.gather(*monitor_tasks, return_exceptions=True)
                 await asyncio.gather(
                     *(self._stop_process_task(task_id, running_task) for task_id, running_task in process_tasks),
                     return_exceptions=True,
                 )
-            self._started = False
             self._release_process_lock()
             logger.info("[PeriodicManager] Остановлен")
 
