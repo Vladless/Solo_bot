@@ -20,6 +20,16 @@ class TariffUserConfigState(StatesGroup):
     configuring = State()
 
 
+async def clear_user_renewal_context(state: FSMContext) -> None:
+    """Удаляет контекст прошлого продления перед началом новой покупки."""
+    data = await state.get_data()
+    stale_keys = [key for key in data if key.startswith("renew_")]
+    if stale_keys:
+        for key in stale_keys:
+            data.pop(key, None)
+        await state.set_data(data)
+
+
 async def start_tariff_config(
     callback_query: CallbackQuery,
     state: FSMContext,

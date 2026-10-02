@@ -18,7 +18,7 @@ from settings.texts import (
     TARIFF_COOLDOWN_MESSAGE,
 )
 
-from .config import TariffUserConfigState, start_user_tariff_configurator
+from .config import TariffUserConfigState, clear_user_renewal_context, start_user_tariff_configurator
 from .purchase import finalize_config_and_purchase, proceed_purchase_with_values
 from .screens import render_user_config_screen
 
@@ -121,9 +121,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
         )
         return
 
-    data = await state.get_data()
-    if data.get("renew_mode") != "renew":
-        await state.update_data(renew_mode=None)
+    await clear_user_renewal_context(state)
 
     if tariff.get("configurable"):
         logger.info(f"[TARIFF_CFG] select_tariff_plan configurable: tg_id={tg_id} tariff_id={tariff_id}")
