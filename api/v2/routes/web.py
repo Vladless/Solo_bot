@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import re
 import uuid
 
@@ -192,6 +193,7 @@ _ADMIN_ACTION_PHRASES = {
     "page.update": "сохранил страницу",
     "page.delete": "удалил страницу",
     "page.theme.update": "сохранил тему страницы",
+    "page.theme.patch": "изменил настройки темы страницы",
     "page.title.update": "переименовал страницу",
     "variant.create": "создал вариант страницы",
     "variant.update": "сохранил вариант страницы",
@@ -211,6 +213,89 @@ _ADMIN_ACTION_PHRASES = {
     "analytics.reset": "сбросил аналитику сайта",
     "pwa_icon.set": "сменил иконку приложения",
 }
+
+
+def _custom_element_blueprint_changes(before, after) -> list[dict]:
+    def safe_value(value, limit: int) -> str:
+        return re.sub(r"[^a-zA-Z0-9._-]", "_", str(value or "").strip())[:limit]
+
+    def index(items) -> dict[str, dict]:
+        if not isinstance(items, list):
+            return {}
+        result = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            slug = item.get("slug")
+            if not isinstance(slug, str) or not slug.strip():
+                continue
+            blueprint_id = item.get("id")
+            key = str(blueprint_id or slug).strip()[:128]
+            if key:
+                result[key] = item
+        return result
+
+    old_by_id = index(before)
+    new_by_id = index(after)
+    changes: list[dict] = []
+    for key in sorted(old_by_id.keys() | new_by_id.keys()):
+        old = old_by_id.get(key)
+        new = new_by_id.get(key)
+        if old == new:
+            continue
+        item = new or old or {}
+        slug = item.get("slug")
+        runtime = item.get("runtime")
+        fields = sorted(
+            safe_value(field, 64)
+            for field in (old or {}).keys() | (new or {}).keys()
+            if (old or {}).get(field) != (new or {}).get(field)
+        )[:50]
+        changes.append({
+            "operation": "created" if old is None else "deleted" if new is None else "updated",
+            "slug": safe_value(slug, 64),
+            "runtime": safe_value(runtime, 40),
+            "fields": fields,
+        })
+    return changes[:100]
+
+
+def _safe_custom_element_log_value(value, limit: int) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]", "_", str(value or "").strip())[:limit]
+
+
+def _custom_element_wiring_summary(value) -> dict:
+    wiring = value if isinstance(value, dict) else {}
+    chrome = wiring.get("chrome") if isinstance(wiring.get("chrome"), dict) else {}
+    screens = wiring.get("screens") if isinstance(wiring.get("screens"), list) else []
+    return {
+        "screens": len(screens),
+        "header": _safe_custom_element_log_value(chrome.get("header"), 64),
+        "footer": _safe_custom_element_log_value(chrome.get("footer"), 64),
+    }
+
+
+def _custom_element_block_configs(blocks) -> dict[tuple[str, str], list[tuple[int, dict]]]:
+    configs: dict[tuple[str, str], list[tuple[int, dict]]] = {}
+    for block in blocks:
+        block_type = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
+        data = block.get("data") if isinstance(block, dict) else getattr(block, "data", None)
+        if block_type != "customElement" or not isinstance(data, dict):
+            continue
+        slug = data.get("customElementSlug")
+        blueprint_id = data.get("customElementBlueprintId")
+        runtime = data.get("customElementRuntime")
+        identity = str(slug or blueprint_id or "").strip()[:128]
+        if not identity:
+            continue
+        key = (_safe_custom_element_log_value(identity, 64), _safe_custom_element_log_value(runtime, 40))
+        order = block.get("order", 0) if isinstance(block, dict) else getattr(block, "order", 0)
+        try:
+            sort_order = int(order)
+        except (TypeError, ValueError):
+            sort_order = 0
+        configs.setdefault(key, []).append((sort_order, data))
+    return configs
 
 
 async def _audit_web_admin(
@@ -729,6 +814,67 @@ async def update_web_page_theme(
     )
 
 
+@router.patch("/api/web/pages/{slug}/theme", response_model=WebPageThemeResponse)
+async def patch_web_page_theme(
+    slug: str,
+    body: WebPageThemeUpdate,
+    variant: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+    identity=Depends(verify_identity_designer),
+):
+    if not slug or len(slug) > 64 or not _SLUG_RE.match(slug):
+        raise HTTPException(400, "Некорректный slug страницы")
+    current, _ = await _resolve_variant(session, slug, variant)
+    tokens = dict(current.theme_tokens or {})
+    previous_blueprints = tokens.get("customElementBlueprints")
+    previous_wiring = tokens.get("customPackWiring")
+    tokens.update(body.tokens)
+    cleaned_tokens, replaced = migrate_json_data_uris(tokens)
+    blueprint_changes = _custom_element_blueprint_changes(
+        previous_blueprints,
+        cleaned_tokens.get("customElementBlueprints"),
+    )
+    wiring_change = None
+    if "customPackWiring" in body.tokens:
+        previous_summary = _custom_element_wiring_summary(previous_wiring)
+        next_summary = _custom_element_wiring_summary(cleaned_tokens.get("customPackWiring"))
+        if previous_summary != next_summary:
+            wiring_change = {"before": previous_summary, "after": next_summary}
+    if replaced:
+        logger.info("[Site:Design] Тема страницы «{}»: {} картинок перенесено из данных в файлы", slug, replaced)
+    current.theme_tokens = cleaned_tokens
+    await session.flush()
+    await bump_site_revision(session)
+    for change in blueprint_changes:
+        logger.info(
+            "[Site:CustomElement] Blueprint {}: slug={} runtime={} fields={}",
+            change["operation"],
+            change["slug"],
+            change["runtime"] or "unknown",
+            change["fields"],
+        )
+    if wiring_change:
+        logger.info("[Site:CustomElement] Wiring updated: {}", wiring_change["after"])
+    await _audit_web_admin(
+        session,
+        identity,
+        "page.theme.patch",
+        entity_type="page",
+        entity_id=slug,
+        metadata={
+            "variant": current.variant_key,
+            "keys": sorted(body.tokens.keys()),
+            "custom_element_blueprints": blueprint_changes,
+            "custom_element_wiring": wiring_change,
+        },
+    )
+    return WebPageThemeResponse(
+        slug=slug,
+        variant_key=current.variant_key,
+        tokens=dict(current.theme_tokens or {}),
+    )
+
+
 class WebPageTitleUpdate(BaseModel):
     title: str | None = None
 
@@ -841,6 +987,43 @@ async def update_web_page(
     identity=Depends(verify_identity_designer),
 ):
     current, _ = await _resolve_variant(session, slug, variant)
+    previous_blocks_result = await session.execute(
+        select(WebPageVariantBlock).where(WebPageVariantBlock.variant_id == current.id)
+    )
+    previous_custom_element_configs = _custom_element_block_configs(previous_blocks_result.scalars().all())
+    next_custom_element_configs = _custom_element_block_configs(body.blocks)
+    previous_custom_elements = {key: len(items) for key, items in previous_custom_element_configs.items()}
+    next_custom_elements = {key: len(items) for key, items in next_custom_element_configs.items()}
+    custom_element_changes = []
+    for key in sorted(previous_custom_elements.keys() | next_custom_elements.keys()):
+        delta = next_custom_elements.get(key, 0) - previous_custom_elements.get(key, 0)
+        if delta == 0:
+            continue
+        custom_element_changes.append({
+            "operation": "placed" if delta > 0 else "removed",
+            "slug": key[0][:64],
+            "runtime": key[1],
+            "count": abs(delta),
+        })
+    for key in sorted(previous_custom_element_configs.keys() & next_custom_element_configs.keys()):
+        previous_items = sorted(previous_custom_element_configs[key], key=lambda item: item[0])
+        next_items = sorted(next_custom_element_configs[key], key=lambda item: item[0])
+        for previous_item, next_item in zip(previous_items, next_items, strict=False):
+            previous_data = previous_item[1]
+            next_data = next_item[1]
+            changed_fields = sorted(
+                _safe_custom_element_log_value(field, 64)
+                for field in previous_data.keys() | next_data.keys()
+                if field.startswith("customElement") and previous_data.get(field) != next_data.get(field)
+            )[:50]
+            if changed_fields:
+                custom_element_changes.append({
+                    "operation": "configured",
+                    "slug": key[0][:64],
+                    "runtime": key[1],
+                    "fields": changed_fields,
+                })
+    custom_element_changes = custom_element_changes[:100]
     await session.execute(delete(WebPageVariantBlock).where(WebPageVariantBlock.variant_id == current.id))
 
     total_replaced = 0
@@ -866,13 +1049,27 @@ async def update_web_page(
 
     await session.flush()
     await bump_site_revision(session)
+    for change in custom_element_changes:
+        logger.info(
+            "[Site:CustomElement] Страница {}: {} slug={} runtime={} count={} fields={}",
+            slug,
+            change["operation"],
+            change["slug"],
+            change["runtime"] or "unknown",
+            change.get("count", 1),
+            change.get("fields", []),
+        )
     await _audit_web_admin(
         session,
         identity,
         "page.update",
         entity_type="page",
         entity_id=slug,
-        metadata={"variant": current.variant_key, "blocks": len(body.blocks)},
+        metadata={
+            "variant": current.variant_key,
+            "blocks": len(body.blocks),
+            "custom_element_changes": custom_element_changes,
+        },
     )
     refreshed_variants = await _list_variants(session, slug)
     refreshed_current = next((item for item in refreshed_variants if item.id == current.id), current)
@@ -1100,6 +1297,7 @@ class CustomElementBuildCreate(BaseModel):
     sample_props_text: str = ""
     events_text: str = ""
     notes: str = ""
+    upload_meta: dict | None = None
 
 
 class CustomElementBuildUpdate(BaseModel):
@@ -1109,6 +1307,36 @@ class CustomElementBuildUpdate(BaseModel):
     artifact: dict | None = None
     upload_meta: dict | None = None
     worker_id: str | None = None
+
+
+def _plugin_builder_token() -> str:
+    try:
+        from core.settings.web_config import WEB_CONFIG
+
+        token = str((WEB_CONFIG or {}).get("PLUGIN_BUILDER_TOKEN") or "").strip()
+        if token:
+            return token
+    except Exception:
+        pass
+    try:
+        from settings.config import PLUGIN_BUILDER_TOKEN
+
+        return str(PLUGIN_BUILDER_TOKEN or "").strip()
+    except Exception:
+        return ""
+
+
+async def verify_custom_element_builder(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    expected_token = _plugin_builder_token()
+    authorization = request.headers.get("authorization", "")
+    match = re.fullmatch(r"Bearer\s+(.+)", authorization.strip(), re.IGNORECASE)
+    supplied_token = match.group(1).strip() if match else ""
+    if expected_token and supplied_token and hmac.compare_digest(supplied_token.encode(), expected_token.encode()):
+        return None
+    return await verify_identity_designer(request, session)
 
 
 def _build_to_dict(b: WebCustomElementBuild) -> dict:
@@ -1141,7 +1369,7 @@ def _build_to_dict(b: WebCustomElementBuild) -> dict:
 @router.get("/custom-element-builds")
 async def list_custom_element_builds(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_designer),
+    _identity=Depends(verify_custom_element_builder),
 ):
     result = await session.execute(select(WebCustomElementBuild).order_by(WebCustomElementBuild.created_at.desc()))
     builds = result.scalars().all()
@@ -1153,7 +1381,7 @@ async def list_custom_element_builds(
 async def create_custom_element_build(
     body: CustomElementBuildCreate,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_designer),
+    _identity=Depends(verify_custom_element_builder),
 ):
     build = WebCustomElementBuild(
         id=str(uuid.uuid4()),
@@ -1167,9 +1395,18 @@ async def create_custom_element_build(
         sample_props_text=body.sample_props_text,
         events_text=body.events_text,
         notes=body.notes,
+        upload_meta=body.upload_meta,
         status="queued",
     )
     session.add(build)
+    await session.flush()
+    logger.info(
+        "[Site:CustomElement] Build queued: id={} slug={} runtime={} source_kind={}",
+        build.id,
+        _safe_custom_element_log_value(build.slug, 64),
+        _safe_custom_element_log_value(build.runtime, 40),
+        _safe_custom_element_log_value(build.source_kind, 40),
+    )
     return _build_to_dict(build)
 
 
@@ -1178,7 +1415,7 @@ async def create_custom_element_build(
 async def get_custom_element_build(
     build_id: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_designer),
+    _identity=Depends(verify_custom_element_builder),
 ):
     build = await session.get(WebCustomElementBuild, build_id)
     if not build:
@@ -1192,11 +1429,12 @@ async def update_custom_element_build(
     build_id: str,
     body: CustomElementBuildUpdate,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_designer),
+    _identity=Depends(verify_custom_element_builder),
 ):
     build = await session.get(WebCustomElementBuild, build_id)
     if not build:
         raise HTTPException(404, "Build not found")
+    previous_status = build.status
     if body.status is not None:
         build.status = body.status
     if body.summary is not None:
@@ -1209,6 +1447,17 @@ async def update_custom_element_build(
         build.upload_meta = body.upload_meta
     if body.worker_id is not None:
         build.worker_id = body.worker_id
+    await session.flush()
+    if build.status != previous_status:
+        log_method = logger.warning if build.status in {"failed", "error"} else logger.info
+        log_method(
+            "[Site:CustomElement] Build status changed: id={} slug={} runtime={} {} → {}",
+            build.id,
+            _safe_custom_element_log_value(build.slug, 64),
+            _safe_custom_element_log_value(build.runtime, 40),
+            _safe_custom_element_log_value(previous_status, 40),
+            _safe_custom_element_log_value(build.status, 40),
+        )
     return _build_to_dict(build)
 
 
@@ -1217,12 +1466,20 @@ async def update_custom_element_build(
 async def delete_custom_element_build(
     build_id: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_designer),
+    _identity=Depends(verify_custom_element_builder),
 ):
     build = await session.get(WebCustomElementBuild, build_id)
     if not build:
         raise HTTPException(404, "Build not found")
     await session.delete(build)
+    await session.flush()
+    logger.info(
+        "[Site:CustomElement] Build deleted: id={} slug={} runtime={} status={}",
+        build.id,
+        _safe_custom_element_log_value(build.slug, 64),
+        _safe_custom_element_log_value(build.runtime, 40),
+        _safe_custom_element_log_value(build.status, 40),
+    )
     return {"ok": True}
 
 
@@ -2590,9 +2847,14 @@ async def import_blocks_pack(
             by_slug[str(b["slug"])] = b
     added = 0
     for b in valid:
-        slug = str(b["slug"])
-        if slug not in by_slug:
+        slug = str(b["slug"]).strip()
+        previous = by_slug.get(slug)
+        if previous is None:
             added += 1
+        else:
+            replacement = dict(b)
+            replacement["id"] = str(previous.get("id") or "").strip() or slug
+            b = replacement
         by_slug[slug] = b
     tokens["customElementBlueprints"] = list(by_slug.values())
     cleaned_tokens, _replaced = migrate_json_data_uris(tokens)
@@ -2619,9 +2881,14 @@ async def _merge_blueprints_into_landing(session: AsyncSession, blueprints: list
             by_slug[str(b["slug"])] = b
     added = 0
     for b in valid:
-        slug = str(b["slug"])
-        if slug not in by_slug:
+        slug = str(b["slug"]).strip()
+        previous = by_slug.get(slug)
+        if previous is None:
             added += 1
+        else:
+            replacement = dict(b)
+            replacement["id"] = str(previous.get("id") or "").strip() or slug
+            b = replacement
         by_slug[slug] = b
     tokens["customElementBlueprints"] = list(by_slug.values())
     cleaned_tokens, _replaced = migrate_json_data_uris(tokens)
@@ -3123,20 +3390,7 @@ def _is_api_log(entry: dict) -> bool:
 
 
 def _site_log_token() -> str:
-    try:
-        from core.settings.web_config import WEB_CONFIG
-
-        tok = str((WEB_CONFIG or {}).get("PLUGIN_BUILDER_TOKEN") or "").strip()
-        if tok:
-            return tok
-    except Exception:
-        pass
-    try:
-        from settings.config import PLUGIN_BUILDER_TOKEN
-
-        return str(PLUGIN_BUILDER_TOKEN or "").strip()
-    except Exception:
-        return ""
+    return _plugin_builder_token()
 
 
 async def _fetch_site_log_lines(max_lines: int) -> tuple[list[str], bool, str | None]:
