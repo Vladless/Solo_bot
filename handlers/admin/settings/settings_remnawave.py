@@ -1,4 +1,6 @@
+from html import escape as html_escape
 from typing import Any
+from uuid import uuid4
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -8,8 +10,10 @@ from aiogram.types import CallbackQuery, Message
 from core.settings.remnawave_config import (
     REMNAWAVE_CONFIG,
     get_host_rotation_allowed,
+    get_load_monitor_groups,
     get_node_health_allowed,
     is_host_auto_disable_enabled,
+    is_load_monitor_enabled,
     update_remnawave_config,
 )
 from database import async_session_maker, get_servers
@@ -21,9 +25,13 @@ from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
     REMNAWAVE_HOSTS_PER_PAGE,
+    build_remnawave_load_group_kb,
+    build_remnawave_load_groups_kb,
+    build_remnawave_load_nodes_kb,
     build_settings_remnawave_health_nodes_kb,
     build_settings_remnawave_hosts_kb,
     build_settings_remnawave_kb,
+    build_settings_remnawave_load_kb,
     build_settings_remnawave_node_kb,
     build_settings_remnawave_rotation_kb,
 )
@@ -35,6 +43,10 @@ router = Router(name="admin_settings_remnawave")
 class RemnawaveSettingsState(StatesGroup):
     waiting_for_node_interval = State()
     waiting_for_rotation_interval = State()
+    waiting_for_load_interval = State()
+    waiting_for_load_group_name = State()
+    waiting_for_load_group_limit = State()
+    waiting_for_load_group_tag = State()
 
 
 def _node_health_enabled() -> bool:
@@ -57,9 +69,33 @@ def _rotation_interval() -> int:
     return int(REMNAWAVE_CONFIG.get("HOST_ROTATION_INTERVAL_MIN") or 60)
 
 
+def _load_monitor_interval() -> int:
+    return int(REMNAWAVE_CONFIG.get("LOAD_MONITOR_INTERVAL_MIN") or 5)
+
+
+def _load_groups_copy() -> list[dict[str, Any]]:
+    groups = get_load_monitor_groups()
+    return [{**group, "node_keys": [str(key) for key in (group.get("node_keys") or []) if key]} for group in groups]
+
+
+async def _save_load_groups(groups: list[dict[str, Any]]) -> None:
+    new_cfg = dict(REMNAWAVE_CONFIG)
+    new_cfg["LOAD_MONITOR_GROUPS"] = groups
+    async with async_session_maker() as session:
+        await update_remnawave_config(session, new_cfg)
+
+
+def _load_group_by_index(groups: list[dict[str, Any]], page: int) -> tuple[int, dict[str, Any]] | None:
+    index = int(page or 1) - 1
+    if index < 0 or index >= len(groups):
+        return None
+    return index, groups[index]
+
+
 def _root_text() -> str:
     node_state = "✅ Включён" if _node_health_enabled() else "❌ Выключен"
     rot_state = "✅ Включена" if _host_rotation_enabled() else "❌ Выключена"
+    load_state = "✅ Включён" if is_load_monitor_enabled() else "❌ Выключен"
     allowed_count = len(get_host_rotation_allowed())
     return menu_text(
         "Remnawave",
@@ -71,6 +107,12 @@ def _root_text() -> str:
                 f"Статус: {rot_state}",
                 f"Интервал: {_rotation_interval()} мин",
                 f"Хостов: {allowed_count}",
+            ),
+            section(
+                "📈 Мониторинг загрузки",
+                f"Статус: {load_state}",
+                f"Интервал: {_load_monitor_interval()} мин",
+                f"Групп: {len(get_load_monitor_groups())}",
             ),
         ),
     )
@@ -230,7 +272,9 @@ def _health_nodes_text(nodes: list[tuple[str, dict[str, Any]]], allowed: set[str
 async def open_remnawave_settings(callback: CallbackQuery) -> None:
     await callback.message.edit_text(
         text=_root_text(),
-        reply_markup=build_settings_remnawave_kb(_node_health_enabled(), _host_rotation_enabled()),
+        reply_markup=build_settings_remnawave_kb(
+            _node_health_enabled(), _host_rotation_enabled(), is_load_monitor_enabled()
+        ),
     )
     await callback.answer()
 
@@ -599,3 +643,523 @@ async def clear_health_nodes_page(callback: CallbackQuery, callback_data: AdminP
         text=_health_nodes_text(nodes, allowed),
         reply_markup=build_settings_remnawave_health_nodes_kb(page, nodes, allowed),
     )
+
+
+def _load_monitor_text() -> str:
+    enabled = is_load_monitor_enabled()
+    groups = get_load_monitor_groups()
+    selected_nodes = sum(len(group.get("node_keys") or []) for group in groups)
+    return menu_text(
+        "Мониторинг загрузки",
+        section(
+            "📈 Состояние",
+            f"Статус: {'✅ включён' if enabled else '❌ выключен'}",
+            f"Интервал: {_load_monitor_interval()} мин",
+            f"Групп: {len(groups)} · выбранных нод: {selected_nodes}",
+        ),
+        quote(
+            "Бот читает системные метрики Remnawave: load average, число ядер, память и RX/TX. Для порога берётся load average за 1 минуту, делённый на число ядер и умноженный на 100%.",
+            "В группе можно задать общий порог нагрузки на ноду. При превышении бот временно снимет тег авто-пула с хостов ноды; вернёт его, когда нагрузка опустится ниже 75% порога.",
+            "Подписки продолжает выдавать Remnawave. Клиент увидит новый состав пула после обновления подписки.",
+        ),
+    )
+
+
+def _load_groups_text(groups: list[dict[str, Any]]) -> str:
+    if not groups:
+        return menu_text("Группы серверов", "Групп пока нет. Создайте группу и добавьте в неё ноды Remnawave.")
+    lines = []
+    for group in groups:
+        limit = int(group.get("max_cpu_percent") or 0)
+        lines.append(
+            f"• <b>{html_escape(str(group.get('name') or 'Без названия'))}</b>: "
+            f"{len(group.get('node_keys') or [])} нод, "
+            f"{'порог ' + str(limit) + '% load/ядро' if limit else 'только наблюдение'}"
+        )
+    return menu_text(
+        "Группы серверов",
+        "Ноды можно сгруппировать по типу или назначению. Внутри группы используется общий порог 1-минутного load average, нормированного на число ядер.",
+        section("🗂 Группы", *lines),
+    )
+
+
+def _load_group_text(group: dict[str, Any]) -> str:
+    limit = int(group.get("max_cpu_percent") or 0)
+    tag = str(group.get("routing_tag") or "")
+    return menu_text(
+        str(group.get("name") or "Группа серверов"),
+        section(
+            "📈 Мониторинг",
+            f"Нод выбрано: {len(group.get('node_keys') or [])}",
+            f"Порог: {limit}% load/ядро" if limit else "Порог: только наблюдение",
+            f"Тег авто-пула: <code>{html_escape(tag)}</code>" if tag else "Тег авто-пула: не задан",
+        ),
+        quote(
+            "Значение 0 оставляет группу в режиме наблюдения. Чтобы бот временно исключал перегруженную ноду из авто-выбора, укажите порог и тег, который использует шаблон Remnawave.",
+            "Для хостов, используемых только этой группой: LTE обычно использует LTE_ROUTING_HOST, обычный авто-пул — ROUTING_HOST.",
+        ),
+    )
+
+
+def _get_load_group(groups: list[dict[str, Any]], group_id: str) -> tuple[int, dict[str, Any]] | None:
+    for index, group in enumerate(groups):
+        if str(group.get("id")) == str(group_id):
+            return index, group
+    return None
+
+
+def _same_pool_conflict(groups: list[dict[str, Any]], current_id: str, node_key: str, tag: str) -> bool:
+    if not tag:
+        return False
+    for group in groups:
+        if str(group.get("id")) == current_id or str(group.get("routing_tag") or "") != tag:
+            continue
+        if node_key in {str(key) for key in (group.get("node_keys") or [])}:
+            return True
+    return False
+
+
+async def _show_load_nodes(message: Message, state: FSMContext, page: int = 1) -> None:
+    data = await state.get_data()
+    group_id = str(data.get("load_group_id") or "")
+    groups = _load_groups_copy()
+    found = _get_load_group(groups, group_id)
+    if not found:
+        await message.edit_text(menu_text("Группы серверов", "Группа не найдена."))
+        return
+    group_index, group = found
+    nodes = await _fetch_all_nodes()
+    selected = {str(key) for key in group.get("node_keys") or []}
+    text = menu_text(
+        f"Ноды группы «{html_escape(str(group.get('name') or ''))}»",
+        "Нажмите на ноду, чтобы добавить её в группу или убрать. Справа показана системная нагрузка за 1 минуту, нормированная на число ядер; онлайн отображается только для справки.",
+        section("🖧 Выбрано", f"{len(selected)} нод"),
+    )
+    await message.edit_text(
+        text=text,
+        reply_markup=build_remnawave_load_nodes_kb(page, nodes, selected, group_index + 1),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_menu"))
+async def open_load_monitor_menu(callback: CallbackQuery) -> None:
+    await callback.message.edit_text(
+        text=_load_monitor_text(),
+        reply_markup=build_settings_remnawave_load_kb(is_load_monitor_enabled(), _load_monitor_interval()),
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_toggle"), flags={"popup": True})
+async def toggle_load_monitor(callback: CallbackQuery) -> None:
+    enabled = not is_load_monitor_enabled()
+    config = dict(REMNAWAVE_CONFIG)
+    config["LOAD_MONITOR_ENABLED"] = enabled
+    async with async_session_maker() as session:
+        await update_remnawave_config(session, config)
+
+    restore_result = None
+    if not enabled:
+        from services.remnawave_load_monitor import restore_managed_load_tags
+
+        restore_result = await restore_managed_load_tags()
+    toast = "✅ Мониторинг включён" if enabled else "❌ Мониторинг выключен"
+    if restore_result and restore_result.get("errors"):
+        toast += f"; не удалось вернуть тегов: {len(restore_result['errors'])}"
+    await callback.answer(toast, show_alert=True)
+    await callback.message.edit_text(
+        text=_load_monitor_text(),
+        reply_markup=build_settings_remnawave_load_kb(is_load_monitor_enabled(), _load_monitor_interval()),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_interval"))
+async def prompt_load_monitor_interval(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        menu_text(
+            "Интервал мониторинга",
+            f"Сейчас: <b>{_load_monitor_interval()} мин.</b>",
+            quote("Введите интервал от 1 до 1440 минут."),
+        )
+    )
+    await state.set_state(RemnawaveSettingsState.waiting_for_load_interval)
+    await callback.answer()
+
+
+@router.message(RemnawaveSettingsState.waiting_for_load_interval)
+async def set_load_monitor_interval(message: Message, state: FSMContext) -> None:
+    try:
+        value = int((message.text or "").strip())
+    except ValueError:
+        await message.answer(menu_text("Мониторинг нагрузки", "Введите целое число от 1 до 1440."))
+        return
+    if not 1 <= value <= 1440:
+        await message.answer(menu_text("Мониторинг нагрузки", "Допустимый интервал: 1–1440 минут."))
+        return
+    config = dict(REMNAWAVE_CONFIG)
+    config["LOAD_MONITOR_INTERVAL_MIN"] = value
+    async with async_session_maker() as session:
+        await update_remnawave_config(session, config)
+    await state.clear()
+    await message.answer(
+        _load_monitor_text(),
+        reply_markup=build_settings_remnawave_load_kb(is_load_monitor_enabled(), _load_monitor_interval()),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_groups"))
+async def open_load_groups(callback: CallbackQuery) -> None:
+    groups = _load_groups_copy()
+    await callback.message.edit_text(
+        _load_groups_text(groups),
+        reply_markup=build_remnawave_load_groups_kb(groups),
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_group_add"))
+async def prompt_load_group_name(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        menu_text("Новая группа серверов", "Отправьте её название, например <b>LTE</b> или <b>Обычные</b>."),
+    )
+    await state.set_state(RemnawaveSettingsState.waiting_for_load_group_name)
+    await callback.answer()
+
+
+@router.message(RemnawaveSettingsState.waiting_for_load_group_name)
+async def create_load_group(message: Message, state: FSMContext) -> None:
+    name = (message.text or "").strip()
+    if not 1 <= len(name) <= 32:
+        await message.answer(menu_text("Новая группа серверов", "Название должно быть длиной от 1 до 32 символов."))
+        return
+    groups = _load_groups_copy()
+    if any(str(group.get("name") or "").casefold() == name.casefold() for group in groups):
+        await message.answer(menu_text("Новая группа серверов", "Группа с таким названием уже есть."))
+        return
+    group_id = uuid4().hex[:12]
+    groups.append({"id": group_id, "name": name, "node_keys": [], "max_cpu_percent": 100, "routing_tag": ""})
+    await _save_load_groups(groups)
+    await state.clear()
+    await message.answer(
+        _load_groups_text(groups),
+        reply_markup=build_remnawave_load_groups_kb(groups),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_group"))
+async def open_load_group(callback: CallbackQuery, callback_data: AdminPanelCallback, state: FSMContext) -> None:
+    groups = _load_groups_copy()
+    found = _load_group_by_index(groups, callback_data.page)
+    if not found:
+        await callback.answer("Группа не найдена", show_alert=True)
+        return
+    index, group = found
+    await state.update_data(load_group_id=str(group.get("id")))
+    await callback.message.edit_text(
+        _load_group_text(group),
+        reply_markup=build_remnawave_load_group_kb(group, index + 1),
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_nodes"))
+async def open_load_group_nodes(callback: CallbackQuery, state: FSMContext, callback_data: AdminPanelCallback) -> None:
+    await callback.answer(menu_text("Мониторинг нагрузки", "Загружаю ноды…"))
+    await _show_load_nodes(callback.message, state, max(1, int(callback_data.page or 1)))
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_node_toggle"), flags={"popup": True})
+async def toggle_load_group_node(
+    callback: CallbackQuery,
+    callback_data: AdminPanelCallback,
+    state: FSMContext,
+) -> None:
+    from services.remnawave_load_monitor import make_node_key, restore_managed_load_tags, run_load_monitor_cycle
+
+    data = await state.get_data()
+    group_id = str(data.get("load_group_id") or "")
+    groups = _load_groups_copy()
+    found = _get_load_group(groups, group_id)
+    nodes = await _fetch_all_nodes()
+    index = int(callback_data.page or 0)
+    if not found or index < 0 or index >= len(nodes):
+        await callback.answer("Нода не найдена", show_alert=True)
+        return
+    _group_index, group = found
+    api_url, node = nodes[index]
+    node_key = make_node_key(api_url, str(node.get("uuid") or ""))
+    selected = {str(key) for key in group.get("node_keys") or []}
+    if node_key in selected:
+        restored = await restore_managed_load_tags(group_id=group_id)
+        selected.discard(node_key)
+        toast = "▫️ Нода убрана из группы"
+        if restored.get("errors"):
+            toast += f"; теги хостов ещё восстанавливаются ({len(restored['errors'])})"
+    else:
+        tag = str(group.get("routing_tag") or "")
+        if _same_pool_conflict(groups, group_id, node_key, tag):
+            await callback.answer("Эта нода уже добавлена в другую группу с тем же тегом авто-пула", show_alert=True)
+            return
+        selected.add(node_key)
+        toast = "✅ Нода добавлена в группу"
+    group["node_keys"] = sorted(selected)
+    await _save_load_groups(groups)
+    if is_load_monitor_enabled():
+        await run_load_monitor_cycle()
+    await callback.answer(toast)
+    await _show_load_nodes(callback.message, state, max(1, index // REMNAWAVE_HOSTS_PER_PAGE + 1))
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action.in_({"rw_load_nodes_all", "rw_load_nodes_clear"})))
+async def bulk_toggle_load_group_nodes(
+    callback: CallbackQuery,
+    callback_data: AdminPanelCallback,
+    state: FSMContext,
+) -> None:
+    from services.remnawave_load_monitor import make_node_key, restore_managed_load_tags, run_load_monitor_cycle
+
+    data = await state.get_data()
+    group_id = str(data.get("load_group_id") or "")
+    groups = _load_groups_copy()
+    found = _get_load_group(groups, group_id)
+    nodes = await _fetch_all_nodes()
+    if not found:
+        await callback.answer("Группа не найдена", show_alert=True)
+        return
+    _group_index, group = found
+    page = max(1, int(callback_data.page or 1))
+    start = (page - 1) * REMNAWAVE_HOSTS_PER_PAGE
+    page_nodes = nodes[start : start + REMNAWAVE_HOSTS_PER_PAGE]
+    selected = {str(key) for key in group.get("node_keys") or []}
+    choose = callback_data.action == "rw_load_nodes_all"
+    changed = False
+    for api_url, node in page_nodes:
+        node_key = make_node_key(api_url, str(node.get("uuid") or ""))
+        if choose:
+            if _same_pool_conflict(groups, group_id, node_key, str(group.get("routing_tag") or "")):
+                continue
+            if node_key not in selected:
+                selected.add(node_key)
+                changed = True
+        elif node_key in selected:
+            selected.remove(node_key)
+            changed = True
+    if changed:
+        if not choose:
+            await restore_managed_load_tags(group_id=group_id)
+        group["node_keys"] = sorted(selected)
+        await _save_load_groups(groups)
+        if is_load_monitor_enabled():
+            await run_load_monitor_cycle()
+    toast = "✅ Ноды добавлены" if choose else "▫️ Ноды убраны"
+    await callback.answer(toast)
+    await _show_load_nodes(callback.message, state, page)
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_group_limit"))
+async def prompt_load_group_limit(
+    callback: CallbackQuery, callback_data: AdminPanelCallback, state: FSMContext
+) -> None:
+    groups = _load_groups_copy()
+    found = _load_group_by_index(groups, callback_data.page)
+    if not found:
+        await callback.answer("Группа не найдена", show_alert=True)
+        return
+    _index, group = found
+    await state.update_data(load_group_id=str(group.get("id")))
+    current = int(group.get("max_cpu_percent") or 0)
+    await callback.message.edit_text(
+        menu_text(
+            f"Порог группы «{html_escape(str(group.get('name') or ''))}»",
+            f"Текущий порог: <b>{current}%</b> load average на ядро.",
+            quote(
+                "Введите процент от 0 до 1000. Значение 0 отключает автоматическое исключение и оставляет только мониторинг."
+            ),
+        )
+    )
+    await state.set_state(RemnawaveSettingsState.waiting_for_load_group_limit)
+    await callback.answer()
+
+
+@router.message(RemnawaveSettingsState.waiting_for_load_group_limit)
+async def set_load_group_limit(message: Message, state: FSMContext) -> None:
+    try:
+        value = int((message.text or "").strip())
+    except ValueError:
+        await message.answer(menu_text("Мониторинг нагрузки", "Введите целое число от 0 до 1000."))
+        return
+    if not 0 <= value <= 1000:
+        await message.answer(menu_text("Мониторинг нагрузки", "Допустимый порог: 0–1000%."))
+        return
+    data = await state.get_data()
+    group_id = str(data.get("load_group_id") or "")
+    groups = _load_groups_copy()
+    found = _get_load_group(groups, group_id)
+    if not found:
+        await state.clear()
+        await message.answer(menu_text("Мониторинг нагрузки", "Группа не найдена."))
+        return
+    index, group = found
+    if value == 0:
+        from services.remnawave_load_monitor import restore_managed_load_tags
+
+        restored = await restore_managed_load_tags(group_id=group_id)
+        if restored.get("errors"):
+            await message.answer(
+                menu_text(
+                    "Мониторинг нагрузки", "Не все теги удалось вернуть; настройка порога не изменена. Повторите позже."
+                )
+            )
+            return
+    group["max_cpu_percent"] = value
+    await _save_load_groups(groups)
+    await state.clear()
+    await message.answer(
+        _load_group_text(group),
+        reply_markup=build_remnawave_load_group_kb(group, index + 1),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_group_tag"))
+async def prompt_load_group_tag(callback: CallbackQuery, callback_data: AdminPanelCallback, state: FSMContext) -> None:
+    groups = _load_groups_copy()
+    found = _load_group_by_index(groups, callback_data.page)
+    if not found:
+        await callback.answer("Группа не найдена", show_alert=True)
+        return
+    _index, group = found
+    await state.update_data(load_group_id=str(group.get("id")))
+    await callback.message.edit_text(
+        menu_text(
+            f"Тег авто-пула «{html_escape(str(group.get('name') or ''))}»",
+            f"Сейчас: <code>{html_escape(str(group.get('routing_tag') or 'не задан'))}</code>",
+            quote(
+                "Отправьте тег из Remnawave, например LTE_ROUTING_HOST или ROUTING_HOST. Отправьте дефис, чтобы оставить группу только в режиме наблюдения."
+            ),
+        )
+    )
+    await state.set_state(RemnawaveSettingsState.waiting_for_load_group_tag)
+    await callback.answer()
+
+
+@router.message(RemnawaveSettingsState.waiting_for_load_group_tag)
+async def set_load_group_tag(message: Message, state: FSMContext) -> None:
+    value = (message.text or "").strip()
+    tag = "" if value == "-" else value
+    if len(tag) > 64 or any(char.isspace() for char in tag):
+        await message.answer(
+            menu_text("Мониторинг нагрузки", "Тег должен быть не длиннее 64 символов и не содержать пробелов.")
+        )
+        return
+    data = await state.get_data()
+    group_id = str(data.get("load_group_id") or "")
+    groups = _load_groups_copy()
+    found = _get_load_group(groups, group_id)
+    if not found:
+        await state.clear()
+        await message.answer(menu_text("Мониторинг нагрузки", "Группа не найдена."))
+        return
+    index, group = found
+    if tag != str(group.get("routing_tag") or ""):
+        from services.remnawave_load_monitor import restore_managed_load_tags
+
+        restored = await restore_managed_load_tags(group_id=group_id)
+        if restored.get("errors"):
+            await message.answer(
+                menu_text(
+                    "Мониторинг нагрузки",
+                    "Не все снятые теги удалось вернуть; тег авто-пула не изменён. Повторите позже.",
+                )
+            )
+            return
+    group["routing_tag"] = tag
+    await _save_load_groups(groups)
+    await state.clear()
+    await message.answer(
+        _load_group_text(group),
+        reply_markup=build_remnawave_load_group_kb(group, index + 1),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_group_delete"), flags={"popup": True})
+async def delete_load_group(callback: CallbackQuery, callback_data: AdminPanelCallback, state: FSMContext) -> None:
+    groups = _load_groups_copy()
+    found = _load_group_by_index(groups, callback_data.page)
+    if not found:
+        await callback.answer("Группа не найдена", show_alert=True)
+        return
+    _index, group = found
+    group_id = str(group.get("id"))
+    from services.remnawave_load_monitor import restore_managed_load_tags
+
+    restored = await restore_managed_load_tags(group_id=group_id)
+    if restored.get("errors"):
+        await callback.answer("Не все снятые теги удалось вернуть. Группа оставлена.", show_alert=True)
+        return
+    groups = [item for item in groups if str(item.get("id")) != group_id]
+    await _save_load_groups(groups)
+    await state.clear()
+    await callback.answer("Группа удалена")
+    await callback.message.edit_text(_load_groups_text(groups), reply_markup=build_remnawave_load_groups_kb(groups))
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_snapshot"))
+async def show_load_monitor_snapshot(callback: CallbackQuery) -> None:
+    from services.remnawave_load_monitor import get_load_monitor_snapshot
+
+    await callback.answer(menu_text("Мониторинг нагрузки", "Запрашиваю данные панели…"))
+    try:
+        snapshot = await get_load_monitor_snapshot()
+    except Exception as exc:
+        logger.error("[Remnawave-Admin] Не удалось получить срез нагрузки: {}", exc)
+        await callback.message.answer(
+            menu_text("Мониторинг нагрузки", "Не удалось получить данные панели. Проверьте API-доступ.")
+        )
+        return
+    blocks = []
+    for group in snapshot:
+        lines = []
+        limit = int(group.get("max_cpu_percent") or 0)
+        for node in group.get("nodes") or []:
+            name = html_escape(str(node.get("name") or "Нода"))
+            if not node.get("available"):
+                lines.append(f"▫️ {name} — нет данных")
+            elif not node.get("connected"):
+                lines.append(f"🔴 {name} — нода недоступна")
+            else:
+                load_avg = node.get("load_avg") or []
+                load_percent = node.get("load_percent")
+                if load_percent is None:
+                    lines.append(f"🟡 {name} — нет системных метрик нагрузки")
+                    continue
+                load_values = " / ".join(
+                    f"{float(load_avg[index]):.2f}" if index < len(load_avg) and load_avg[index] is not None else "—"
+                    for index in range(3)
+                )
+                cores = node.get("cores") or "?"
+                threshold = f" · порог {limit}%" if limit else " · только наблюдение"
+                status = "🟠" if limit and load_percent >= limit else "🟢"
+                line = f"{status} {name} — load 1/5/15м {load_values} · {cores} ядер · {load_percent:.0f}% load/ядро{threshold}"
+                if node.get("memory_percent") is not None:
+                    line += f" · RAM {node['memory_percent']:.0f}%"
+                if node.get("rx_mbps") is not None and node.get("tx_mbps") is not None:
+                    line += f" · RX/TX {node['rx_mbps']:.1f}/{node['tx_mbps']:.1f} Мбит/с"
+                if node.get("online") is not None:
+                    line += f" · онлайн {node['online']}"
+                lines.append(line)
+        if not lines:
+            lines.append("Ноды не выбраны")
+        blocks.append(section(html_escape(str(group.get("name") or "Группа")), *lines))
+    await callback.message.answer(menu_text("Срез мониторинга", *(blocks or ["Группы не настроены."])))
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_restore"))
+async def restore_load_monitor_tags_now(callback: CallbackQuery) -> None:
+    from services.remnawave_load_monitor import restore_managed_load_tags
+
+    await callback.answer(menu_text("Мониторинг нагрузки", "Возвращаю теги…"))
+    result = await restore_managed_load_tags()
+    blocks = [section("↩️ Возврат тегов", f"Успешно: {result['restored']}", f"Осталось: {result['remaining']}")]
+    if result.get("errors"):
+        blocks.append(section("⚠️ Не удалось обработать", *[html_escape(str(item)) for item in result["errors"][:20]]))
+    await callback.message.answer(menu_text("Мониторинг нагрузки", *blocks))

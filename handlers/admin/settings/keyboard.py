@@ -312,6 +312,7 @@ def build_settings_money_kb(money_state: dict[str, object]) -> InlineKeyboardMar
 def build_settings_remnawave_kb(
     node_enabled: bool,
     rotation_enabled: bool,
+    load_monitor_enabled: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -324,6 +325,12 @@ def build_settings_remnawave_kb(
         InlineKeyboardButton(
             text=f"{'✅' if rotation_enabled else '❌'} Ротация хостов",
             callback_data=AdminPanelCallback(action="rw_rot_menu").pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=f"{'✅' if load_monitor_enabled else '❌'} Мониторинг нагрузки",
+            callback_data=AdminPanelCallback(action="rw_load_menu").pack(),
         )
     )
     builder.row(
@@ -442,6 +449,169 @@ def build_settings_remnawave_rotation_kb(rotation_enabled: bool, interval_min: i
     builder.button(text="🔀 Перемешать", callback_data=AdminPanelCallback(action="rw_rot_run_now").pack())
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings_remnawave").pack()))
+    return builder.as_markup()
+
+
+def build_settings_remnawave_load_kb(enabled: bool, interval_min: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ Мониторинг вкл" if enabled else "❌ Мониторинг выкл",
+            callback_data=AdminPanelCallback(action="rw_load_toggle").pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=f"⏱ Интервал: {interval_min} мин",
+            callback_data=AdminPanelCallback(action="rw_load_interval").pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🗂 Группы серверов", callback_data=AdminPanelCallback(action="rw_load_groups").pack()
+        ),
+        InlineKeyboardButton(text="📊 Срез сейчас", callback_data=AdminPanelCallback(action="rw_load_snapshot").pack()),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="↩️ Вернуть снятые теги", callback_data=AdminPanelCallback(action="rw_load_restore").pack()
+        )
+    )
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings_remnawave").pack()))
+    return builder.as_markup()
+
+
+def build_remnawave_load_groups_kb(groups: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for index, group in enumerate(groups):
+        name = str(group.get("name") or "Без названия")[:24]
+        selected = len(group.get("node_keys") or [])
+        limit = int(group.get("max_cpu_percent") or 0)
+        limit_text = f"≤{limit}% load/ядро" if limit else "наблюдение"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🗂 {name} · {selected} нод · {limit_text}",
+                callback_data=AdminPanelCallback(action="rw_load_group", page=index + 1).pack(),
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="➕ Новая группа", callback_data=AdminPanelCallback(action="rw_load_group_add").pack()
+        )
+    )
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="rw_load_menu").pack()))
+    return builder.as_markup()
+
+
+def build_remnawave_load_group_kb(group: dict[str, Any], group_index: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🖧 Выбрать ноды ({len(group.get('node_keys') or [])})",
+            callback_data=AdminPanelCallback(action="rw_load_nodes", page=1).pack(),
+        )
+    )
+    limit = int(group.get("max_cpu_percent") or 0)
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🔢 Порог: {limit}% load/ядро" if limit else "🔢 Порог: только наблюдение",
+            callback_data=AdminPanelCallback(action="rw_load_group_limit", page=group_index).pack(),
+        )
+    )
+    tag = str(group.get("routing_tag") or "")
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🏷 Тег авто-пула: {tag or 'не задан'}",
+            callback_data=AdminPanelCallback(action="rw_load_group_tag", page=group_index).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🗑 Удалить группу",
+            callback_data=AdminPanelCallback(action="rw_load_group_delete", page=group_index).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK,
+            callback_data=AdminPanelCallback(action="rw_load_groups").pack(),
+        )
+    )
+    return builder.as_markup()
+
+
+def build_remnawave_load_nodes_kb(
+    page: int,
+    nodes: list[tuple[str, dict[str, Any]]],
+    selected: set[str],
+    group_index: int,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    total_pages = max(1, (len(nodes) + REMNAWAVE_HOSTS_PER_PAGE - 1) // REMNAWAVE_HOSTS_PER_PAGE)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * REMNAWAVE_HOSTS_PER_PAGE
+    chunk = nodes[start : start + REMNAWAVE_HOSTS_PER_PAGE]
+    for offset, (api_url, node) in enumerate(chunk):
+        node_uuid = str(node.get("uuid") or "")
+        node_key = f"{api_url.rstrip('/')}::{node_uuid}"
+        marker = "✅" if node_key in selected else "▫️"
+        name = str(node.get("name") or node.get("address") or node_uuid)
+        online = node.get("usersOnline")
+        system = node.get("system") or {}
+        info = system.get("info") or {}
+        stats = system.get("stats") or {}
+        load_avg = stats.get("loadAvg") or []
+        cores = info.get("cpus")
+        if isinstance(load_avg, list) and load_avg and cores:
+            try:
+                online_text = f" · load {float(load_avg[0]) / float(cores) * 100:.0f}%"
+            except (TypeError, ValueError, ZeroDivisionError):
+                online_text = " · без метрик"
+        else:
+            online_text = " · без метрик"
+        if online is not None:
+            online_text += f" · {online} онлайн"
+        if not node.get("isConnected"):
+            online_text += " · офлайн"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{marker} {name[:28]}{online_text}",
+                callback_data=AdminPanelCallback(action="rw_load_node_toggle", page=start + offset).pack(),
+            )
+        )
+    if total_pages > 1:
+        nav: list[InlineKeyboardButton] = []
+        if page > 1:
+            nav.append(
+                InlineKeyboardButton(
+                    text="⬅️", callback_data=AdminPanelCallback(action="rw_load_nodes", page=page - 1).pack()
+                )
+            )
+        nav.append(
+            InlineKeyboardButton(
+                text=f"{page}/{total_pages}", callback_data=AdminPanelCallback(action="rw_load_nodes", page=page).pack()
+            )
+        )
+        if page < total_pages:
+            nav.append(
+                InlineKeyboardButton(
+                    text="➡️", callback_data=AdminPanelCallback(action="rw_load_nodes", page=page + 1).pack()
+                )
+            )
+        builder.row(*nav)
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ Все на странице", callback_data=AdminPanelCallback(action="rw_load_nodes_all", page=page).pack()
+        ),
+        InlineKeyboardButton(
+            text="▫️ Снять на странице", callback_data=AdminPanelCallback(action="rw_load_nodes_clear", page=page).pack()
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK, callback_data=AdminPanelCallback(action="rw_load_group", page=group_index).pack()
+        )
+    )
     return builder.as_markup()
 
 

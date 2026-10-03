@@ -96,3 +96,14 @@ def get_node_health_allowed() -> set[str]:
     if not isinstance(raw, list):
         return set()
     return {str(uuid) for uuid in raw if uuid}
+
+
+def is_load_monitor_enabled() -> bool:
+    return bool(REMNAWAVE_CONFIG.get("LOAD_MONITOR_ENABLED", False))
+
+
+def get_load_monitor_groups() -> list[dict[str, Any]]:
+    raw = REMNAWAVE_CONFIG.get("LOAD_MONITOR_GROUPS") or []
+    if not isinstance(raw, list):
+        return []
+    return [dict(group) for group in raw if isinstance(group, dict) and group.get("id")]
