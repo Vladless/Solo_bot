@@ -2757,6 +2757,186 @@ def _ensure_web_logs_dir() -> None:
         pass
 
 
+def _ensure_web_custom_element_data_volume(compose_path: str) -> bool:
+    mount_line = "      - custom_element_builder_data:/app/.data/custom-element-builder"
+    volume_key = "  custom_element_builder_data:"
+    try:
+        with open(compose_path, encoding="utf-8") as f:
+            compose_lines = f.read().splitlines()
+    except Exception as e:
+        step_fail(f"Не удалось прочитать docker-compose.yml веб-приложения: {e}")
+        return False
+
+    service_start = next((i for i, line in enumerate(compose_lines) if line == "  web:"), None)
+    if service_start is None:
+        step_fail("В docker-compose.yml веб-приложения не найден сервис web.")
+        return False
+
+    service_end = len(compose_lines)
+    for i in range(service_start + 1, len(compose_lines)):
+        line = compose_lines[i]
+        if line.strip() and len(line) - len(line.lstrip()) <= 2:
+            service_end = i
+            break
+
+    changed = False
+    if mount_line not in compose_lines[service_start:service_end]:
+        volumes_index = next(
+            (i for i in range(service_start + 1, service_end) if compose_lines[i] == "    volumes:"),
+            None,
+        )
+        if volumes_index is None:
+            compose_lines[service_end:service_end] = ["    volumes:", mount_line]
+        else:
+            compose_lines.insert(volumes_index + 1, mount_line)
+        changed = True
+
+    root_volumes_index = next(
+        (i for i, line in enumerate(compose_lines) if line == "volumes:"),
+        None,
+    )
+    if root_volumes_index is None:
+        compose_lines.extend(["", "volumes:", volume_key])
+        changed = True
+    else:
+        root_volumes_end = next(
+            (
+                i
+                for i in range(root_volumes_index + 1, len(compose_lines))
+                if compose_lines[i].strip() and not compose_lines[i].startswith(" ")
+            ),
+            len(compose_lines),
+        )
+        if volume_key not in compose_lines[root_volumes_index + 1 : root_volumes_end]:
+            compose_lines.insert(root_volumes_index + 1, volume_key)
+            changed = True
+
+    if changed:
+        try:
+            with open(compose_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(compose_lines) + "\n")
+        except Exception as e:
+            step_fail(f"Не удалось сохранить постоянное хранилище веб-приложения: {e}")
+            return False
+    return True
+
+
+def _migrate_web_custom_element_data_to_volume() -> bool:
+    data_path = "/app/.data/custom-element-builder"
+    expected_volume = f"{WEB_CONTAINER_NAME}_custom_element_builder_data"
+    inspected = subprocess.run(
+        [
+            "docker",
+            "inspect",
+            "--format",
+            '{{.State.Running}}\n{{range .Mounts}}{{if eq .Destination "/app/.data/custom-element-builder"}}{{.Type}} {{.Name}}{{end}}{{end}}',
+            WEB_CONTAINER_NAME,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if inspected.returncode != 0:
+        existing = subprocess.run(
+            ["docker", "ps", "-a", "--filter", f"name=^{WEB_CONTAINER_NAME}$", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if existing.returncode != 0:
+            step_fail("Не удалось проверить контейнер веб-приложения перед переносом данных.")
+            return False
+        if not (existing.stdout or "").strip():
+            return True
+        step_fail("Контейнер веб-приложения найден, но его данные не удалось проверить.")
+        return False
+
+    inspected_lines = (inspected.stdout or "").splitlines()
+    is_running = bool(inspected_lines and inspected_lines[0].strip() == "true")
+    current_mount = inspected_lines[1].strip() if len(inspected_lines) > 1 else ""
+    if current_mount == f"volume {expected_volume}":
+        return True
+
+    was_stopped = False
+    if is_running:
+        stopped = subprocess.run(
+            ["docker", "stop", WEB_CONTAINER_NAME],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if stopped.returncode != 0:
+            step_fail("Не удалось остановить веб-контейнер для безопасного переноса файлов.")
+            return False
+        was_stopped = True
+
+    def restore_old_container() -> None:
+        if was_stopped:
+            try:
+                subprocess.run(["docker", "start", WEB_CONTAINER_NAME], capture_output=True, text=True, check=False)
+            except Exception:
+                pass
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="solo-brick-custom-elements-") as temp_dir:
+            source_dir = os.path.join(temp_dir, "custom-element-builder")
+            os.makedirs(source_dir, exist_ok=True)
+            copied = subprocess.run(
+                ["docker", "cp", f"{WEB_CONTAINER_NAME}:{data_path}/.", source_dir],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if copied.returncode != 0:
+                error = (copied.stderr or copied.stdout or "").strip()
+                if "could not find the file" in error.casefold() or "no such file or directory" in error.casefold():
+                    restore_old_container()
+                    return True
+                restore_old_container()
+                step_fail(f"Не удалось сохранить файлы custom elements перед обновлением: {error}")
+                return False
+
+            if not os.listdir(source_dir):
+                restore_old_container()
+                return True
+
+            step_info("Переношу загрузки и файлы сборок custom elements в постоянный Docker volume...")
+            migrated = subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "run",
+                    "--rm",
+                    "--no-deps",
+                    "--name",
+                    f"solo-brick-custom-elements-migration-{secrets.token_hex(4)}",
+                    "-v",
+                    f"{source_dir}:/migration:ro",
+                    "--entrypoint",
+                    "/bin/sh",
+                    "web",
+                    "-c",
+                    f"cp -R /migration/. {data_path}/",
+                ],
+                cwd=WEB_DIR,
+                check=False,
+            )
+            if migrated.returncode != 0:
+                restore_old_container()
+                step_fail(
+                    "Не удалось перенести файлы custom elements в постоянный Docker volume. "
+                    "Старый контейнер оставлен без обновления."
+                )
+                return False
+
+            step_ok("Загрузки и файлы сборок custom elements перенесены в постоянный Docker volume.")
+            return True
+    except Exception as e:
+        restore_old_container()
+        step_fail(f"Ошибка переноса файлов custom elements: {e}")
+        return False
+
+
 def _read_env_value(env_path: str, key: str) -> str:
     """Читает значение ключа из .env файла, если файл существует."""
     if not os.path.exists(env_path):
@@ -4036,7 +4216,6 @@ def install_website():
     src_dir = os.path.join(WEB_DIR, "src")
     if not _ensure_web_image(src_dir, web_tag):
         return
-    _save_web_tag(web_tag)
 
     compose_path = os.path.join(WEB_DIR, "docker-compose.yml")
     network_service = "    networks:\n      - bot\n" if bot_network else ""
@@ -4063,11 +4242,21 @@ services:
       start_period: 10s
     volumes:
       - ./logs:/app/logs
-{network_block}""")
+      - custom_element_builder_data:/app/.data/custom-element-builder
+{network_block}\nvolumes:
+  custom_element_builder_data:
+""")
 
     _ensure_web_logs_dir()
+    if not _migrate_web_custom_element_data_to_volume():
+        return
     console.print("[accent]Запуск контейнера...[/accent]")
-    subprocess.run(["docker", "compose", "up", "-d"], cwd=WEB_DIR, check=True)
+    started = subprocess.run(["docker", "compose", "up", "-d"], cwd=WEB_DIR, check=False)
+    if started.returncode != 0:
+        subprocess.run(["docker", "start", WEB_CONTAINER_NAME], capture_output=True, text=True, check=False)
+        step_fail("Не удалось запустить веб-контейнер. Старый контейнер запущен, если он существовал.")
+        return
+    _save_web_tag(web_tag)
 
     if _wait_for_web_container(int(web_port), timeout_sec=60):
         step_ok(f"Контейнер запущен и отвечает на порту {web_port}")
@@ -4433,9 +4622,21 @@ def manage_website():
                     )
         except Exception as e:
             step_warn(f"Не удалось пропатчить extra_hosts в docker-compose.yml: {e}")
-        _save_web_tag(web_tag)
+        if not _ensure_web_custom_element_data_volume(compose_path):
+            return
+        if not _migrate_web_custom_element_data_to_volume():
+            return
         _ensure_web_logs_dir()
-        subprocess.run(["docker", "compose", "up", "-d", "--force-recreate"], cwd=WEB_DIR)
+        updated = subprocess.run(
+            ["docker", "compose", "up", "-d", "--force-recreate"],
+            cwd=WEB_DIR,
+            check=False,
+        )
+        if updated.returncode != 0:
+            subprocess.run(["docker", "start", WEB_CONTAINER_NAME], capture_output=True, text=True, check=False)
+            step_fail("Не удалось обновить веб-контейнер. Старый контейнер запущен, если он существовал.")
+            return
+        _save_web_tag(web_tag)
         step_ok(f"Обновлено до канала {web_tag}")
     elif choice == "6":
         env_path = os.path.join(WEB_DIR, ".env")
