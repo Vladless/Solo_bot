@@ -7,6 +7,7 @@ import select
 import shutil
 import subprocess
 import sys
+import tempfile
 import time as time_mod
 
 from contextlib import contextmanager
@@ -4808,6 +4809,61 @@ def _compose_up_args(build: bool = False) -> list[str]:
     return args
 
 
+def _migrate_docker_web_packs_to_volume() -> bool:
+    pack_path = "/app/static/web_packs"
+    mounts = subprocess.run(
+        ["docker", "inspect", "--format", "{{range .Mounts}}{{println .Destination}}{{end}}", "solobot"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if mounts.returncode != 0 or pack_path in (mounts.stdout or "").splitlines():
+        return True
+
+    with tempfile.TemporaryDirectory(prefix="solobot-web-packs-") as temp_dir:
+        source_dir = os.path.join(temp_dir, "packs")
+        os.makedirs(source_dir, exist_ok=True)
+        copied = subprocess.run(
+            ["docker", "cp", f"solobot:{pack_path}/.", source_dir],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if copied.returncode != 0:
+            error = (copied.stderr or copied.stdout or "").strip()
+            if "could not find the file" in error.casefold() or "no such file or directory" in error.casefold():
+                return True
+            step_fail(f"Не удалось сохранить установленные наборы блоков: {error}")
+            return False
+
+        if not os.listdir(source_dir):
+            return True
+
+        step_info("Сохраняю установленные наборы блоков перед пересозданием контейнера...")
+        migrated = _dc(
+            "run",
+            "--rm",
+            "--no-deps",
+            "--name",
+            f"solobot-web-packs-migration-{secrets.token_hex(4)}",
+            "-v",
+            f"{source_dir}:/migration:ro",
+            "--entrypoint",
+            "/bin/sh",
+            "bot",
+            "-c",
+            f"cp -R /migration/. {pack_path}/",
+        )
+        if migrated.returncode != 0:
+            step_fail(
+                "Не удалось перенести наборы блоков в постоянный Docker volume. Контейнер оставлен без обновления."
+            )
+            return False
+
+        step_ok("Наборы блоков перенесены в постоянный Docker volume.")
+        return True
+
+
 def _wait_for_bot_container(timeout_sec: int = 120) -> bool:
     """Ждёт, пока контейнер бота перейдёт в рабочее состояние и перестанет перезапускаться."""
     deadline = time_mod.time() + timeout_sec
@@ -4971,7 +5027,13 @@ def install_bot_docker():
 
         step_rule(6, total, "Сборка и запуск")
         console.print("[faint]Первая сборка образа занимает 3–5 минут.[/faint]")
-        result = _dc(*_compose_up_args(build=True))
+        result = _dc("build", "bot")
+        if result.returncode != 0:
+            step_fail("Сборка образа не удалась. Действующий контейнер не пересоздавался.")
+            return
+        if not _migrate_docker_web_packs_to_volume():
+            return
+        result = _dc(*_compose_up_args())
         if result.returncode != 0:
             step_fail("Не удалось запустить контейнеры. Смотрите вывод выше.")
             return
@@ -5003,7 +5065,13 @@ def update_bot_docker():
         return
     _write_config_value("API_HOST", "0.0.0.0")
     _write_config_value("WEBAPP_HOST", "0.0.0.0")
-    result = _dc(*_compose_up_args(build=True))
+    result = _dc("build", "bot")
+    if result.returncode != 0:
+        step_fail("Сборка образа не удалась. Действующий контейнер не пересоздавался.")
+        return
+    if not _migrate_docker_web_packs_to_volume():
+        return
+    result = _dc(*_compose_up_args())
     if result.returncode != 0:
         step_fail("Пересборка не удалась. Смотрите вывод выше.")
         return

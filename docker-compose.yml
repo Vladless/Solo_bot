@@ -54,6 +54,7 @@ services:
       - bot_backups:/app/backups
       - bot_modules:/app/modules
       - bot_uploads:/app/static/web_uploads
+      - bot_web_packs:/app/static/web_packs
       - bot_img:/app/img
 
   postgres:
@@ -92,4 +93,5 @@ volumes:
   bot_backups:
   bot_modules:
   bot_uploads:
+  bot_web_packs:
   bot_img:

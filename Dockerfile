@@ -23,7 +23,7 @@ RUN python -m venv /app/venv \
 COPY . .
 
 RUN adduser --disabled-password --gecos "" appuser \
-    && mkdir -p /app/backups /app/logs /app/modules /app/static/web_uploads /app/alembic/versions \
+    && mkdir -p /app/backups /app/logs /app/modules /app/static/web_uploads /app/static/web_packs /app/alembic/versions \
     && chown -R appuser:appuser /app
 
 USER appuser
