@@ -88,6 +88,7 @@ PLATEGA_METHODS: dict[str, dict] = {
         "provider_key": "PLATEGA_INT",
         "method_code": 12,
         "currency": "USD",
+        "payment_currency": "EUR",
         "button": PLATEGA_INT,
         "desc": PLATEGA_INT_DESCRIPTION,
     },
@@ -389,7 +390,7 @@ async def generate_platega_payment_link(
         return None
 
     method_code = int(method.get("method_code") or 0)
-    currency = str(method.get("currency") or "RUB").upper()
+    payment_currency = str(method.get("payment_currency") or method.get("currency") or "RUB").upper()
     method_name = next((k for k, v in PLATEGA_METHODS.items() if v is method), None) or ""
 
     unique_order_id = payment_id or f"plg_{int(time.time())}_{tg_id}_{int(amount)}"
@@ -401,26 +402,26 @@ async def generate_platega_payment_link(
 
     pending_original_amount: float | None = None
 
-    if currency == "RUB":
+    if payment_currency == "RUB":
         api_amount = float(int(amount))
     else:
         try:
             timeout = aiohttp.ClientTimeout(total=15, connect=10)
             async with aiohttp.ClientSession(timeout=timeout) as http_rates:
-                rate = await get_rub_rate(currency, session=http_rates)
-            usd_amount = (Decimal(str(amount)) * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            api_amount = float(usd_amount)
-            pending_original_amount = float(usd_amount)
-            pending_metadata["platega_currency"] = currency
+                rate = await get_rub_rate(payment_currency, session=http_rates)
+            foreign_amount = (Decimal(str(amount)) * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            api_amount = float(foreign_amount)
+            pending_original_amount = float(foreign_amount)
+            pending_metadata["platega_currency"] = payment_currency
         except Exception as e:
-            logger.error(f"[Platega] Не удалось сконвертировать {amount} RUB → {currency}: {e}")
+            logger.error(f"[Platega] Не удалось сконвертировать {amount} RUB → {payment_currency}: {e}")
             return None
 
     body: dict = {
         "paymentMethod": method_code,
         "paymentDetails": {
             "amount": api_amount,
-            "currency": currency,
+            "currency": payment_currency,
         },
         "description": PLATEGA_PAYMENT_TITLE,
         "payload": unique_order_id,
@@ -486,7 +487,7 @@ async def generate_platega_payment_link(
                 logger.info(
                     f"[Platega] Ссылка создана: tg_id={tg_id}, transaction_id={transaction_id}, "
                     f"order_id={unique_order_id}, rub_amount={amount}, "
-                    f"api_amount={api_amount} {currency}, method={method_code}"
+                    f"api_amount={api_amount} {payment_currency}, method={method_code}"
                 )
                 return payment_url
     except Exception as e:
