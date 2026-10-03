@@ -14,6 +14,7 @@ from core.settings.money_config import get_currency_mode
 from database.access.resolution import resolve_user_optional
 from database.models import User
 from database.payments import get_balance_activity
+from database.temporary_data import clear_temporary_data
 from handlers.payments.currency_flow import build_currency_choice_kb
 from handlers.payments.stars.handlers import process_callback_pay_stars
 from handlers.payments.tribute.handlers import process_callback_pay_tribute
@@ -183,20 +184,11 @@ async def handle_pay_currency(callback_query: CallbackQuery, state: FSMContext, 
 @router.callback_query(F.data == "balance")
 async def balance_handler(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    if data.get("temp_key") and data.get("required_amount") is not None:
-        from handlers.payments.fast_payment_flow import try_fast_payment_flow
-
-        await try_fast_payment_flow(
-            callback_query,
-            session,
-            state,
-            tg_id=callback_query.from_user.id,
-            temp_key=str(data["temp_key"]),
-            temp_payload=dict(data.get("temp_payload") or {}),
-            required_amount=int(data["required_amount"]),
-        )
-        await callback_query.answer()
-        return
+    for key in ("temp_key", "temp_payload", "required_amount", "fastflow_providers", "chosen_currency"):
+        data.pop(key, None)
+    await state.set_data(data)
+    await state.set_state(None)
+    await clear_temporary_data(session, callback_query.from_user.id)
 
     stmt = select(User.balance).where(User.tg_id == callback_query.from_user.id)
     result = await session.execute(stmt)
