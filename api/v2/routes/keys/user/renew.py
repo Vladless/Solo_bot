@@ -1,7 +1,10 @@
+from sqlalchemy import or_
+
 from api.shared.billing_actor import resolve_billing_user_id
 from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from services.keys import normalize_expiry_ms
 from services.tariffs import ConfigOptionRejected, ensure_allowed_config
+from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS, resolve_renewal_tariff_group
 
 from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
 from .._common import (
@@ -58,19 +61,23 @@ async def user_key_renew(
     if not tariff_id:
         raise HTTPException(status_code=400, detail="Для подписки не назначен тариф")
     key_email = str(getattr(db_key, "email", "") or "")
-    key_server_id = str(getattr(db_key, "server_id", "") or "")
+    key_server_id = str(getattr(db_key, "server_id", "") or "").strip()
 
-    forbidden_renewal_groups = {"trial", "discounts", "discounts_max", "cold_discounts", "cold_discounts_max", "gifts"}
-    server_tariff_group_row = await session.execute(
-        select(Server.tariff_group)
-        .where((Server.server_name == key_server_id) | (Server.cluster_name == key_server_id))
-        .limit(1)
-    )
+    server_conditions = [Server.server_name == key_server_id, Server.cluster_name == key_server_id]
+    try:
+        server_conditions.insert(0, Server.id == int(key_server_id))
+    except ValueError:
+        pass
+    server_tariff_group_row = await session.execute(select(Server.tariff_group).where(or_(*server_conditions)).limit(1))
     server_tariff_group = (server_tariff_group_row.scalar() or "").strip()
 
     key_tariff = await get_tariff_by_id(session, int(tariff_id))
     key_tariff_group = (key_tariff.get("group_code") or "").strip() if key_tariff else ""
-    subscription_group = key_tariff_group or server_tariff_group
+    subscription_group = resolve_renewal_tariff_group(
+        key_tariff_group,
+        server_tariff_group,
+        forbidden_groups=DEFAULT_RENEWAL_FORBIDDEN_GROUPS,
+    )
 
     if body.tariff_id:
         chosen_tariff = await get_tariff_by_id(session, int(body.tariff_id))
@@ -79,13 +86,14 @@ async def user_key_renew(
         chosen_group_code = (chosen_tariff.get("group_code") or "").strip()
         if (
             not chosen_group_code
-            or chosen_group_code in forbidden_renewal_groups
-            or (subscription_group and chosen_group_code != subscription_group)
+            or chosen_group_code in DEFAULT_RENEWAL_FORBIDDEN_GROUPS
+            or not subscription_group
+            or chosen_group_code != subscription_group
         ):
             raise HTTPException(status_code=400, detail="Тариф недоступен для этой подписки")
         effective_tariff_id = int(body.tariff_id)
     else:
-        if not key_tariff_group or key_tariff_group in forbidden_renewal_groups:
+        if not key_tariff_group or key_tariff_group in DEFAULT_RENEWAL_FORBIDDEN_GROUPS:
             return AccountKeyRenewResponse(
                 ok=True,
                 message="Для продления выберите тариф",

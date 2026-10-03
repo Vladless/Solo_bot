@@ -89,6 +89,47 @@ type QuickAction = {
   flowId?: string;
 };
 
+function safeText(value: unknown): string {
+  return typeof value === "string" ? value : typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
+function normalizeSearchHits(value: unknown): SearchHit[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): SearchHit[] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    const label = safeText(row.label).trim();
+    if (!label) return [];
+    return [{
+      kind: safeText(row.kind) || "result",
+      label,
+      sublabel: safeText(row.sublabel),
+      href: safeText(row.href),
+      meta: safeText(row.meta),
+    }];
+  });
+}
+
+function normalizeQuickActions(value: unknown): QuickAction[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): QuickAction[] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    const label = safeText(row.label).trim();
+    if (!label) return [];
+    return [{
+      label,
+      sublabel: safeText(row.sublabel),
+      keywords: safeText(row.keywords),
+      tabId: safeText(row.tabId) || undefined,
+      screenGroup: safeText(row.screenGroup) || undefined,
+      screenId: safeText(row.screenId) || undefined,
+      href: safeText(row.href) || undefined,
+      flowId: safeText(row.flowId) || undefined,
+    }];
+  });
+}
+
 const ACTION_SEARCH: QuickAction[] = [
   { label: "Продлить подписку", sublabel: "Тариф и кнопка продления", keywords: "продлить продление оплатить подписку renew истекает срок", tabId: "keys" },
   { label: "Купить подписку", sublabel: "Выбор и покупка тарифа", keywords: "купить покупка тариф подключить оформить buy новая подписка", tabId: "keys", screenGroup: "tariffPanel", screenId: "switch" },
@@ -223,7 +264,7 @@ export function DefaultTopbarBlockView({ block, context }: TypedBlockViewProps<"
     if (searchTimer.current) window.clearTimeout(searchTimer.current);
     searchTimer.current = window.setTimeout(() => {
       mut.searchAccountContent(trimmedQuery)
-        .then((res) => setSearchHits((res.hits ?? []) as unknown as SearchHit[]))
+        .then((res) => setSearchHits(normalizeSearchHits(res?.hits)))
         .catch(() => setSearchHits([]));
     }, 250);
     return () => {
@@ -235,7 +276,7 @@ export function DefaultTopbarBlockView({ block, context }: TypedBlockViewProps<"
 
   type CombinedHit = { kind: string; label: string; sublabel: string; href: string; tabId: string | null; screenGroup?: string; screenId?: string; flowId?: string };
 
-  const customActions = Array.isArray(d.searchActions) ? (d.searchActions as QuickAction[]).filter((a) => a && a.label) : [];
+  const customActions = normalizeQuickActions(d.searchActions);
   const effectiveActions = customActions.length > 0 ? customActions : ACTION_SEARCH;
   const actionHits = useMemo(() => {
     if (!shouldQuery) return [] as CombinedHit[];
