@@ -12,6 +12,9 @@ class IdentityResponse(BaseModel):
     id: str
     email: str | None
     tg_id: int | None
+    display_name: str | None = None
+    username: str | None = None
+    avatar_url: str | None = None
     is_admin: bool = False
     role: str = "user"
     email_verified: bool = False

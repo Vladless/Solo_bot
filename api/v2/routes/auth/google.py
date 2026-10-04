@@ -172,6 +172,12 @@ async def google_callback(
         google_sub=google_sub,
         email=email if (email and email_verified) else None,
     )
+    display_name = str(info.get("name") or "").strip()[:128]
+    avatar_url = str(info.get("picture") or "").strip()
+    if display_name:
+        identity.display_name = display_name
+    if avatar_url.startswith("https://"):
+        identity.avatar_url = avatar_url[:1024]
     await bind_identity_actor(request, session, identity)
     token = await idb.issue_token_for_identity(session, identity, request=request)
     logger.info(

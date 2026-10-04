@@ -45,6 +45,39 @@ class LoginTelegramWebAppRequest(BaseModel):
     init_data: str = PydanticField(..., min_length=1)
 
 
+def _save_telegram_profile(identity, *, first_name=None, last_name=None, username=None, photo_url=None) -> None:
+    """Сохраняет имя и фото из проверенных Telegram-данных."""
+    first = str(first_name or "").strip()
+    last = str(last_name or "").strip()
+    display_name = " ".join(part for part in (first, last) if part)[:128]
+    clean_username = str(username or "").strip().lstrip("@")[:64]
+    clean_photo = str(photo_url or "").strip()
+
+    if display_name:
+        identity.display_name = display_name
+    if clean_username:
+        identity.username = clean_username
+    if clean_photo.startswith("https://"):
+        identity.avatar_url = clean_photo[:1024]
+
+
+def _save_telegram_profile_from_mapping(identity, profile: dict) -> None:
+    name = profile.get("name") or ""
+    first_name = profile.get("first_name") or profile.get("given_name")
+    last_name = profile.get("last_name") or profile.get("family_name")
+    if not first_name and name:
+        parts = str(name).strip().split(maxsplit=1)
+        first_name = parts[0]
+        last_name = parts[1] if len(parts) > 1 else None
+    _save_telegram_profile(
+        identity,
+        first_name=first_name,
+        last_name=last_name,
+        username=profile.get("username") or profile.get("preferred_username"),
+        photo_url=profile.get("photo_url") or profile.get("picture"),
+    )
+
+
 @router.post("/login-telegram", response_model=LoginResponse)
 async def login_telegram(
     body: LoginTelegramRequest,
@@ -61,6 +94,13 @@ async def login_telegram(
     if not verify_telegram_login(payload, API_TOKEN, max_age_seconds=TELEGRAM_LOGIN_MAX_AGE):
         raise HTTPException(status_code=401, detail="Неверная подпись или устаревшие данные от Telegram")
     identity = await idb.get_or_create_identity_for_tg(session, body.id)
+    _save_telegram_profile(
+        identity,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        username=body.username,
+        photo_url=body.photo_url,
+    )
     await bind_identity_actor(request, session, identity)
     token = await idb.issue_token_for_identity(session, identity, request=request)
     logger.info(
@@ -91,6 +131,18 @@ async def login_telegram_webapp(
     if not tg_id:
         raise HTTPException(status_code=401, detail="Не удалось определить пользователя из initData")
     identity = await idb.get_or_create_identity_for_tg(session, int(tg_id))
+    try:
+        import json
+
+        profile = json.loads(result.get("user_raw") or "{}")
+    except (TypeError, ValueError):
+        profile = {}
+    try:
+        profile_id = int(profile.get("id") or 0) if isinstance(profile, dict) else 0
+    except (TypeError, ValueError):
+        profile_id = 0
+    if isinstance(profile, dict) and profile_id == int(tg_id):
+        _save_telegram_profile_from_mapping(identity, profile)
     await bind_identity_actor(request, session, identity)
     token = await idb.issue_token_for_identity(session, identity, request=request)
     logger.info(
@@ -110,8 +162,8 @@ class LoginTelegramOIDCRequest(BaseModel):
     code_verifier: str = PydanticField(default="", description="PKCE code_verifier")
 
 
-async def _resolve_tg_id_from_oidc_code(body: LoginTelegramOIDCRequest) -> int:
-    """Обменивает authorization code на id_token и возвращает Telegram user id."""
+async def _resolve_tg_id_from_oidc_code(body: LoginTelegramOIDCRequest) -> tuple[int, dict]:
+    """Обменивает код и возвращает Telegram user id с проверенными данными профиля."""
     import base64
 
     import aiohttp
@@ -191,7 +243,7 @@ async def _resolve_tg_id_from_oidc_code(body: LoginTelegramOIDCRequest) -> int:
         raise HTTPException(status_code=401, detail="Не удалось определить пользователя") from None
     if tg_id_int <= 0 or tg_id_int > 2**53:
         raise HTTPException(status_code=401, detail="Не удалось определить пользователя")
-    return tg_id_int
+    return tg_id_int, claims
 
 
 @router.post("/login-telegram-oidc", response_model=LoginResponse)
@@ -202,9 +254,10 @@ async def login_telegram_oidc(
     session: AsyncSession = Depends(get_session),
 ):
     """Вход через Telegram OIDC (authorization code flow). Обменивает code на id_token, верифицирует JWT."""
-    tg_id_int = await _resolve_tg_id_from_oidc_code(body)
+    tg_id_int, profile = await _resolve_tg_id_from_oidc_code(body)
 
     identity = await idb.get_or_create_identity_for_tg(session, tg_id_int)
+    _save_telegram_profile_from_mapping(identity, profile)
     await bind_identity_actor(request, session, identity)
     token = await idb.issue_token_for_identity(session, identity, request=request)
 
@@ -236,13 +289,14 @@ async def link_telegram_oidc(
     if identity.tg_id is not None:
         raise HTTPException(status_code=409, detail="Telegram уже привязан к этому аккаунту")
 
-    tg_id_int = await _resolve_tg_id_from_oidc_code(body)
+    tg_id_int, profile = await _resolve_tg_id_from_oidc_code(body)
     result = await idb.attach_telegram(session, identity.id, tg_id_int)
     if not result:
         raise HTTPException(
             status_code=409,
             detail="Этот Telegram уже привязан к другой идентичности",
         )
+    _save_telegram_profile_from_mapping(result, profile)
     await bind_identity_actor(request, session, result)
     set_is_admin_cookie(response, result, request)
     try:
@@ -280,6 +334,13 @@ async def link_telegram(
             status_code=409,
             detail="Этот Telegram уже привязан к другой идентичности",
         )
+    _save_telegram_profile(
+        result,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        username=body.username,
+        photo_url=body.photo_url,
+    )
     await bind_identity_actor(request, session, result)
     set_is_admin_cookie(response, result, request)
     try:
