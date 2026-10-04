@@ -1169,13 +1169,13 @@ def _load_snapshot_group_index(action: str) -> int:
 def _load_snapshot_node_text(node: dict[str, Any], limit: int) -> str:
     name = html_escape(str(node.get("name") or "Нода"))
     if not node.get("available"):
-        return f"▫️ <b>{name}</b>\nНет данных от панели."
+        return section(f"▫️ {name}", "Нет данных от панели.")
     if not node.get("connected"):
-        return f"🔴 <b>{name}</b>\nНода недоступна."
+        return section(f"🔴 {name}", "Нода недоступна.")
 
     load_percent = node.get("load_percent")
     if load_percent is None:
-        return f"🟡 <b>{name}</b>\nСистемные метрики нагрузки недоступны."
+        return section(f"🟡 {name}", "Системные метрики нагрузки недоступны.")
 
     load_avg = node.get("load_avg") or []
     load_values = " / ".join(
@@ -1190,11 +1190,11 @@ def _load_snapshot_node_text(node: dict[str, Any], limit: int) -> str:
     rx = f"{node['rx_mbps']:.1f}" if node.get("rx_mbps") is not None else "—"
     tx = f"{node['tx_mbps']:.1f}" if node.get("tx_mbps") is not None else "—"
     online = str(node["online"]) if node.get("online") is not None else "—"
-    return (
-        f"{status} <b>{name}</b>\n"
-        f"Load 1/5/15 мин: <code>{load_values}</code>\n"
-        f"Нагрузка: {load_label} · {threshold} · ядер: {cores}\n"
-        f"RAM: {memory} · RX/TX: {rx}/{tx} Мбит/с · онлайн: {online}"
+    return section(
+        f"{status} {name}",
+        f"Load 1/5/15 мин: {load_values}",
+        f"Нагрузка: {load_label} · {threshold} · ядер: {cores}",
+        f"RAM: {memory} · RX/TX: {rx}/{tx} Мбит/с · онлайн: {online}",
     )
 
 
