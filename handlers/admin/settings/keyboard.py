@@ -19,6 +19,7 @@ from .settings_config import (
 
 
 REMNAWAVE_HOSTS_PER_PAGE = 6
+LOAD_MONITOR_SNAPSHOT_NODES_PER_PAGE = 4
 
 
 def build_toggle_section_keyboard(
@@ -452,7 +453,9 @@ def build_settings_remnawave_rotation_kb(rotation_enabled: bool, interval_min: i
     return builder.as_markup()
 
 
-def build_settings_remnawave_load_kb(enabled: bool, interval_min: int) -> InlineKeyboardMarkup:
+def build_settings_remnawave_load_kb(
+    enabled: bool, interval_min: int, overload_confirmations: int = 2
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -468,6 +471,12 @@ def build_settings_remnawave_load_kb(enabled: bool, interval_min: int) -> Inline
     )
     builder.row(
         InlineKeyboardButton(
+            text=f"🔁 Подтверждений перегрузки: {overload_confirmations}",
+            callback_data=AdminPanelCallback(action="rw_load_confirmations").pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
             text="🗂 Группы серверов", callback_data=AdminPanelCallback(action="rw_load_groups").pack()
         ),
         InlineKeyboardButton(text="📊 Срез сейчас", callback_data=AdminPanelCallback(action="rw_load_snapshot").pack()),
@@ -478,6 +487,66 @@ def build_settings_remnawave_load_kb(enabled: bool, interval_min: int) -> Inline
         )
     )
     builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings_remnawave").pack()))
+    return builder.as_markup()
+
+
+def build_remnawave_load_snapshot_kb(
+    groups: list[dict[str, Any]], group_index: int, page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    group_index = max(0, min(group_index, len(groups) - 1)) if groups else 0
+    page = max(1, min(page, total_pages))
+    group_action = f"rw_load_snapshot_g{group_index}"
+
+    if total_pages > 1:
+        nav: list[InlineKeyboardButton] = []
+        if page > 1:
+            nav.append(
+                InlineKeyboardButton(
+                    text="⬅️",
+                    callback_data=AdminPanelCallback(action=group_action, page=page - 1).pack(),
+                )
+            )
+        nav.append(
+            InlineKeyboardButton(
+                text=f"{page}/{total_pages}",
+                callback_data=AdminPanelCallback(action=group_action, page=page).pack(),
+            )
+        )
+        if page < total_pages:
+            nav.append(
+                InlineKeyboardButton(
+                    text="➡️",
+                    callback_data=AdminPanelCallback(action=group_action, page=page + 1).pack(),
+                )
+            )
+        builder.row(*nav)
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 Обновить",
+            callback_data=AdminPanelCallback(action=group_action, page=page).pack(),
+        ),
+        InlineKeyboardButton(
+            text="↩️ К мониторингу",
+            callback_data=AdminPanelCallback(action="rw_load_menu").pack(),
+        ),
+    )
+
+    for index in range(0, len(groups), 2):
+        row = []
+        for group_index_in_row in range(index, min(index + 2, len(groups))):
+            group = groups[group_index_in_row]
+            marker = "• " if group_index_in_row == group_index else ""
+            name = str(group.get("name") or "Без названия")[:30]
+            row.append(
+                InlineKeyboardButton(
+                    text=f"{marker}{name}",
+                    callback_data=AdminPanelCallback(action=f"rw_load_snapshot_g{group_index_in_row}", page=1).pack(),
+                )
+            )
+        builder.row(*row)
+
     return builder.as_markup()
 
 

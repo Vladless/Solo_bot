@@ -302,6 +302,12 @@ async def run_load_monitor_cycle(bot=None) -> dict[str, Any]:
         snapshots = await _collect_snapshots(groups, managed)
         previous_states = REMNAWAVE_CONFIG.get("LOAD_MONITOR_LAST_STATES") or {}
         states = dict(previous_states) if isinstance(previous_states, dict) else {}
+        try:
+            overload_confirmations = min(
+                100, max(1, int(REMNAWAVE_CONFIG.get("LOAD_MONITOR_OVERLOAD_CONFIRMATIONS") or 2))
+            )
+        except (TypeError, ValueError):
+            overload_confirmations = 2
         events: list[str] = []
         active_group_ids = {str(group.get("id")) for group in groups}
         group_by_id = {str(group.get("id")): group for group in groups}
@@ -379,6 +385,7 @@ async def run_load_monitor_cycle(bot=None) -> dict[str, Any]:
                         changed_managed = True
                         states[f"{group_id}::{node_key}"] = {
                             "overloaded": False,
+                            "overload_count": 0,
                             "name": str(node.get("name") or node.get("address") or (parsed[1] if parsed else "")),
                             "load_percent": load_percent,
                         }
@@ -416,23 +423,43 @@ async def run_load_monitor_cycle(bot=None) -> dict[str, Any]:
                         selected_nodes.append((api_url, node_uuid, node))
                     state_key = f"{group_id}::{str(raw_key)}"
                     if not node or not _node_is_usable(node):
+                        old = states.get(state_key) or {}
+                        if old.get("overload_count") and not old.get("overloaded"):
+                            states[state_key] = {**old, "overload_count": 0, "metrics_available": False}
                         continue
                     old = states.get(state_key) or {}
                     old_overloaded = bool(old.get("overloaded", False))
+                    try:
+                        overload_count = max(0, int(old.get("overload_count") or 0))
+                    except (TypeError, ValueError):
+                        overload_count = 0
+                    if not old_overloaded and old.get("limit_percent") is not None:
+                        try:
+                            if float(old["limit_percent"]) != limit:
+                                overload_count = 0
+                        except (TypeError, ValueError):
+                            overload_count = 0
                     metrics = _node_system_metrics(node)
                     load_percent = metrics.get("load_percent")
                     if load_percent is None:
                         states[state_key] = {
                             **old,
+                            "overload_count": overload_count if old_overloaded else 0,
                             "metrics_available": False,
                             "name": str(node.get("name") or node.get("address") or node_uuid),
                         }
                         continue
                     recovery_ratio = float(REMNAWAVE_CONFIG.get("LOAD_MONITOR_RECOVERY_RATIO") or 0.75)
                     recovery_limit = limit * min(max(recovery_ratio, 0.1), 0.95)
-                    overloaded = bool(
-                        limit and (load_percent >= limit if not old_overloaded else load_percent > recovery_limit)
-                    )
+                    if old_overloaded:
+                        overloaded = bool(limit and load_percent > recovery_limit)
+                        overload_count = overload_confirmations if overloaded else 0
+                    elif limit and load_percent >= limit:
+                        overload_count += 1
+                        overloaded = overload_count >= overload_confirmations
+                    else:
+                        overload_count = 0
+                        overloaded = False
                     if limit and overloaded != old_overloaded:
                         node_name = html_escape(str(node.get("name") or node.get("address") or node_uuid))
                         if overloaded:
@@ -450,6 +477,8 @@ async def run_load_monitor_cycle(bot=None) -> dict[str, Any]:
                             )
                     states[state_key] = {
                         "overloaded": overloaded,
+                        "overload_count": overload_count,
+                        "limit_percent": limit,
                         "metrics_available": True,
                         "load_percent": round(load_percent, 2),
                         "online": metrics.get("online"),
@@ -475,8 +504,8 @@ async def run_load_monitor_cycle(bot=None) -> dict[str, Any]:
                 for api_url, node_uuid, node in selected_nodes:
                     if not _node_is_usable(node):
                         continue
-                    load_percent = _node_system_metrics(node).get("load_percent")
-                    if load_percent is None or load_percent < limit:
+                    node_state = states.get(f"{group_id}::{make_node_key(api_url, node_uuid)}") or {}
+                    if not node_state.get("overloaded") or not node_state.get("metrics_available"):
                         continue
                     node_hosts = [
                         (host_api, host_uuid, host)

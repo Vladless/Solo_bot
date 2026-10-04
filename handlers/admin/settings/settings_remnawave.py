@@ -24,10 +24,12 @@ from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN
 from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
+    LOAD_MONITOR_SNAPSHOT_NODES_PER_PAGE,
     REMNAWAVE_HOSTS_PER_PAGE,
     build_remnawave_load_group_kb,
     build_remnawave_load_groups_kb,
     build_remnawave_load_nodes_kb,
+    build_remnawave_load_snapshot_kb,
     build_settings_remnawave_health_nodes_kb,
     build_settings_remnawave_hosts_kb,
     build_settings_remnawave_kb,
@@ -44,6 +46,7 @@ class RemnawaveSettingsState(StatesGroup):
     waiting_for_node_interval = State()
     waiting_for_rotation_interval = State()
     waiting_for_load_interval = State()
+    waiting_for_load_confirmations = State()
     waiting_for_load_group_name = State()
     waiting_for_load_group_limit = State()
     waiting_for_load_group_tag = State()
@@ -71,6 +74,13 @@ def _rotation_interval() -> int:
 
 def _load_monitor_interval() -> int:
     return int(REMNAWAVE_CONFIG.get("LOAD_MONITOR_INTERVAL_MIN") or 5)
+
+
+def _load_monitor_overload_confirmations() -> int:
+    try:
+        return min(100, max(1, int(REMNAWAVE_CONFIG.get("LOAD_MONITOR_OVERLOAD_CONFIRMATIONS") or 2)))
+    except (TypeError, ValueError):
+        return 2
 
 
 def _load_groups_copy() -> list[dict[str, Any]]:
@@ -655,11 +665,12 @@ def _load_monitor_text() -> str:
             "📈 Состояние",
             f"Статус: {'✅ включён' if enabled else '❌ выключен'}",
             f"Интервал: {_load_monitor_interval()} мин",
+            f"Подтверждений перегрузки: {_load_monitor_overload_confirmations()} проверок подряд",
             f"Групп: {len(groups)} · выбранных нод: {selected_nodes}",
         ),
         quote(
             "Бот читает системные метрики Remnawave: load average, число ядер, память и RX/TX. Для порога берётся load average за 1 минуту, делённый на число ядер и умноженный на 100%.",
-            "В группе можно задать общий порог нагрузки на ноду. При превышении бот временно снимет тег авто-пула с хостов ноды; вернёт его, когда нагрузка опустится ниже 75% порога.",
+            "Перегрузка должна повториться заданное число проверок подряд. После этого бот временно снимет тег авто-пула с хостов ноды; вернёт его, когда нагрузка опустится ниже 75% порога.",
             "Подписки продолжает выдавать Remnawave. Клиент увидит новый состав пула после обновления подписки.",
         ),
     )
@@ -745,7 +756,9 @@ async def _show_load_nodes(message: Message, state: FSMContext, page: int = 1) -
 async def open_load_monitor_menu(callback: CallbackQuery) -> None:
     await callback.message.edit_text(
         text=_load_monitor_text(),
-        reply_markup=build_settings_remnawave_load_kb(is_load_monitor_enabled(), _load_monitor_interval()),
+        reply_markup=build_settings_remnawave_load_kb(
+            is_load_monitor_enabled(), _load_monitor_interval(), _load_monitor_overload_confirmations()
+        ),
     )
     await callback.answer()
 
@@ -769,7 +782,9 @@ async def toggle_load_monitor(callback: CallbackQuery) -> None:
     await callback.answer(toast, show_alert=True)
     await callback.message.edit_text(
         text=_load_monitor_text(),
-        reply_markup=build_settings_remnawave_load_kb(is_load_monitor_enabled(), _load_monitor_interval()),
+        reply_markup=build_settings_remnawave_load_kb(
+            is_load_monitor_enabled(), _load_monitor_interval(), _load_monitor_overload_confirmations()
+        ),
     )
 
 
@@ -803,7 +818,45 @@ async def set_load_monitor_interval(message: Message, state: FSMContext) -> None
     await state.clear()
     await message.answer(
         _load_monitor_text(),
-        reply_markup=build_settings_remnawave_load_kb(is_load_monitor_enabled(), _load_monitor_interval()),
+        reply_markup=build_settings_remnawave_load_kb(
+            is_load_monitor_enabled(), _load_monitor_interval(), _load_monitor_overload_confirmations()
+        ),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_confirmations"))
+async def prompt_load_monitor_confirmations(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        menu_text(
+            "Подтверждение перегрузки",
+            f"Сейчас: <b>{_load_monitor_overload_confirmations()} проверок подряд.</b>",
+            quote("Отправьте число от 1 до 100. Одна проверка — один цикл мониторинга."),
+        )
+    )
+    await state.set_state(RemnawaveSettingsState.waiting_for_load_confirmations)
+    await callback.answer()
+
+
+@router.message(RemnawaveSettingsState.waiting_for_load_confirmations)
+async def set_load_monitor_confirmations(message: Message, state: FSMContext) -> None:
+    try:
+        value = int((message.text or "").strip())
+    except ValueError:
+        await message.answer(menu_text("Мониторинг нагрузки", "Введите целое число от 1 до 100."))
+        return
+    if not 1 <= value <= 100:
+        await message.answer(menu_text("Мониторинг нагрузки", "Допустимое число: 1–100 проверок подряд."))
+        return
+    config = dict(REMNAWAVE_CONFIG)
+    config["LOAD_MONITOR_OVERLOAD_CONFIRMATIONS"] = value
+    async with async_session_maker() as session:
+        await update_remnawave_config(session, config)
+    await state.clear()
+    await message.answer(
+        _load_monitor_text(),
+        reply_markup=build_settings_remnawave_load_kb(
+            is_load_monitor_enabled(), _load_monitor_interval(), _load_monitor_overload_confirmations()
+        ),
     )
 
 
@@ -1103,54 +1156,99 @@ async def delete_load_group(callback: CallbackQuery, callback_data: AdminPanelCa
     await callback.message.edit_text(_load_groups_text(groups), reply_markup=build_remnawave_load_groups_kb(groups))
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_snapshot"))
-async def show_load_monitor_snapshot(callback: CallbackQuery) -> None:
+def _load_snapshot_group_index(action: str) -> int:
+    prefix = "rw_load_snapshot_g"
+    if not action.startswith(prefix):
+        return 0
+    try:
+        return max(0, int(action[len(prefix) :]))
+    except ValueError:
+        return 0
+
+
+def _load_snapshot_node_text(node: dict[str, Any], limit: int) -> str:
+    name = html_escape(str(node.get("name") or "Нода"))
+    if not node.get("available"):
+        return f"▫️ <b>{name}</b>\nНет данных от панели."
+    if not node.get("connected"):
+        return f"🔴 <b>{name}</b>\nНода недоступна."
+
+    load_percent = node.get("load_percent")
+    if load_percent is None:
+        return f"🟡 <b>{name}</b>\nСистемные метрики нагрузки недоступны."
+
+    load_avg = node.get("load_avg") or []
+    load_values = " / ".join(
+        f"{float(load_avg[index]):.2f}" if index < len(load_avg) and load_avg[index] is not None else "—"
+        for index in range(3)
+    )
+    status = "🟠" if limit and load_percent >= limit else "🟢"
+    load_label = f"{load_percent:.0f}% на ядро"
+    threshold = f"порог {limit}%" if limit else "только наблюдение"
+    cores = node.get("cores") or "?"
+    memory = f"{node['memory_percent']:.0f}%" if node.get("memory_percent") is not None else "—"
+    rx = f"{node['rx_mbps']:.1f}" if node.get("rx_mbps") is not None else "—"
+    tx = f"{node['tx_mbps']:.1f}" if node.get("tx_mbps") is not None else "—"
+    online = str(node["online"]) if node.get("online") is not None else "—"
+    return (
+        f"{status} <b>{name}</b>\n"
+        f"Load 1/5/15 мин: <code>{load_values}</code>\n"
+        f"Нагрузка: {load_label} · {threshold} · ядер: {cores}\n"
+        f"RAM: {memory} · RX/TX: {rx}/{tx} Мбит/с · онлайн: {online}"
+    )
+
+
+def _load_snapshot_text(groups: list[dict[str, Any]], group_index: int, page: int) -> tuple[str, int, int]:
+    if not groups:
+        return menu_text("Срез нагрузки", "Группы мониторинга не настроены."), 0, 1
+
+    group_index = max(0, min(group_index, len(groups) - 1))
+    group = groups[group_index]
+    nodes = sorted(group.get("nodes") or [], key=lambda node: str(node.get("name") or "").casefold())
+    total = len(nodes)
+    total_pages = max(1, (total + LOAD_MONITOR_SNAPSHOT_NODES_PER_PAGE - 1) // LOAD_MONITOR_SNAPSHOT_NODES_PER_PAGE)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * LOAD_MONITOR_SNAPSHOT_NODES_PER_PAGE
+    page_nodes = nodes[start : start + LOAD_MONITOR_SNAPSHOT_NODES_PER_PAGE]
+    if not nodes:
+        body = "В этой группе ноды не выбраны."
+    else:
+        end = start + len(page_nodes)
+        body = f"Ноды {start + 1}–{end} из {total} · порог: "
+        body += f"{group.get('max_cpu_percent')}%" if group.get("max_cpu_percent") else "только наблюдение"
+        body += "\n\n" + "\n\n".join(
+            _load_snapshot_node_text(node, int(group.get("max_cpu_percent") or 0)) for node in page_nodes
+        )
+    title = f"Срез нагрузки · {html_escape(str(group.get('name') or 'Группа'))}"
+    return menu_text(title, body), group_index, total_pages
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("rw_load_snapshot")))
+async def show_load_monitor_snapshot(callback: CallbackQuery, callback_data: AdminPanelCallback) -> None:
     from services.remnawave_load_monitor import get_load_monitor_snapshot
 
-    await callback.answer(menu_text("Мониторинг нагрузки", "Запрашиваю данные панели…"))
+    await callback.answer("Собираю срез нагрузки…")
     try:
         snapshot = await get_load_monitor_snapshot()
     except Exception as exc:
         logger.error("[Remnawave-Admin] Не удалось получить срез нагрузки: {}", exc)
-        await callback.message.answer(
-            menu_text("Мониторинг нагрузки", "Не удалось получить данные панели. Проверьте API-доступ.")
+        await callback.message.edit_text(
+            menu_text("Срез нагрузки", "Не удалось получить данные панели. Проверьте API-доступ."),
+            reply_markup=build_remnawave_load_snapshot_kb([], 0, 1, 1),
         )
         return
-    blocks = []
-    for group in snapshot:
-        lines = []
-        limit = int(group.get("max_cpu_percent") or 0)
-        for node in group.get("nodes") or []:
-            name = html_escape(str(node.get("name") or "Нода"))
-            if not node.get("available"):
-                lines.append(f"▫️ {name} — нет данных")
-            elif not node.get("connected"):
-                lines.append(f"🔴 {name} — нода недоступна")
-            else:
-                load_avg = node.get("load_avg") or []
-                load_percent = node.get("load_percent")
-                if load_percent is None:
-                    lines.append(f"🟡 {name} — нет системных метрик нагрузки")
-                    continue
-                load_values = " / ".join(
-                    f"{float(load_avg[index]):.2f}" if index < len(load_avg) and load_avg[index] is not None else "—"
-                    for index in range(3)
-                )
-                cores = node.get("cores") or "?"
-                threshold = f" · порог {limit}%" if limit else " · только наблюдение"
-                status = "🟠" if limit and load_percent >= limit else "🟢"
-                line = f"{status} {name} — load 1/5/15м {load_values} · {cores} ядер · {load_percent:.0f}% load/ядро{threshold}"
-                if node.get("memory_percent") is not None:
-                    line += f" · RAM {node['memory_percent']:.0f}%"
-                if node.get("rx_mbps") is not None and node.get("tx_mbps") is not None:
-                    line += f" · RX/TX {node['rx_mbps']:.1f}/{node['tx_mbps']:.1f} Мбит/с"
-                if node.get("online") is not None:
-                    line += f" · онлайн {node['online']}"
-                lines.append(line)
-        if not lines:
-            lines.append("Ноды не выбраны")
-        blocks.append(section(html_escape(str(group.get("name") or "Группа")), *lines))
-    await callback.message.answer(menu_text("Срез мониторинга", *(blocks or ["Группы не настроены."])))
+    group_index = _load_snapshot_group_index(callback_data.action)
+    page = max(1, callback_data.page or 1)
+    text, group_index, total_pages = _load_snapshot_text(snapshot, group_index, page)
+    reply_markup = build_remnawave_load_snapshot_kb(snapshot, group_index, page, total_pages)
+    current_text = callback.message.html_text or callback.message.text or ""
+    current_markup = callback.message.reply_markup
+    if current_text == text and current_markup and current_markup.model_dump_json() == reply_markup.model_dump_json():
+        return
+    await callback.message.edit_text(
+        text,
+        reply_markup=reply_markup,
+    )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "rw_load_restore"))
