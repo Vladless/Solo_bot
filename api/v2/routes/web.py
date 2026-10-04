@@ -2525,11 +2525,7 @@ _BUILTIN_DESIGN_PACK_IDS = ()
 
 @router.get("/api/web/packs/available")
 async def list_available_packs_route(fresh: bool = False, _identity=Depends(verify_identity_designer)):
-    """Наборы со своими блоками, доступные этому боту. Стоковые сюда не попадают:
-    их блоки уже в ядре, им нужен только сид, и тот приезжает при установке.
-
-    fresh=1 — сверка с сайтом лицензирования прямо сейчас (минуя TTL): клиент шлёт её при
-    заходе во вкладку наборов, чтобы сразу увидеть только что загруженную версию."""
+    """Возвращает доступные наборы и их версии."""
     import asyncio
 
     from core.rpc import (
@@ -2538,7 +2534,13 @@ async def list_available_packs_route(fresh: bool = False, _identity=Depends(veri
         get_entitled_packs,
         refresh_entitled_packs,
     )
-    from services.web_packs import installed_pack_version
+    from services.web_packs import (
+        available_pack_version,
+        installed_pack_version,
+        is_newer_version,
+        packs_dir,
+        read_manifest,
+    )
 
     if fresh:
         await refresh_entitled_packs(force=True)
@@ -2566,21 +2568,44 @@ async def list_available_packs_route(fresh: bool = False, _identity=Depends(veri
             "installed": bool(local_version),
             "installedVersion": local_version,
             "version": available_version,
-            "updateAvailable": bool(local_version and available_version and available_version != local_version),
+            "updateAvailable": bool(
+                local_version and available_version and is_newer_version(available_version, local_version)
+            ),
+            "builtin": False,
         })
+
+    default_info = meta.get("default") or {}
+    default_manifest = read_manifest(packs_dir() / "default" / "manifest.json") or {}
+    default_version = str(default_info.get("version") or "").strip()
+    if not default_version:
+        default_version = await available_pack_version("default")
+    default_local_version = installed_pack_version("default")
+    packs.append({
+        "id": "default",
+        "name": str(default_info.get("name") or default_manifest.get("name") or "Стандарт"),
+        "description": str(default_info.get("description") or "Встроенный набор"),
+        "installed": bool(default_local_version),
+        "installedVersion": default_local_version,
+        "version": default_version,
+        "updateAvailable": bool(
+            default_local_version and default_version and is_newer_version(default_version, default_local_version)
+        ),
+        "builtin": True,
+    })
+    packs.sort(key=lambda pack: str(pack.get("name") or pack["id"]).lower())
     return {"packs": packs}
 
 
 @router.post("/api/web/packs/install")
 async def install_pack_route(payload: dict, _identity=Depends(verify_identity_designer)):
-    """Скачивает набор и ставит его. Недоступный набор до установки не доходит."""
+    """Устанавливает или обновляет доступный набор."""
     from core.rpc import refresh_entitled_packs
     from services.web_packs import download_and_install_pack
 
     pack_id = str((payload or {}).get("pack_id") or "").strip()
     if not pack_id:
         raise HTTPException(status_code=400, detail="Не указан набор")
-    if pack_id not in await refresh_entitled_packs():
+    if pack_id != "default" and pack_id not in await refresh_entitled_packs():
         raise HTTPException(status_code=403, detail="Доступ к набору не выдан")
 
     result = await download_and_install_pack(pack_id)
@@ -2602,6 +2627,8 @@ async def uninstall_pack_route(
 
     pack_id = str((payload or {}).get("pack_id") or "").strip()
     force = bool((payload or {}).get("force"))
+    if pack_id in _BUILTIN_PACK_IDS:
+        raise HTTPException(status_code=400, detail="Встроенный набор удалить нельзя")
 
     manifest = next((m for m in list_installed_packs() if str(m.get("id") or "") == pack_id), None)
     usage = {"blocks": 0, "pages": []}

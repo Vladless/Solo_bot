@@ -254,23 +254,26 @@ export function DefaultTopbarBlockView({ block, context }: TypedBlockViewProps<"
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<SearchHit[] | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const searchTimer = useRef<number | null>(null);
-
   const trimmedQuery = searchQuery.trim();
   const shouldQuery = !previewMode && showSearch && trimmedQuery.length >= 2;
 
   useEffect(() => {
-    if (!shouldQuery) return;
-    if (searchTimer.current) window.clearTimeout(searchTimer.current);
-    searchTimer.current = window.setTimeout(() => {
-      mut.searchAccountContent(trimmedQuery)
-        .then((res) => setSearchHits(normalizeSearchHits(res?.hits)))
-        .catch(() => setSearchHits([]));
+    if (!shouldQuery) {
+      setSearchHits(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void Promise.resolve()
+        .then(() => mut.searchAccountContent(trimmedQuery))
+        .then((res) => { if (!cancelled) setSearchHits(normalizeSearchHits(res?.hits)); })
+        .catch(() => { if (!cancelled) setSearchHits([]); });
     }, 250);
     return () => {
-      if (searchTimer.current) window.clearTimeout(searchTimer.current);
+      cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [trimmedQuery, shouldQuery]);
+  }, [trimmedQuery, shouldQuery, mut.searchAccountContent]);
 
   const visibleHits = shouldQuery ? searchHits : null;
 
@@ -406,18 +409,18 @@ export function DefaultTopbarBlockView({ block, context }: TypedBlockViewProps<"
                 {combinedHits.length === 0 ? (
                   <div style={{ padding: "12px 14px", fontSize: t.font.xsPlus, color: t.inkDim }}>Ничего не найдено</div>
                 ) : (
-                  combinedHits.map((h, i) => (
+                  combinedHits.map((hit, i) => (
                     <a
-                      key={`${h.kind}-${h.tabId ?? h.href}-${i}`}
-                      href={h.href || "#"}
-                      onClick={(e) => handleHitClick(e, h)}
+                      key={`${hit.kind}-${hit.tabId ?? hit.href}-${i}`}
+                      href={hit.href || "#"}
+                      onClick={(e) => handleHitClick(e, hit)}
                       style={{ display: "block", padding: "12px 14px", borderBottom: i < combinedHits.length - 1 ? `1px solid ${t.line}` : "none", textDecoration: "none", color: t.ink, cursor: "pointer" }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: t.space.sm }}>
-                        <span style={{ fontSize: t.font.sm, fontWeight: t.weight.bold }}>{h.label}</span>
-                        <span style={{ fontSize: t.font.xxs, color: t.accent }}>{KIND_LABEL[h.kind] ?? h.kind}</span>
+                        <span style={{ fontSize: t.font.sm, fontWeight: t.weight.bold }}>{hit.label}</span>
+                        <span style={{ fontSize: t.font.xxs, color: t.accent }}>{KIND_LABEL[hit.kind] ?? hit.kind}</span>
                       </div>
-                      {h.sublabel ? <div style={{ fontSize: t.font.xs, color: t.inkDim, marginTop: 3 }}>{h.sublabel}</div> : null}
+                      {hit.sublabel ? <div style={{ fontSize: t.font.xs, color: t.inkDim, marginTop: 3 }}>{hit.sublabel}</div> : null}
                     </a>
                   ))
                 )}

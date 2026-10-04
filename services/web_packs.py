@@ -14,6 +14,8 @@ PACK_ID_MAX_LEN = 64
 PACK_DOWNLOAD_TIMEOUT_SEC = 30.0
 HOST_API_VERSION = 19
 HOST_API_MIN_VERSION = 14
+PACK_VERSION_CACHE_TTL_SEC = 300.0
+_PACK_VERSION_CACHE: dict[str, tuple[float, str]] = {}
 
 
 @dataclass
@@ -275,6 +277,39 @@ async def download_and_install_pack(pack_id: str) -> PackInstallResult:
         remove_pack(result.pack_id)
         return PackInstallResult(ok=False, pack_id=pack_id, error="id в манифесте не совпал с запрошенным")
     return result
+
+
+async def available_pack_version(pack_id: str, *, timeout: float = 5.0) -> str:
+    """Возвращает версию доступного архива пака."""
+    import io
+    import time as _time
+
+    from core.rpc import fetch_pack_payload
+
+    clean = (pack_id or "").strip()
+    cached = _PACK_VERSION_CACHE.get(clean)
+    now = _time.monotonic()
+    if cached and now - cached[0] < PACK_VERSION_CACHE_TTL_SEC:
+        return cached[1]
+
+    payload, error = await fetch_pack_payload(clean, timeout=timeout)
+    if payload is None:
+        logger.warning("[Site:Packs] Версию набора {} получить не удалось: {}", clean, error)
+        return ""
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+            manifest = json.loads(zf.read(MANIFEST_NAME).decode("utf-8"))
+        if not isinstance(manifest, dict) or str(manifest.get("id") or "").strip() != clean:
+            return ""
+        version = str(manifest.get("version") or "").strip()
+    except Exception as e:
+        logger.warning("[Site:Packs] Манифест набора {} не читается: {}", clean, e)
+        return ""
+
+    if version:
+        _PACK_VERSION_CACHE[clean] = (now, version)
+    return version
 
 
 def remove_pack(pack_id: str) -> bool:

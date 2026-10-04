@@ -20,6 +20,7 @@ import { f, parseBlockData } from "@/components/constructor/blockContent/cabinet
 import { pickBool } from "@/components/constructor/blockContent/cabinetKit/dataPickers";
 import type { CabinetSidebarTab } from "@/components/constructor/blockData/blocks";
 import { avatarInitials } from "@/lib/format-text";
+import { AccountAvatar } from "@/components/constructor/blockContent/account/AccountAvatar";
 
 type ConnectionInfo = {
   online: boolean;
@@ -447,7 +448,7 @@ export function DefaultSidebarBlockView({ block, context, editMode }: TypedBlock
 
       {showUserFooter ? (
         <div style={{ borderTop: `1px solid ${t.line}`, paddingTop: 12, display: "flex", alignItems: "center", gap: t.space.smPlus }}>
-          <div style={{ ...avatarGradientStyle(t, 36), fontSize: t.font.sm }}>{avatar}</div>
+          <AccountAvatar enabled={!previewMode} fallback={avatar} style={{ ...avatarGradientStyle(t, 36), fontSize: t.font.sm }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: t.weight.bold, fontSize: t.font.sm, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{login}</div>
             <div style={{ fontSize: t.font.xs, color: t.inkDim }}>{planLabel}</div>

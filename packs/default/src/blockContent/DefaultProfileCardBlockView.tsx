@@ -15,6 +15,7 @@ import { useAppInfo } from "@/app/AppInfoProvider";
 import { isApiError } from "@/lib/api";
 import { slugToPath } from "@/lib/web-page-registry";
 import { useAccountMutations } from "@/components/constructor/blockContent/account/useAccountMutations";
+import { AccountAvatar } from "@/components/constructor/blockContent/account/AccountAvatar";
 import { hapticSuccess, hapticError } from "@/lib/telegram-webapp";
 import { DefaultFocusArea, DefaultFooter, DefaultRow, DefaultRows, btnChip } from "./layout";
 import { useDefaultTheme, panelStyle, panelBodyStyle, btnSolid, btnSecondary, pillStyle, avatarGradientStyle } from "./defaultTheme";
@@ -370,7 +371,7 @@ export function DefaultProfileCardBlockView({ block, context }: TypedBlockViewPr
       <>
         <div style={{ display: "flex", gap: t.space.lg, alignItems: "center" }}>
           {showAvatar ? (
-            <div style={{ ...avatarGradientStyle(t, 60), fontSize: t.font.lg }}>{avatar}</div>
+            <AccountAvatar enabled={!previewMode} fallback={avatar} style={{ ...avatarGradientStyle(t, 60), fontSize: t.font.lg }} />
           ) : null}
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: t.font.xxl, fontWeight: t.weight.bold, color: t.ink, lineHeight: 1.2, letterSpacing: "-0.01em" }}>{login}</div>
