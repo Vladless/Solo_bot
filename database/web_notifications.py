@@ -1,3 +1,5 @@
+import inspect
+
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -215,7 +217,9 @@ async def create_notification(
         message=message,
         data=data,
     )
-    session.add(notif)
+    add_result = session.add(notif)
+    if inspect.isawaitable(add_result):
+        await add_result
     await session.flush()
     await _invalidate_notif_cache(identity_id)
     return notif
