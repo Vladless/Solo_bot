@@ -1,47 +1,78 @@
-from sqlalchemy import and_, func, insert, not_, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import and_, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.client_origin import normalize_campaign
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
+from core.redis_cache import cache_get, cache_key, cache_set
 from database.models import Payment, TrackingSource, User
+from database.users import upsert_source_if_empty
 from logger import logger
+from settings.cache_config import START_UTM_EXISTS_TTL_SEC as UTM_EXISTS_TTL_SEC
+
+
+async def is_known_tracking_source(session: AsyncSession, code: str) -> bool:
+    """Есть ли такой код источника. Ответ кешируется: проверка идёт на каждом входе клиента."""
+    if not code:
+        return False
+    key = cache_key("utm_exists", code)
+    cached = await cache_get(key)
+    if cached is not None:
+        return bool(cached)
+    exists = (
+        await session.execute(select(1).select_from(TrackingSource).where(TrackingSource.code == code).limit(1))
+    ).scalar_one_or_none() is not None
+    await cache_set(key, bool(exists), UTM_EXISTS_TTL_SEC)
+    return exists
+
+
+async def attribute_source_if_known(session: AsyncSession, user_ref: int, code: str | None) -> bool:
+    """Ставит источник клиенту, если код известен и источник ещё не заполнен.
+
+    Клиента адресуем по `users.id`; upsert по tg остаётся для бота, где строки может ещё не быть.
+    """
+    normalized = normalize_campaign(code)
+    if not normalized or not await is_known_tracking_source(session, normalized):
+        return False
+    from database.access.resolution import resolve_user_optional
+    from database.users import set_source_if_empty
+
+    user = await resolve_user_optional(session, int(user_ref))
+    if user is not None:
+        return await set_source_if_empty(session, int(user.id), normalized)
+    if int(user_ref) > 0:
+        return await upsert_source_if_empty(session, int(user_ref), normalized)
+    return False
 
 
 async def create_tracking_source(session: AsyncSession, name: str, code: str, type_: str, created_by: int):
-    try:
-        stmt = insert(TrackingSource).values(
-            name=name,
-            code=code,
-            type=type_,
-            created_by=created_by,
-        )
-        await session.execute(stmt)
-        await session.commit()
-        logger.info(f"🆕 Источник трафика {code} создан")
-    except SQLAlchemyError as e:
-        logger.error(f"❌ Ошибка при создании источника {code}: {e}")
-        await session.rollback()
-        raise
+    stmt = insert(TrackingSource).values(
+        name=name,
+        code=code,
+        type=type_,
+        created_by=created_by,
+    )
+    await session.execute(stmt)
+    logger.info(f"🆕 Источник трафика {code} создан")
 
 
 async def get_all_tracking_sources(session: AsyncSession) -> list[dict]:
     registrations_subq = (
-        select(func.count(func.distinct(User.tg_id)))
+        select(func.count(func.distinct(User.id)))
         .where(User.source_code == TrackingSource.code)
         .correlate(TrackingSource)
         .scalar_subquery()
     )
 
     trials_subq = (
-        select(func.count(func.distinct(User.tg_id)))
+        select(func.count(func.distinct(User.id)))
         .where((User.source_code == TrackingSource.code) & (User.trial == 1))
         .correlate(TrackingSource)
         .scalar_subquery()
     )
 
     payments_subq = (
-        select(func.count(func.distinct(Payment.tg_id)))
-        .join(User, Payment.tg_id == User.tg_id)
+        select(func.count(func.distinct(Payment.user_id)))
+        .join(User, Payment.user_id == User.id)
         .where(
             (User.source_code == TrackingSource.code)
             & (Payment.status == "success")
@@ -89,20 +120,20 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
     _src_name, _src_code, created_at = src
 
     reg_subq = (
-        select(func.count(func.distinct(User.tg_id)))
+        select(func.count(func.distinct(User.id)))
         .where((User.source_code == code) & (User.created_at >= created_at))
         .scalar_subquery()
     )
 
     trial_subq = (
-        select(func.count(func.distinct(User.tg_id)))
+        select(func.count(func.distinct(User.id)))
         .where((User.source_code == code) & (User.trial == 1) & (User.created_at >= created_at))
         .scalar_subquery()
     )
 
     payments_subq = (
-        select(func.count(func.distinct(Payment.tg_id)))
-        .join(User, Payment.tg_id == User.tg_id)
+        select(func.count(func.distinct(Payment.user_id)))
+        .join(User, Payment.user_id == User.id)
         .where(
             (User.source_code == code)
             & (Payment.status == "success")
@@ -114,7 +145,7 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
 
     amount_subq = (
         select(func.coalesce(func.sum(Payment.amount), 0.0))
-        .join(User, Payment.tg_id == User.tg_id)
+        .join(User, Payment.user_id == User.id)
         .where(
             (User.source_code == code)
             & (Payment.status == "success")
@@ -141,11 +172,11 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
 
     payments_base = (
         select(
-            Payment.tg_id.label("tg_id"),
+            Payment.user_id.label("tg_id"),
             Payment.amount.label("amount"),
             Payment.created_at.label("dt"),
         )
-        .join(User, Payment.tg_id == User.tg_id)
+        .join(User, Payment.user_id == User.id)
         .where(
             (User.source_code == code)
             & (Payment.status == "success")

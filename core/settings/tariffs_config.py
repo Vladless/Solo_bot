@@ -1,17 +1,22 @@
-from math import ceil
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+from database.settings_cache import settings_cache
+
+from .runtime_sync import publish_runtime_config, register_runtime_config
 
 
 TARIFFS_CONFIG: dict[str, Any] = {
     "ALLOW_DOWNGRADE": True,
     "KEY_ADDONS_PACK_MODE": "all",
     "KEY_ADDONS_PRICE_BASE_MODE": "current",
+    "KEY_ADDONS_RECALC_PRICE": False,
+    "KEY_ADDONS_CARRY_ON_RENEWAL": False,
 }
+register_runtime_config("TARIFFS_CONFIG", TARIFFS_CONFIG)
 
 
 async def load_tariffs_config(session: AsyncSession) -> None:
@@ -62,71 +67,25 @@ async def update_tariffs_config(session: AsyncSession, new_values: dict[str, Any
 
     TARIFFS_CONFIG.clear()
     TARIFFS_CONFIG.update(tariffs_config)
+    settings_cache.update("TARIFFS_CONFIG", tariffs_config)
+    await publish_runtime_config("TARIFFS_CONFIG", tariffs_config)
 
 
-def calc_extra_devices_price(tariff: dict[str, Any], device_limit: int) -> int:
-    base_device_limit = int(tariff.get("device_limit") or 1)
-    extra_devices = max(0, device_limit - base_device_limit)
-    if extra_devices <= 0:
-        return 0
-
-    step_price = int(tariff.get("device_step_rub") or 0)
-    overrides = tariff.get("device_overrides") or {}
-
-    override_total = overrides.get(str(device_limit))
-    if override_total is not None:
-        return int(ceil(float(override_total)))
-
-    return int(ceil(extra_devices * step_price))
-
-
-def calc_extra_traffic_price(tariff: dict[str, Any], traffic_gb: int | None) -> int:
-    if traffic_gb is None:
-        return 0
-
-    traffic_limit_bytes = tariff.get("traffic_limit")
-    if traffic_limit_bytes:
-        base_traffic_gb = ceil(traffic_limit_bytes / 1024 / 1024 / 1024)
-    else:
-        base_traffic_gb = 0
-
-    step_price = int(tariff.get("traffic_step_rub") or 0)
-    overrides = tariff.get("traffic_overrides") or {}
-
-    override_total = overrides.get(str(traffic_gb))
-    if override_total is not None:
-        return int(ceil(float(override_total)))
-
-    if traffic_gb == 0:
-        return 0
-
-    extra_gb = max(0, traffic_gb - base_traffic_gb)
-    if extra_gb <= 0:
-        return 0
-
-    return int(ceil(extra_gb * step_price))
-
-
-def calculate_config_price(
-    tariff: dict[str, Any],
-    duration_days: int,
-    device_limit: int,
-    traffic_gb: int | None,
-) -> int:
-    base_duration = int(tariff.get("duration_days") or 0) or duration_days or 30
-    if base_duration <= 0:
-        base_duration = duration_days or 30
-
-    base_price = int(tariff.get("price_rub") or 0)
-
-    duration_multiplier = duration_days / base_duration
-    base_price_scaled = base_price * duration_multiplier
-
-    extra_devices_price = calc_extra_devices_price(tariff, device_limit)
-    extra_traffic_price = calc_extra_traffic_price(tariff, traffic_gb)
-
-    total = base_price_scaled + extra_devices_price + extra_traffic_price
-    return int(ceil(total))
+def get_override_value(overrides: Any, key: int | str | None) -> Any:
+    """Доплата за конкретный вариант. Ключ ищем и строкой, и числом:
+    из JSONB приходят строки, а собранный в памяти тариф может нести int."""
+    if not isinstance(overrides, dict) or key is None:
+        return None
+    if key in overrides:
+        return overrides[key]
+    text_key = str(key)
+    if text_key in overrides:
+        return overrides[text_key]
+    try:
+        int_key = int(text_key)
+    except (TypeError, ValueError):
+        return None
+    return overrides.get(int_key)
 
 
 def normalize_tariff_config(tariff: dict[str, Any]) -> dict[str, Any]:

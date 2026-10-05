@@ -4,11 +4,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+from database.settings_cache import settings_cache
 
 from ..defaults import DEFAULT_NOTIFICATIONS_CONFIG
+from .runtime_sync import publish_runtime_config, register_runtime_config
 
 
 NOTIFICATIONS_CONFIG: dict[str, Any] = DEFAULT_NOTIFICATIONS_CONFIG.copy()
+register_runtime_config("NOTIFICATIONS_CONFIG", NOTIFICATIONS_CONFIG)
 
 
 async def load_notifications_config(session: AsyncSession) -> None:
@@ -57,3 +60,5 @@ async def update_notifications_config(session: AsyncSession, new_values: dict[st
 
     NOTIFICATIONS_CONFIG.clear()
     NOTIFICATIONS_CONFIG.update(notifications_config)
+    settings_cache.update("NOTIFICATIONS_CONFIG", notifications_config)
+    await publish_runtime_config("NOTIFICATIONS_CONFIG", notifications_config)

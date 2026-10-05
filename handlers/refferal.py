@@ -1,9 +1,5 @@
 import os
 
-from io import BytesIO
-
-import qrcode
-
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -16,11 +12,9 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, REFERRAL_QR, TOP_REFERRAL_BUTTON, USERNAME_BOT
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     add_referral,
@@ -28,22 +22,34 @@ from database import (
     get_referral_by_referred_id,
     get_referral_stats,
 )
-from database.models import Referral
+from database.access.resolution import resolve_user_optional
 from database.tariffs import get_tariffs
-from handlers.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
-from handlers.payments.currency_rates import format_for_user
-from handlers.texts import (
-    INVITE_MESSAGE_TEMPLATE,
+from logger import logger
+from services.formatting import format_days, get_referral_link
+from services.payments.currency_rates import format_for_user
+from settings.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
+from settings.config import (
+    ADMIN_ID,
+    INLINE_MODE,
+    REFERRAL_BONUS_PERCENTAGES,
+    REFERRAL_QR,
+    TOP_REFERRAL_BUTTON,
+    USERNAME_BOT,
+)
+from settings.texts import (
+    INVITE_ROW_BONUS,
+    INVITE_ROW_LEVEL,
+    INVITE_TEXT,
     INVITE_TEXT_NON_INLINE,
     NEW_REFERRAL_NOTIFICATION,
     REFERRAL_OFFERS,
     REFERRAL_SUCCESS_MSG,
+    TOP_REFERRALS_EMPTY_TEXT,
+    TOP_REFERRALS_ROW,
     TOP_REFERRALS_TEXT,
 )
-from logger import logger
 
-from .texts import get_referral_link
-from .utils import edit_or_send_message, format_days
+from .utils import edit_or_send_message, render_text, safe_answer_inline_query
 
 
 router = Router()
@@ -64,33 +70,27 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
     referral_link = get_referral_link(chat_id)
     referral_stats = await get_referral_stats(session, chat_id)
 
-    bonuses_lines = []
+    bonus_rows = []
     for level, value in REFERRAL_BONUS_PERCENTAGES.items():
         if isinstance(value, float):
-            bonuses_lines.append(f"{level} уровень: 🌟 {int(value * 100)}% бонуса")
+            bonus_value = f"{int(value * 100)}%"
         else:
-            value_text = await format_for_user(session, chat_id, value, language_code)
-            bonuses_lines.append(f"{level} уровень: 💸 {value_text} бонуса")
-    bonuses_block = "\n".join(bonuses_lines)
+            bonus_value = await format_for_user(session, chat_id, value, language_code)
+        bonus_rows.append(INVITE_ROW_BONUS.format(level=level, value=bonus_value))
 
-    details_lines = []
-    for level, stats in referral_stats["referrals_by_level"].items():
-        bonus_value = REFERRAL_BONUS_PERCENTAGES.get(level)
-        if isinstance(bonus_value, float):
-            bonus_text = f"{int(bonus_value * 100)}%"
-        else:
-            bonus_text = await format_for_user(session, chat_id, bonus_value, language_code)
-        details_lines.append(f"🔹 Уровень {level}: {stats['total']} - {bonus_text}")
-    details_block = "\n".join(details_lines)
+    level_rows = [
+        INVITE_ROW_LEVEL.format(level=level, value=stats["total"])
+        for level, stats in referral_stats["referrals_by_level"].items()
+    ]
 
     total_bonus_text = await format_for_user(session, chat_id, referral_stats["total_referral_bonus"], language_code)
-
-    invite_message = INVITE_MESSAGE_TEMPLATE.format(
-        referral_link=referral_link,
-        bonuses_block=bonuses_block,
-        total_referrals=referral_stats["total_referrals"],
-        details_block=details_block,
-        total_referral_bonus=total_bonus_text,
+    invite_message = render_text(
+        INVITE_TEXT,
+        link=referral_link,
+        bonus_table="\n".join(bonus_rows),
+        level_table="\n".join(level_rows),
+        total=referral_stats["total_referrals"],
+        bonus=total_bonus_text,
     )
     image_path = os.path.join("img", "pic_invite.jpg")
 
@@ -120,11 +120,11 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
 
 @router.inline_query(F.query.in_(["referral", "ref", "invite"]))
 async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSession):
-    referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
+    referral_link = f"https://telegram.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
 
     trial_tariffs = await get_tariffs(session, group_code="trial")
     if not trial_tariffs:
-        await inline_query.answer(results=[], cache_time=0)
+        await safe_answer_inline_query(inline_query, results=[], cache_time=0)
         return
 
     trial_days = trial_tariffs[0]["duration_days"]
@@ -153,27 +153,18 @@ async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSessi
             )
         )
 
-    await inline_query.answer(results=results, cache_time=60, is_personal=True)
+    await safe_answer_inline_query(inline_query, results=results, cache_time=60, is_personal=True)
 
 
 @router.callback_query(F.data.startswith("show_referral_qr|"))
 async def show_referral_qr(callback_query: CallbackQuery):
     try:
+        from core.executor import run_cpu
+        from utils.cpu_tasks import generate_qr_file
+
         chat_id = callback_query.data.split("|")[1]
         referral_link = get_referral_link(chat_id)
-
-        qr = qrcode.QRCode(version=1, box_size=10, border=4)
-        qr.add_data(referral_link)
-        qr.make(fit=True)
-
-        image = qr.make_image(fill_color="black", back_color="white")
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        qr_path = f"/tmp/qrcode_referral_{chat_id}.png"
-        with open(qr_path, "wb") as file:
-            file.write(buffer.read())
+        qr_path = await run_cpu(generate_qr_file, referral_link, f"/tmp/qrcode_referral_{chat_id}.png")
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=BACK, callback_data="invite"))
@@ -185,7 +176,6 @@ async def show_referral_qr(callback_query: CallbackQuery):
             reply_markup=builder.as_markup(),
             media_path=qr_path,
         )
-
         os.remove(qr_path)
 
     except Exception as error:
@@ -196,45 +186,32 @@ async def show_referral_qr(callback_query: CallbackQuery):
 @router.callback_query(F.data == "top_referrals")
 async def top_referrals_handler(callback_query: CallbackQuery, session: AsyncSession):
     user_id = callback_query.from_user.id
+    from database.referrals import get_referral_position, get_top_referrals, get_user_referral_count
 
-    result = await session.execute(select(func.count()).select_from(Referral).where(Referral.referrer_tg_id == user_id))
-    user_referral_count = result.scalar_one() or 0
+    user_referral_count = await get_user_referral_count(session, user_id)
 
-    personal_block = "Твоё место в рейтинге:\n"
+    user_position = 0
     if user_referral_count > 0:
-        subquery = (
-            select(func.count().label("cnt"))
-            .select_from(Referral)
-            .group_by(Referral.referrer_tg_id)
-            .having(func.count() > user_referral_count)
-            .subquery()
-        )
-        result = await session.execute(select(func.count()).select_from(subquery))
-        user_position = result.scalar_one() + 1
-        personal_block += f"{user_position}. {user_id} - {user_referral_count} чел."
-    else:
-        personal_block += "Ты еще не приглашал пользователей в проект."
+        user_position = await get_referral_position(session, user_referral_count)
 
-    result = await session.execute(
-        select(
-            Referral.referrer_tg_id,
-            func.count(Referral.referred_tg_id).label("referral_count"),
-        )
-        .group_by(Referral.referrer_tg_id)
-        .order_by(desc("referral_count"))
-        .limit(5)
-    )
-    top_referrals = result.all()
+    top_referrals = await get_top_referrals(session, limit=5)
 
     is_admin = user_id in ADMIN_ID
-    rows = ""
+    top_rows = []
     for index, row in enumerate(top_referrals, 1):
-        referrer_id = str(row.referrer_tg_id)
-        count = row.referral_count
+        referrer_id = str(row["referrer_user_id"])
         display_id = referrer_id if is_admin else f"{referrer_id[:5]}*****"
-        rows += f"{index}. {display_id} - {count} чел.\n"
+        top_rows.append(TOP_REFERRALS_ROW.format(index=index, user=display_id, value=row["referral_count"]))
 
-    text = TOP_REFERRALS_TEXT.format(personal_block=personal_block, rows=rows)
+    if user_referral_count > 0:
+        text = render_text(
+            TOP_REFERRALS_TEXT,
+            top_table="\n".join(top_rows),
+            place=user_position,
+            invited=user_referral_count,
+        )
+    else:
+        text = render_text(TOP_REFERRALS_EMPTY_TEXT, top_table="\n".join(top_rows))
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=BACK, callback_data="invite"))
@@ -283,17 +260,19 @@ async def handle_referral_link(
                 is_bot=getattr(user, "is_bot", False),
             )
 
-        if not inserted:
+        if inserted is None:
             await message.answer("❌ Вы уже зарегистрированы и не можете стать рефералом.")
             return
 
         await add_referral(session, user_id, referrer_tg_id)
 
         try:
-            await bot.send_message(
-                referrer_tg_id,
-                NEW_REFERRAL_NOTIFICATION.format(referred_id=user_id),
-            )
+            ref_notifier = await resolve_user_optional(session, referrer_tg_id)
+            if ref_notifier is not None and ref_notifier.tg_id is not None:
+                await bot.send_message(
+                    int(ref_notifier.tg_id),
+                    NEW_REFERRAL_NOTIFICATION.format(referred_id=user_id),
+                )
         except Exception as error:
             logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {error}")
 

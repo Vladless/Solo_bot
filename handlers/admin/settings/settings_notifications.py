@@ -7,10 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import NOTIFICATIONS_CONFIG, update_notifications_config
 from filters.admin import IsAdminFilter
 
+from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
+    ADMIN_NOTIFICATION_TITLES,
     NOTIFICATION_TIME_FIELDS,
     NOTIFICATION_TITLES,
+    build_settings_notifications_admin_kb,
     build_settings_notifications_intervals_kb,
     build_settings_notifications_kb,
 )
@@ -31,7 +34,11 @@ async def load_notification_settings() -> dict[str, object]:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_notifications"))
 async def open_settings_notifications_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     notifications_state = await load_notification_settings()
-    text = "Настройки уведомлений: включение и выключение."
+    text = menu_text(
+        "Уведомления",
+        "Что бот шлёт клиентам и админам.",
+        quote("Нажмите на уведомление, чтобы включить или выключить его."),
+    )
     await callback.message.edit_text(text=text, reply_markup=build_settings_notifications_kb(notifications_state))
     await callback.answer()
 
@@ -39,7 +46,11 @@ async def open_settings_notifications_menu(callback: CallbackQuery, session: Asy
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_notifications_intervals"))
 async def open_settings_notifications_intervals_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     notifications_state = await load_notification_settings()
-    text = "Настройки интервалов и задержек уведомлений."
+    text = menu_text(
+        "Интервалы",
+        "Задержки и периоды фоновых задач.",
+        quote("Нажмите на параметр, чтобы задать новое значение."),
+    )
     await callback.message.edit_text(
         text=text,
         reply_markup=build_settings_notifications_intervals_kb(notifications_state),
@@ -47,7 +58,53 @@ async def open_settings_notifications_intervals_menu(callback: CallbackQuery, se
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notification_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notifications_admin"))
+async def open_settings_notifications_admin_menu(callback: CallbackQuery, session: AsyncSession) -> None:
+    notifications_state = await load_notification_settings()
+    markup = build_settings_notifications_admin_kb(notifications_state)
+    text = menu_text(
+        "Уведомления админу",
+        "Что бот пишет админам о клиентах.",
+        section(
+            "🔔 В уведомлении",
+            "клиент: ник или почта",
+            "канал: бот, сайт, webapp",
+            "переход: в бот и на сайт",
+        ),
+        quote("Нажмите на уведомление, чтобы включить или выключить его."),
+    )
+    await callback.message.edit_text(text=text, reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "settings_notification_admin_toggle"), flags={"popup": True}
+)
+async def toggle_admin_notification_setting(
+    callback: CallbackQuery,
+    callback_data: AdminPanelCallback,
+    session: AsyncSession,
+) -> None:
+    keys = list(ADMIN_NOTIFICATION_TITLES.keys())
+    idx = callback_data.page
+
+    if not 1 <= idx <= len(keys):
+        await callback.answer("Неизвестная настройка", show_alert=True)
+        return
+
+    key = keys[idx - 1]
+    config = dict(NOTIFICATIONS_CONFIG or {})
+    config[key] = not bool(config.get(key, False))
+    await update_notifications_config(session, config)
+
+    notifications_state = await load_notification_settings()
+    await callback.message.edit_reply_markup(
+        reply_markup=build_settings_notifications_admin_kb(notifications_state),
+    )
+    await callback.answer(menu_text("Уведомления админу", "Настройка обновлена"))
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notification_toggle"), flags={"popup": True})
 async def toggle_notification_setting(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,
@@ -67,16 +124,17 @@ async def toggle_notification_setting(
     config[key] = not current
 
     await update_notifications_config(session, config)
-    await session.commit()
 
     notifications_state = await load_notification_settings()
     await callback.message.edit_reply_markup(
         reply_markup=build_settings_notifications_kb(notifications_state),
     )
-    await callback.answer("Настройка обновлена")
+    await callback.answer(menu_text("Уведомления", "Настройка обновлена"))
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notification_interval_edit"))
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "settings_notification_interval_edit"), flags={"popup": True}
+)
 async def edit_notification_interval_setting(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,
@@ -97,9 +155,10 @@ async def edit_notification_interval_setting(
     await state.set_state(NotificationIntervalEditState.waiting_for_value)
     await state.update_data(setting_key=key)
 
-    text = (
-        f'Введите новое значение для "{title}" (целое число).\n'
-        f"Текущее значение: {current_value if current_value is not None else 'не задано'}"
+    text = menu_text(
+        title,
+        f"Сейчас: <b>{current_value if current_value is not None else 'не задано'}</b>",
+        "Введите новое значение целым числом.",
     )
     await callback.message.edit_text(text=text)
     await callback.answer()
@@ -112,25 +171,24 @@ async def notification_interval_value_input(message: Message, state: FSMContext,
     try:
         new_value = int(text_value)
     except ValueError:
-        await message.answer("Введите целое число.")
+        await message.answer(menu_text("Уведомления", "Введите целое число."))
         return
 
     data = await state.get_data()
     key = data.get("setting_key")
     if not key:
         await state.clear()
-        await message.answer("Ошибка состояния. Попробуйте снова.")
+        await message.answer(menu_text("Уведомления", "Ошибка состояния. Попробуйте ещё раз."))
         return
 
     config = dict(NOTIFICATIONS_CONFIG or {})
     config[key] = new_value
 
     await update_notifications_config(session, config)
-    await session.commit()
     await state.clear()
 
     notifications_state = await load_notification_settings()
     await message.answer(
-        "Интервал обновлён.",
+        menu_text("Уведомления", "Интервал обновлён."),
         reply_markup=build_settings_notifications_intervals_kb(notifications_state),
     )

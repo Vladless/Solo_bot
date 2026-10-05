@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -8,25 +9,28 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import DONATIONS_ENABLE, TRIBUTE_LINK
-from core.bootstrap import PAYMENTS_CONFIG, BUTTONS_CONFIG
+from core.bootstrap import BUTTONS_CONFIG, PAYMENTS_CONFIG
 from core.settings.money_config import get_currency_mode
-from database import get_last_payments
+from database.access.resolution import resolve_user_optional
 from database.models import User
-from handlers import buttons as btn
+from database.payments import get_balance_activity
+from database.temporary_data import clear_temporary_data
 from handlers.payments.currency_flow import build_currency_choice_kb
-from handlers.payments.currency_rates import format_for_user
-from handlers.payments.providers import get_providers_with_hooks
 from handlers.payments.stars.handlers import process_callback_pay_stars
 from handlers.payments.tribute.handlers import process_callback_pay_tribute
-from handlers.texts import (
-    FAST_PAY_CHOOSE_CURRENCY,
-    BALANCE_MANAGEMENT_TEXT,
-    PAYMENT_METHODS_MSG,
-    BALANCE_HISTORY_HEADER,
-)
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
+from services.payments.currency_rates import format_for_user
+from services.payments.providers import get_providers_with_hooks
+from settings import buttons as btn
+from settings.config import DONATIONS_ENABLE, TRIBUTE_LINK
+from settings.texts import (
+    BALANCE_HISTORY_GIFT_LINE,
+    BALANCE_HISTORY_HEADER,
+    BALANCE_MANAGEMENT_TEXT,
+    FAST_PAY_CHOOSE_CURRENCY,
+    PAYMENT_METHODS_MSG,
+)
 
 from ..utils import edit_or_send_message
 
@@ -151,7 +155,6 @@ async def _build_pay_menu_for_currency(currency: str) -> InlineKeyboardBuilder:
 @router.callback_query(F.data.startswith("pay_currency|"))
 async def handle_pay_currency(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     currency = callback_query.data.split("|")[1]
-
     if currency == "STARS":
         return await process_callback_pay_stars(callback_query, state, session)
 
@@ -181,20 +184,11 @@ async def handle_pay_currency(callback_query: CallbackQuery, state: FSMContext, 
 @router.callback_query(F.data == "balance")
 async def balance_handler(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    if data.get("temp_key") and data.get("required_amount") is not None:
-        from handlers.payments.fast_payment_flow import try_fast_payment_flow
-
-        await try_fast_payment_flow(
-            callback_query,
-            session,
-            state,
-            tg_id=callback_query.from_user.id,
-            temp_key=str(data["temp_key"]),
-            temp_payload=dict(data.get("temp_payload") or {}),
-            required_amount=int(data["required_amount"]),
-        )
-        await callback_query.answer()
-        return
+    for key in ("temp_key", "temp_payload", "required_amount", "fastflow_providers", "chosen_currency"):
+        data.pop(key, None)
+    await state.set_data(data)
+    await state.set_state(None)
+    await clear_temporary_data(session, callback_query.from_user.id)
 
     stmt = select(User.balance).where(User.tg_id == callback_query.from_user.id)
     result = await session.execute(stmt)
@@ -228,18 +222,44 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
     builder.row(InlineKeyboardButton(text=btn.PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
 
-    records = await get_last_payments(session, callback_query.from_user.id, statuses=["success"])
+    u = await resolve_user_optional(session, callback_query.from_user.id)
+    records = await get_balance_activity(
+        session,
+        uid=(u.id if u is not None else None),
+        tg_id=(u.tg_id if u is not None else callback_query.from_user.id),
+        limit=15,
+        success_only=True,
+    )
 
     if records:
         language_code = getattr(callback_query.from_user, "language_code", None)
         history_text = f"{BALANCE_HISTORY_HEADER}\n\n<blockquote>"
+        spend_labels = {
+            "created": "покупка подписки",
+            "renewed": "продление подписки",
+            "addons": "докупка опций",
+        }
         for record in records:
-            amount_rub = record["amount"] or 0
-            formatted_amount = await format_for_user(session, callback_query.from_user.id, amount_rub, language_code)
-            payment_system = record["payment_system"]
-            status = record["status"]
-            date = record["created_at"].strftime("%Y-%m-%d %H:%M:%S")
-            history_text += f"Сумма: {formatted_amount}\nОплата: {payment_system}\nСтатус: {status}\nДата: {date}\n\n"
+            amount_rub = record.amount or 0
+            date = record.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            if record.kind == "gift":
+                formatted_amount = await format_for_user(
+                    session, callback_query.from_user.id, amount_rub, language_code
+                )
+                history_text += BALANCE_HISTORY_GIFT_LINE.format(amount=formatted_amount, date=date) + "\n\n"
+            elif record.kind == "spend":
+                formatted_amount = await format_for_user(
+                    session, callback_query.from_user.id, abs(amount_rub), language_code
+                )
+                label = spend_labels.get(record.system, "списание")
+                history_text += f"💸 Списано: {formatted_amount} | {label}\nДата: {date}\n\n"
+            else:
+                formatted_amount = await format_for_user(
+                    session, callback_query.from_user.id, amount_rub, language_code
+                )
+                history_text += (
+                    f"Сумма: {formatted_amount}\nОплата: {record.system}\nСтатус: {record.status}\nДата: {date}\n\n"
+                )
         history_text += "</blockquote>"
     else:
         history_text = "❌ У вас пока нет операций с балансом."
@@ -271,7 +291,7 @@ async def back_to_currency(callback_query: CallbackQuery, state: FSMContext, ses
 
 @router.callback_query(F.data == "back_to_pay")
 async def back_to_pay(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    return await balance_handler(callback_query, session)
+    return await balance_handler(callback_query, state, session)
 
 
 @router.callback_query(F.data == "pay_tribute")

@@ -11,12 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database.models import Key, Server, User
-from filters.admin import IsAdminFilter
+from filters.admin import HasPermission
+from filters.permissions import PERM_MANAGEMENT
 from logger import logger
-from panels.remnawave import RemnawaveAPI
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
+from ..panel.headers import card, menu_text, section
 from . import router
 from .keyboard import AdminPanelCallback, build_back_to_db_menu
 
@@ -26,7 +27,12 @@ def extract_tg_id_from_username(value: str | None) -> int | None:
         return None
 
     value = value.strip()
-    match = re.search(r"_(\d+)(?:\D|$)", value)
+
+    if value.isdigit():
+        tg_id = int(value)
+        return tg_id if tg_id > 0 else None
+
+    match = re.search(r"[-_](\d+)(?:\D|$)", value)
     if not match:
         return None
 
@@ -55,55 +61,76 @@ def extract_tg_id_from_user_payload(user: dict) -> int | None:
     return tg_id
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"), IsAdminFilter())
+@router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"), HasPermission(PERM_MANAGEMENT))
 async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession):
+    from panels.remnawave_runtime import remnawave_api
+
     result = await session.execute(select(Server).where(Server.panel_type == "remnawave", Server.enabled.is_(True)))
     servers = result.scalars().all()
 
     if not servers:
         await callback.message.edit_text(
-            "❌ Нет доступных Remnawave-серверов.",
+            menu_text("Импорт с панели", "❌ Нет доступных Remnawave-серверов."),
             reply_markup=build_back_to_db_menu(),
         )
         return
 
     server = servers[0]
 
-    api = RemnawaveAPI(base_url=server.api_url)
+    async with remnawave_api(server.api_url) as api:
+        users = await api.get_all_users_time(
+            username=REMNAWAVE_LOGIN,
+            password=REMNAWAVE_PASSWORD,
+        )
 
-    users = await api.get_all_users_time(
-        username=REMNAWAVE_LOGIN,
-        password=REMNAWAVE_PASSWORD,
-    )
+        if not users:
+            await callback.message.edit_text(
+                menu_text("Импорт с панели", "📭 На панели нет клиентов."),
+                reply_markup=build_back_to_db_menu(),
+            )
+            return
 
-    if not users:
+        users = sorted(
+            users,
+            key=lambda u: (
+                u.get("id") if isinstance(u.get("id"), int) else float("inf"),
+                u.get("createdAt") or "",
+            ),
+        )
+
+        logger.warning(f"[Remnawave Export] Пример ответа:\n{json.dumps(users[:3], indent=2, ensure_ascii=False)}")
+
+        added_users = await import_remnawave_users(session, users)
+        if added_users:
+            await session.flush()
+
+        server_id = server.cluster_name or server.server_name
+
+        added_keys, updated_keys = await import_remnawave_keys(session, users, server_id=server_id)
+
+        preview: list[str] = []
+        for i, user in enumerate(users[:3], 1):
+            email = user.get("email") or user.get("username") or "-"
+            expire = (user.get("expireAt") or "")[:10]
+            preview.append(f"{i}. {email}: до {expire}")
+
         await callback.message.edit_text(
-            "📭 На панели нет клиентов.",
+            menu_text(
+                "Импорт с панели",
+                "✅ Импорт завершён.",
+                card(
+                    section(
+                        "📊 Итог",
+                        f"Найдено: {len(users)}",
+                        f"Клиентов: {added_users}",
+                        f"Подписок: {added_keys}",
+                        f"Обновлено: {updated_keys}",
+                    ),
+                    section("👥 Первые три", *preview),
+                ),
+            ),
             reply_markup=build_back_to_db_menu(),
         )
-        return
-
-    logger.warning(f"[Remnawave Export] Пример ответа:\n{json.dumps(users[:3], indent=2, ensure_ascii=False)}")
-
-    added_users = await import_remnawave_users(session, users)
-
-    server_id = server.cluster_name or server.server_name
-
-    added_keys = await import_remnawave_keys(session, users, server_id=server_id)
-
-    preview = ""
-    for i, user in enumerate(users[:3], 1):
-        email = user.get("email") or user.get("username") or "-"
-        expire = (user.get("expireAt") or "")[:10]
-        preview += f"{i}. {email} — до {expire}\n"
-
-    await callback.message.edit_text(
-        f"📄 Найдено клиентов: <b>{len(users)}</b>\n"
-        f"👤 Импортировано пользователей: <b>{added_users}</b>\n"
-        f"🔐 Импортировано ключей: <b>{added_keys}</b>\n\n"
-        f"<b>Первые 3:</b>\n{preview}",
-        reply_markup=build_back_to_db_menu(),
-    )
 
 
 async def import_remnawave_users(session: AsyncSession, users: list[dict]) -> int:
@@ -139,17 +166,50 @@ async def import_remnawave_users(session: AsyncSession, users: list[dict]) -> in
             logger.error(f"[Remnawave Import] Ошибка при добавлении пользователя {tg_id}: {e}")
             continue
 
-    await session.commit()
     return added
 
 
-async def import_remnawave_keys(session: AsyncSession, users: list[dict], server_id: str) -> int:
+def actualize_remnawave_key(key: Key, user: dict) -> list[str]:
+    changes: list[str] = []
+
+    expire_at = user.get("expireAt")
+    if expire_at:
+        try:
+            expire_ts = int(parser.isoparse(expire_at).timestamp() * 1000)
+            if key.expiry_time != expire_ts:
+                key.expiry_time = expire_ts
+                changes.append("срок")
+        except (ValueError, TypeError):
+            pass
+
+    remnawave_link = user.get("subscriptionUrl")
+    if remnawave_link and key.remnawave_link != remnawave_link:
+        key.remnawave_link = remnawave_link
+        changes.append("ссылка")
+
+    device_limit = user.get("hwidDeviceLimit")
+    if isinstance(device_limit, int) and key.current_device_limit != device_limit:
+        key.current_device_limit = device_limit
+        changes.append("устройства")
+
+    traffic_bytes = user.get("trafficLimitBytes")
+    if isinstance(traffic_bytes, int | float):
+        traffic_gb = int(traffic_bytes) // (1024**3)
+        if key.current_traffic_limit != traffic_gb:
+            key.current_traffic_limit = traffic_gb
+            changes.append("трафик")
+
+    return changes
+
+
+async def import_remnawave_keys(session: AsyncSession, users: list[dict], server_id: str) -> tuple[int, int]:
     added = 0
+    updated = 0
 
     for user in users:
         tg_id = extract_tg_id_from_user_payload(user)
 
-        client_id = user.get("uuid")
+        client_id = user.get("vlessUuid") or user.get("uuid")
         email = user.get("email") or user.get("username")
         remnawave_link = user.get("subscriptionUrl")
         expire_at = user.get("expireAt")
@@ -159,16 +219,31 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
             logger.warning(f"[SKIP] Пропущен клиент: tg_id={tg_id}, client_id={client_id}")
             continue
 
-        exists_stmt = await session.execute(select(Key).where(Key.client_id == client_id))
-        if exists_stmt.scalar():
-            logger.info(f"[SKIP] Ключ уже существует: {client_id}")
+        user_row = await session.execute(select(User.id).where(User.tg_id == tg_id))
+        user_id = user_row.scalar_one_or_none()
+        if user_id is None:
+            logger.warning(f"[SKIP] Пользователь не найден в БД: tg_id={tg_id}, client_id={client_id}")
+            continue
+
+        existing = (await session.execute(select(Key).where(Key.client_id == client_id))).scalar_one_or_none()
+
+        if existing is not None:
+            changes = actualize_remnawave_key(existing, user)
+            if changes:
+                updated += 1
+                logger.info(f"[SYNC] Ключ обновлён: {client_id} ({', '.join(changes)})")
             continue
 
         try:
             created_ts = int(parser.isoparse(created_at).timestamp() * 1000) if created_at else int(time.time() * 1000)
             expire_ts = int(parser.isoparse(expire_at).timestamp() * 1000) if expire_at else int(time.time() * 1000)
 
+            device_limit = user.get("hwidDeviceLimit")
+            traffic_bytes = user.get("trafficLimitBytes")
+            traffic_gb = int(traffic_bytes) // (1024**3) if isinstance(traffic_bytes, int | float) else None
+
             new_key = Key(
+                user_id=user_id,
                 tg_id=tg_id,
                 client_id=client_id,
                 email=email,
@@ -182,6 +257,8 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
                 alias=None,
                 notified=False,
                 notified_24h=False,
+                current_device_limit=device_limit if isinstance(device_limit, int) else None,
+                current_traffic_limit=traffic_gb,
             )
             session.add(new_key)
             added += 1
@@ -191,6 +268,5 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
         except Exception as e:
             logger.error(f"[ERROR] Ошибка при добавлении ключа {client_id}: {e}")
 
-    await session.commit()
-    logger.info(f"[IMPORT] Всего добавлено ключей: {added}")
-    return added
+    logger.info(f"[IMPORT] Новых ключей: {added}, актуализировано: {updated}")
+    return added, updated

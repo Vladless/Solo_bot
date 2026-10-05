@@ -6,17 +6,21 @@ from .hooks import run_hooks
 
 
 async def process_cluster_override(
-    tg_id: int,
-    state_data: dict,
     session: Any,
+    tg_id: int | None = None,
+    state_data: dict | None = None,
     plan: int | None = None,
     **kwargs,
 ) -> str | None:
-    """Обрабатывает хук cluster_override и возвращает название кластера."""
+    """Обрабатывает хук cluster_override и возвращает название кластера.
+
+    tg_id и state_data опциональны — хук может вызываться из контекстов
+    балансировщика (services.clusters.select_cluster), где этих данных нет.
+    """
     results = await run_hooks(
         "cluster_override",
         tg_id=tg_id,
-        state_data=state_data,
+        state_data=state_data if state_data is not None else {},
         session=session,
         plan=plan,
         **kwargs,
@@ -113,8 +117,8 @@ async def process_extract_cryptolink_from_result(
         return None
 
     try:
-        from config import HAPP_CRYPTOLINK
         from core.bootstrap import MODES_CONFIG
+        from settings.config import HAPP_CRYPTOLINK
 
         base_use_crypto_link = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
         use_crypto_link = await process_happ_cryptolink_override(
@@ -152,39 +156,40 @@ async def process_get_cryptolink_after_renewal(
     **kwargs,
 ) -> str | None:
     """Получает криптоссылку из Remnawave после продления подписки."""
+    from panels.remnawave_runtime import remnawave_api
+
     if not remnawave_nodes:
         return None
 
     try:
-        from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
         from database import get_tariff_by_id
-        from handlers.keys.operations.utils import is_plan_vless
-        from panels.remnawave import RemnawaveAPI
+        from services.operations.utils import is_plan_vless
+        from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
-        remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
-        if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-            return None
+        async with remnawave_api(remnawave_nodes[0]["api_url"]) as remna:
+            if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                return None
 
-        subscription_data = await remna.get_subscription_by_username(email)
-        if not subscription_data:
-            return None
+            subscription_data = await remna.get_subscription_by_username(email)
+            if not subscription_data:
+                return None
 
-        need_vless_key = False
-        if plan:
-            tariff = await get_tariff_by_id(session, plan)
-            if tariff:
-                need_vless_key = is_plan_vless(tariff)
+            need_vless_key = False
+            if plan:
+                tariff = await get_tariff_by_id(session, plan)
+                if tariff:
+                    need_vless_key = is_plan_vless(tariff)
 
-        return await process_extract_cryptolink_from_result(
-            result=subscription_data,
-            cluster_id=cluster_id,
-            plan=plan,
-            session=session,
-            email=email,
-            tg_id=tg_id,
-            need_vless_key=need_vless_key,
-            **kwargs,
-        )
+            return await process_extract_cryptolink_from_result(
+                result=subscription_data,
+                cluster_id=cluster_id,
+                plan=plan,
+                session=session,
+                email=email,
+                tg_id=tg_id,
+                need_vless_key=need_vless_key,
+                **kwargs,
+            )
     except Exception as e:
         logger.warning(f"[GET_CRYPTOLINK_AFTER_RENEWAL] Ошибка получения криптоссылки: {e}")
         return None
@@ -197,6 +202,12 @@ async def process_intercept_key_creation_message(
     **kwargs,
 ) -> bool:
     """Обрабатывает хук intercept_key_creation_message и решает, перехватывать ли сообщение."""
+    from .single_subscription import is_single_sub_enabled, open_single_sub_profile
+
+    if is_single_sub_enabled():
+        if await open_single_sub_profile(target_message, session, admin=bool(kwargs.get("admin", False))):
+            return True
+
     results = await run_hooks(
         "intercept_key_creation_message",
         chat_id=chat_id,
@@ -242,6 +253,10 @@ async def process_process_callback_renew_key(
         session=session,
         **kwargs,
     )
+    from .single_subscription import is_single_sub_enabled, single_sub_back_to_profile
+
+    if is_single_sub_enabled():
+        return list(results) + single_sub_back_to_profile()
     return results if results else []
 
 
@@ -307,6 +322,10 @@ async def process_renew_tariffs(
         session=session,
         **kwargs,
     )
+    from .single_subscription import is_single_sub_enabled, single_sub_back_to_profile
+
+    if is_single_sub_enabled():
+        return list(results) + single_sub_back_to_profile()
     return results if results else []
 
 
@@ -328,6 +347,10 @@ async def process_renewal_complete(
         client_id=client_id,
         **kwargs,
     )
+    from .single_subscription import is_single_sub_enabled, single_sub_back_to_profile
+
+    if is_single_sub_enabled():
+        return list(results) + single_sub_back_to_profile()
     return results if results else []
 
 
@@ -359,27 +382,6 @@ async def process_admin_key_edit_menu(
         **kwargs,
     )
     return results if results else []
-
-
-async def process_after_hwid_reset(
-    chat_id: int,
-    session: Any,
-    key_name: str,
-    admin: bool = False,
-    **kwargs,
-) -> bool:
-    """Обрабатывает хук after_hwid_reset и решает, вести ли в профиль."""
-    results = await run_hooks(
-        "after_hwid_reset",
-        chat_id=chat_id,
-        admin=admin,
-        session=session,
-        key_name=key_name,
-        **kwargs,
-    )
-    if not results:
-        return False
-    return any("redirect_to_profile" in str(result) for result in results)
 
 
 async def process_tariff_menu(
@@ -438,6 +440,10 @@ async def process_addons_menu(
         session=session,
         **kwargs,
     )
+    from .single_subscription import is_single_sub_enabled, single_sub_back_to_profile
+
+    if is_single_sub_enabled():
+        return list(results) + single_sub_back_to_profile()
     return results if results else []
 
 
@@ -455,4 +461,35 @@ async def process_connect_device_menu(
         session=session,
         **kwargs,
     )
+    from .single_subscription import is_single_sub_enabled, single_sub_back_to_profile
+
+    if is_single_sub_enabled():
+        return list(results) + single_sub_back_to_profile()
     return results if results else []
+
+
+async def process_addon_purchase_complete(
+    chat_id: int,
+    session: Any,
+    email: str,
+    message: Any,
+    admin: bool = False,
+    **kwargs,
+) -> bool:
+    """Обрабатывает хук addon_purchase_complete. True = caller пропускает render_key_info."""
+    from .single_subscription import is_single_sub_enabled, open_single_sub_profile
+
+    if is_single_sub_enabled():
+        if await open_single_sub_profile(message, session, admin=admin):
+            return True
+
+    results = await run_hooks(
+        "addon_purchase_complete",
+        chat_id=chat_id,
+        admin=admin,
+        session=session,
+        email=email,
+        message=message,
+        **kwargs,
+    )
+    return bool(results and results[0])

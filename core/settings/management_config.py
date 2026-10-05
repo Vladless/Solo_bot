@@ -4,12 +4,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+from database.settings_cache import settings_cache
 
 from ..defaults import DEFAULT_MANAGEMENT_CONFIG
+from .runtime_sync import publish_runtime_config, register_runtime_config
 
 
 MANAGEMENT_CONFIG: dict[str, Any] = DEFAULT_MANAGEMENT_CONFIG.copy()
 MANAGEMENT_SETTING_KEY = "MANAGEGENT_CONFIG"
+register_runtime_config(MANAGEMENT_SETTING_KEY, MANAGEMENT_CONFIG)
 
 
 async def load_management_config(session: AsyncSession) -> None:
@@ -58,3 +61,5 @@ async def update_management_config(session: AsyncSession, new_values: dict[str, 
 
     MANAGEMENT_CONFIG.clear()
     MANAGEMENT_CONFIG.update(management_config)
+    settings_cache.update(MANAGEMENT_SETTING_KEY, management_config)
+    await publish_runtime_config(MANAGEMENT_SETTING_KEY, management_config)

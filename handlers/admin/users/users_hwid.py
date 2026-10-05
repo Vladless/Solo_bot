@@ -1,70 +1,91 @@
-from aiogram import F, Router, types
+import html
+
+from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
-from database import get_client_id_by_email, get_servers
 from filters.admin import IsAdminFilter
-from panels.remnawave import RemnawaveAPI
+from panels.remnawave_runtime import (
+    invalidate_remnawave_profile,
+    resolve_remnawave_api_url,
+    with_remnawave_api,
+)
+from services.users_utils import resolve_admin_key
 
+from ..panel.headers import card, menu_text, quote, section
 from .keyboard import AdminUserEditorCallback, build_editor_kb, build_hwid_menu_kb
 
 
 router = Router()
 
+DEVICES_PER_PAGE = 3
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_hwid_menu"),
-    IsAdminFilter(),
-)
-async def handle_hwid_menu(
+
+def _format_device_block(idx: int, device: dict) -> str:
+    hwid = html.escape(str(device.get("hwid") or "—"))
+    model = html.escape(str(device.get("deviceModel") or "—"))
+    platform = html.escape(str(device.get("platform") or "—"))
+    os_version = html.escape(str(device.get("osVersion") or "—"))
+    user_agent = html.escape(str(device.get("userAgent") or "—"))
+    created_raw = str(device.get("createdAt") or "")[:19].replace("T", " ")
+    updated_raw = str(device.get("updatedAt") or "")[:19].replace("T", " ")
+    created = html.escape(created_raw or "—")
+    updated = html.escape(updated_raw or "—")
+    return section(
+        f"📟 {idx}. {model}",
+        f"Система: {platform} {os_version}",
+        f"Клиент: {user_agent}",
+        f"HWID: {hwid}",
+        f"Создано: {created}",
+        f"Обновлено: {updated}",
+    )
+
+
+async def _render_admin_devices(
     callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
     session: AsyncSession,
-):
-    email = callback_data.data
-    tg_id = callback_data.tg_id
-
-    client_id = await get_client_id_by_email(session, email)
-    if not client_id:
-        await callback_query.message.edit_text("🚫 Не удалось найти client_id по email.")
-        return
-
-    servers = await get_servers(session=session)
-    remna_server = None
-    for cluster_servers in servers.values():
-        for server in cluster_servers:
-            if server.get("panel_type", "") == "remnawave":
-                remna_server = server
-                break
-        if remna_server:
-            break
-
-    if not remna_server:
+    key_ref: str,
+    user_id: int,
+    page: int,
+) -> None:
+    key_obj = await resolve_admin_key(session, user_id, key_ref)
+    if not key_obj:
         await callback_query.message.edit_text(
-            "🚫 Нет доступного сервера Remnawave.",
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Устройства", "❌ Подписка не найдена."),
+            reply_markup=build_editor_kb(user_id),
+        )
+        return
+    client_id = key_obj.client_id
+    key_email = key_obj.email
+
+    remna_api_url = await resolve_remnawave_api_url(session, "", fallback_any=True)
+    if not remna_api_url:
+        await callback_query.message.edit_text(
+            menu_text("Устройства", "❌ Нет доступного сервера Remnawave."),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
-    api = RemnawaveAPI(remna_server["api_url"])
-    if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-        await callback_query.message.edit_text("❌ Ошибка авторизации в Remnawave.")
+    async def _fetch(api):
+        user_info = await api.get_user_by_uuid(client_id, username=key_email)
+        devices = await api.get_user_hwid_devices(client_id, username=key_email)
+        return user_info, devices
+
+    result = await with_remnawave_api(session, "", _fetch, fallback_any=True, timeout_sec=8.0)
+    if result is None:
+        await callback_query.message.edit_text(menu_text("Устройства", "❌ Ошибка авторизации в Remnawave."))
         return
 
-    user_info = await api.get_user_by_uuid(client_id)
-    devices = await api.get_user_hwid_devices(client_id)
+    user_info, devices = result
+    devices = devices or []
 
-    status_emoji = "🟢"
-    status_text = "Онлайн"
+    status_emoji = "⚪️"
+    status_text = "Не найден"
     online_at_str = "—"
     first_connected_str = "—"
     last_node_uuid = "—"
 
-    if not user_info:
-        status_emoji = "⚪️"
-        status_text = "Не найден"
-    else:
+    if user_info:
         is_online = bool(user_info.get("isOnline"))
         status_emoji = "🟢" if is_online else "⚪️"
         status_text = "Онлайн" if is_online else "Офлайн"
@@ -81,92 +102,117 @@ async def handle_hwid_menu(
         if last_node_uuid_val:
             last_node_uuid = last_node_uuid_val
 
-    if not devices:
-        text = (
-            "💻 <b>HWID устройства</b>\n\n"
-            f"{status_emoji} <b>Статус:</b> {status_text}\n"
-            f"└ 🕓 <b>Онлайн был:</b> {online_at_str}\n"
-            f"└ 🚀 <b>Первое подключение:</b> {first_connected_str}\n"
-            f"└ 🛰 <b>Нода последнего подключения:</b> {last_node_uuid}\n\n"
-            "🔌 Нет привязанных устройств."
-        )
-    else:
-        text = (
-            "💻 <b>HWID устройства</b>\n\n"
-            f"{status_emoji} <b>Статус:</b> {status_text}\n"
-            f"└ 🕓 <b>Онлайн был:</b> {online_at_str}\n"
-            f"└ 🚀 <b>Первое подключение:</b> {first_connected_str}\n"
-            f"└ 🛰 <b>Нода последнего подключения:</b> {last_node_uuid}\n\n"
-            f"🔗 Привязано устройств: <b>{len(devices)}</b>\n\n"
-        )
-        for idx, device in enumerate(devices, 1):
-            created = device.get("createdAt", "")[:19].replace("T", " ")
-            updated = device.get("updatedAt", "")[:19].replace("T", " ")
-            text += (
-                f"<b>{idx}.</b> <code>{device.get('hwid')}</code>\n"
-                f"└ 📱 <b>Модель:</b> {device.get('deviceModel') or '—'}\n"
-                f"└ 🧠 <b>Платформа:</b> {device.get('platform') or '—'} / {device.get('osVersion') or '—'}\n"
-                f"└ 🌐 <b>User-Agent:</b> {device.get('userAgent') or '—'}\n"
-                f"└ 🕓 <b>Создано:</b> {created}\n"
-                f"└ 🔄 <b>Обновлено:</b> {updated}\n\n"
-            )
+    total = len(devices)
+    header = section(
+        f"{status_emoji} {status_text}",
+        f"Онлайн: {html.escape(online_at_str)}",
+        f"Первый вход: {html.escape(first_connected_str)}",
+        f"Нода: {html.escape(last_node_uuid)}",
+        f"Устройств: {total}",
+    )
 
-    await callback_query.message.edit_text(text, reply_markup=build_hwid_menu_kb(email, tg_id))
+    if total == 0:
+        text = card(header, quote("Привязанных устройств нет"))
+        await callback_query.message.edit_text(
+            menu_text("Устройства", text),
+            reply_markup=build_hwid_menu_kb(key_ref, user_id, page=0, total_pages=0, devices_on_page=0),
+        )
+        return
+
+    total_pages = (total + DEVICES_PER_PAGE - 1) // DEVICES_PER_PAGE
+    page = max(0, min(page, total_pages - 1))
+    start = page * DEVICES_PER_PAGE
+    page_devices = devices[start : start + DEVICES_PER_PAGE]
+
+    text = card(header, *[_format_device_block(start + i + 1, dev) for i, dev in enumerate(page_devices)])
+
+    await callback_query.message.edit_text(
+        menu_text("Устройства", text),
+        reply_markup=build_hwid_menu_kb(
+            key_ref,
+            user_id,
+            page=page,
+            total_pages=total_pages,
+            devices_on_page=len(page_devices),
+            devices_per_page=DEVICES_PER_PAGE,
+        ),
+    )
 
 
 @router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_hwid_reset"),
+    AdminUserEditorCallback.filter(F.action == "users_hwid_menu"),
     IsAdminFilter(),
 )
-async def handle_hwid_reset(
+async def handle_hwid_menu(
     callback_query: CallbackQuery,
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    email = callback_data.data
-    tg_id = callback_data.tg_id
+    await _render_admin_devices(callback_query, session, str(callback_data.data), callback_data.user_id, 0)
 
-    client_id = await get_client_id_by_email(session, email)
-    if not client_id:
-        await callback_query.message.edit_text("🚫 Не удалось найти client_id по email.")
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_hwid_page"),
+    IsAdminFilter(),
+)
+async def handle_hwid_page(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    parts = str(callback_data.data or "").split("|")
+    key_ref = parts[0]
+    try:
+        page = int(parts[1]) if len(parts) > 1 else 0
+    except ValueError:
+        page = 0
+    await _render_admin_devices(callback_query, session, key_ref, callback_data.user_id, page)
+
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_hwid_unbind"),
+    IsAdminFilter(),
+    flags={"popup": True},
+)
+async def handle_hwid_unbind(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    parts = str(callback_data.data or "").split("|")
+    key_ref = parts[0]
+    try:
+        page = int(parts[1]) if len(parts) > 1 else 0
+        idx = int(parts[2]) if len(parts) > 2 else 0
+    except ValueError:
+        page = 0
+        idx = 0
+
+    user_id = callback_data.user_id
+    key_obj = await resolve_admin_key(session, user_id, key_ref)
+    if not key_obj:
+        await callback_query.answer("❌ Подписка не найдена.", show_alert=True)
         return
+    client_id = key_obj.client_id
+    key_email = key_obj.email
 
-    servers = await get_servers(session=session)
-    remna_server = None
-    for cluster_servers in servers.values():
-        for server in cluster_servers:
-            if server.get("panel_type", "") == "remnawave":
-                remna_server = server
-                break
-        if remna_server:
-            break
+    async def _delete(api):
+        devices = await api.get_user_hwid_devices(client_id, username=key_email) or []
+        target_idx = page * DEVICES_PER_PAGE + idx
+        if target_idx >= len(devices):
+            return None
+        target_hwid = devices[target_idx].get("hwid")
+        if not target_hwid:
+            return False
+        return await api.delete_user_hwid_device(client_id, target_hwid, username=key_email)
 
-    if not remna_server:
-        await callback_query.message.edit_text(
-            "🚫 Нет доступного сервера Remnawave.",
-            reply_markup=build_editor_kb(tg_id),
-        )
-        return
+    result = await with_remnawave_api(session, "", _delete, fallback_any=True, timeout_sec=10.0)
+    if result is None:
+        await callback_query.answer("Устройство не найдено", show_alert=True)
+    elif result is False:
+        await callback_query.answer("Не удалось отвязать устройство", show_alert=True)
+    else:
+        await invalidate_remnawave_profile(session, "", str(client_id), fallback_any=True)
+        await callback_query.answer(menu_text("Устройства", "✅ Устройство отвязано."))
 
-    api = RemnawaveAPI(remna_server["api_url"])
-    if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-        await callback_query.message.edit_text("❌ Ошибка авторизации в Remnawave.")
-        return
-
-    devices = await api.get_user_hwid_devices(client_id)
-    if not devices:
-        await callback_query.message.edit_text(
-            "ℹ️ У пользователя нет привязанных устройств.",
-            reply_markup=build_editor_kb(tg_id, True),
-        )
-        return
-
-    deleted = 0
-    for device in devices:
-        if await api.delete_user_hwid_device(client_id, device["hwid"]):
-            deleted += 1
-
-    await callback_query.message.edit_text(
-        f"✅ Удалено HWID-устройств: <b>{deleted}</b> из <b>{len(devices)}</b>.",
-        reply_markup=build_editor_kb(tg_id, True),
-    )
+    await _render_admin_devices(callback_query, session, key_ref, user_id, page)

@@ -2,11 +2,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+from database.settings_cache import settings_cache
 
 from ..defaults import DEFAULT_PAYMENTS_CONFIG
+from .runtime_sync import publish_runtime_config, register_runtime_config
 
 
 PAYMENTS_CONFIG: dict[str, bool] = DEFAULT_PAYMENTS_CONFIG.copy()
+register_runtime_config("PAYMENTS_CONFIG", PAYMENTS_CONFIG)
 
 
 async def load_payments_config(session: AsyncSession) -> None:
@@ -55,3 +58,5 @@ async def update_payments_config(session: AsyncSession, new_values: dict[str, bo
 
     PAYMENTS_CONFIG.clear()
     PAYMENTS_CONFIG.update(payments_config)
+    settings_cache.update("PAYMENTS_CONFIG", payments_config)
+    await publish_runtime_config("PAYMENTS_CONFIG", payments_config)

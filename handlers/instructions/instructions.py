@@ -7,20 +7,12 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import (
-    CONNECT_MACOS,
-    CONNECT_WINDOWS,
-    DOWNLOAD_MACOS,
-    DOWNLOAD_PC,
-    HAPP_CRYPTOLINK,
-    REMNAWAVE_WEBAPP,
-    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
-    SUPPORT_CHAT_URL,
-    WEBHOOK_HOST,
-)
 from core.bootstrap import MODES_CONFIG
 from database import get_key_details, get_subscription_link
-from handlers.buttons import (
+from handlers.keys.utils import build_key_callback, key_owned_by_user, resolve_key
+from handlers.utils import build_support_button, edit_or_send_message, is_full_remnawave_cluster
+from hooks.processors import process_remnawave_webapp_override
+from settings.buttons import (
     BACK,
     CONNECT_MACOS_BUTTON,
     CONNECT_WINDOWS_BUTTON,
@@ -29,10 +21,18 @@ from handlers.buttons import (
     MAIN_MENU,
     PC_MACOS,
     PC_PC,
-    SUPPORT,
     TV_CONTINUE,
 )
-from handlers.texts import (
+from settings.config import (
+    CONNECT_MACOS,
+    CONNECT_WINDOWS,
+    DOWNLOAD_MACOS,
+    DOWNLOAD_PC,
+    HAPP_CRYPTOLINK,
+    REMNAWAVE_WEBAPP,
+    WEBHOOK_HOST,
+)
+from settings.texts import (
     CHOOSE_DEVICE_TEXT,
     CONNECT_TV_TEXT,
     INSTRUCTIONS,
@@ -42,8 +42,6 @@ from handlers.texts import (
     ROUTER_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
 )
-from handlers.utils import edit_or_send_message, is_full_remnawave_cluster
-from hooks.processors import process_remnawave_webapp_override
 
 
 router = Router()
@@ -56,7 +54,9 @@ async def send_instructions(callback_query_or_message: CallbackQuery | Message):
     image_path = os.path.join("img", "instructions.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    support_btn = await build_support_button()
+    if support_btn:
+        builder.row(support_btn)
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if isinstance(callback_query_or_message, CallbackQuery):
@@ -72,9 +72,15 @@ async def send_instructions(callback_query_or_message: CallbackQuery | Message):
     )
 
 
-@router.callback_query(F.data.startswith("connect_pc|"))
+@router.callback_query(F.data.startswith("connect_pc|"), flags={"popup": True})
 async def process_connect_pc(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|")[1]
+    key_ref = callback_query.data.split("|", 1)[1]
+    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
+    key_name = key_obj.email if key_obj else key_ref
+    record = await get_key_details(session, key_name)
+    if not key_owned_by_user(record, callback_query.from_user.id):
+        await callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
     key_link = await get_subscription_link(session, key_name)
     if not key_link:
         builder = InlineKeyboardBuilder()
@@ -88,9 +94,21 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
         return
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=PC_PC, callback_data=f"windows_menu|{key_name}"))
-    builder.row(InlineKeyboardButton(text=PC_MACOS, callback_data=f"macos_menu|{key_name}"))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_device|{key_name}"))
+    builder.row(
+        InlineKeyboardButton(
+            text=PC_PC, callback_data=build_key_callback("windows_menu", record.get("client_id"), key_name)
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=PC_MACOS, callback_data=build_key_callback("macos_menu", record.get("client_id"), key_name)
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK, callback_data=build_key_callback("connect_device", record.get("client_id"), key_name)
+        )
+    )
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -100,9 +118,15 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("windows_menu|"))
+@router.callback_query(F.data.startswith("windows_menu|"), flags={"popup": True})
 async def process_windows_menu(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|")[1]
+    key_ref = callback_query.data.split("|", 1)[1]
+    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
+    key_name = key_obj.email if key_obj else key_ref
+    record = await get_key_details(session, key_name)
+    if not key_owned_by_user(record, callback_query.from_user.id):
+        await callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
     key_link = await get_subscription_link(session, key_name)
     if not key_link:
         await callback_query.message.answer("❌ Ошибка: ключ не найден.")
@@ -122,8 +146,14 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
         windows_url = f"{CONNECT_WINDOWS}{processed_link}"
 
     builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=windows_url))
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
+    support_btn = await build_support_button()
+    if support_btn:
+        builder.row(support_btn)
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK, callback_data=build_key_callback("connect_pc", record.get("client_id"), key_name)
+        )
+    )
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -133,9 +163,15 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("macos_menu|"))
+@router.callback_query(F.data.startswith("macos_menu|"), flags={"popup": True})
 async def process_macos_menu(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|")[1]
+    key_ref = callback_query.data.split("|", 1)[1]
+    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
+    key_name = key_obj.email if key_obj else key_ref
+    record = await get_key_details(session, key_name)
+    if not key_owned_by_user(record, callback_query.from_user.id):
+        await callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
     key_link = await get_subscription_link(session, key_name)
     if not key_link:
         await callback_query.message.answer("❌ Ошибка: ключ не найден.")
@@ -155,8 +191,14 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
         macos_url = f"{CONNECT_MACOS}{processed_link}"
 
     builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=macos_url))
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
+    support_btn = await build_support_button()
+    if support_btn:
+        builder.row(support_btn)
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK, callback_data=build_key_callback("connect_pc", record.get("client_id"), key_name)
+        )
+    )
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -166,11 +208,16 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("connect_tv|"))
+@router.callback_query(F.data.startswith("connect_tv|"), flags={"popup": True})
 async def process_connect_tv(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|", 1)[1]
+    key_ref = callback_query.data.split("|", 1)[1]
+    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
+    key_name = key_obj.email if key_obj else key_ref
 
     record = await get_key_details(session, key_name)
+    if not key_owned_by_user(record, callback_query.from_user.id):
+        await callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
     final_link = None
     is_full_remnawave = False
     use_webapp = False
@@ -200,10 +247,18 @@ async def process_connect_tv(callback_query: CallbackQuery, session: Any):
         await callback_query.answer("❌ Ссылка подписки не найдена", show_alert=True)
         return
 
-    back_callback = f"view_key|{key_name}" if is_remnawave_webapp else f"connect_device|{key_name}"
+    back_callback = (
+        build_key_callback("view_key", record.get("client_id"), key_name)
+        if is_remnawave_webapp
+        else build_key_callback("connect_device", record.get("client_id"), key_name)
+    )
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}"))
+    builder.row(
+        InlineKeyboardButton(
+            text=TV_CONTINUE, callback_data=build_key_callback("continue_tv", record.get("client_id"), key_name)
+        )
+    )
     builder.row(InlineKeyboardButton(text=BACK, callback_data=back_callback))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
@@ -218,14 +273,24 @@ async def process_connect_tv(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("continue_tv|"))
+@router.callback_query(F.data.startswith("continue_tv|"), flags={"popup": True})
 async def process_continue_tv(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|")[1]
+    key_ref = callback_query.data.split("|", 1)[1]
+    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
+    key_name = key_obj.email if key_obj else key_ref
+    record = await get_key_details(session, key_name)
+    if not key_owned_by_user(record, callback_query.from_user.id):
+        await callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
     key_link = await get_subscription_link(session, key_name)
     message_text = SUBSCRIPTION_DETAILS_TEXT.format(subscription_link=key_link)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_tv|{key_name}"))
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK, callback_data=build_key_callback("connect_tv", record.get("client_id"), key_name)
+        )
+    )
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
@@ -236,9 +301,15 @@ async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("connect_router|"))
+@router.callback_query(F.data.startswith("connect_router|"), flags={"popup": True})
 async def process_connect_router(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|")[1]
+    key_ref = callback_query.data.split("|", 1)[1]
+    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
+    key_name = key_obj.email if key_obj else key_ref
+    record = await get_key_details(session, key_name)
+    if not key_owned_by_user(record, callback_query.from_user.id):
+        await callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
     key_link = await get_subscription_link(session, key_name)
     if not key_link:
         builder = InlineKeyboardBuilder()
@@ -254,7 +325,9 @@ async def process_connect_router(callback_query: CallbackQuery, session: Any):
     message_text = ROUTER_MESSAGE.format(subscription_link=key_link)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
+    builder.row(
+        InlineKeyboardButton(text=BACK, callback_data=build_key_callback("view_key", record.get("client_id"), key_name))
+    )
 
     await edit_or_send_message(
         target_message=callback_query.message,

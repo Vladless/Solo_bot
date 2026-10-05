@@ -17,7 +17,7 @@ def _get_git_commit_number_uncached() -> str:
 
     if not os.path.isdir(os.path.join(cwd, ".git")):
         cwd = "/root/Solo_bot"
-        logger.info(f"[Git] .git не найден в текущем каталоге, используем {cwd}")
+        logger.info("[Git] .git не найден, используем {}", cwd)
 
     env = os.environ.copy()
     env["GIT_DIR"] = os.path.join(cwd, ".git")
@@ -48,7 +48,7 @@ def _get_git_commit_number_uncached() -> str:
             branch = "dev"
 
     except Exception as e:
-        logger.error(f"[Git] Ошибка при получении локального коммита: {e}")
+        logger.error("[Git] Ошибка локального коммита: {}", e)
         return f"\n(Требуется обновление через CLI (команда <code>sudo solobot</code>): {e})"
 
     try:
@@ -72,7 +72,7 @@ def _get_git_commit_number_uncached() -> str:
             f'<a href="{repo_url}/commit/{remote_hash}">#{remote_number}</a>)'
         )
     except Exception as e:
-        logger.error(f"[Git] Ошибка при получении удалённого коммита: {e}")
+        logger.error("[Git] Ошибка удалённого коммита: {}", e)
         return "\n(Требуется обновление через CLI, команда <code>sudo solobot</code>)"
 
 
@@ -91,5 +91,8 @@ def get_git_commit_number() -> str:
     return _last_git_info
 
 
-def get_version() -> str:
-    return f"v.5.1.2 {get_git_commit_number()}"
+def get_version(include_git_info: bool = True) -> str:
+    base = "v6.0"
+    if not include_git_info:
+        return base
+    return f"{base} {get_git_commit_number()}"

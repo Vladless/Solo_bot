@@ -5,6 +5,7 @@ import sys
 
 from aiogram import Router
 
+from core.executor import run_io
 from hooks.hooks import unregister_module_hooks
 from logger import logger
 
@@ -97,7 +98,7 @@ class ModulesManager:
 
         if name in self.disabled:
             self.disabled.discard(name)
-            self._save_state()
+            await run_io(self._save_state)
 
         logger.info(f"[Modules] {name} запущен.")
 
@@ -108,7 +109,7 @@ class ModulesManager:
             logger.info(f"[Modules] {name} уже остановлен или не найден.")
             if name not in self.disabled:
                 self.disabled.add(name)
-                self._save_state()
+                await run_io(self._save_state)
             return
 
         try:
@@ -127,7 +128,7 @@ class ModulesManager:
 
         if name not in self.disabled:
             self.disabled.add(name)
-            self._save_state()
+            await run_io(self._save_state)
 
         logger.info(f"[Modules] {name} остановлен.")
 

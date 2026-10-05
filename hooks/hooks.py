@@ -25,12 +25,12 @@ def register_hook(name: str, func: Callable[..., Any] | None = None):
 
         def deco(f: Callable[..., Any]):
             _hooks.setdefault(name, []).append((f, owner(f)))
-            logger.info(f"[Hook] Зарегистрирован хук '{name}': {f.__name__}")
+            logger.info("[Hook] {} -> {}", name, f.__name__)
             return f
 
         return deco
     _hooks.setdefault(name, []).append((func, owner(func)))
-    logger.info(f"[Hook] Зарегистрирован хук '{name}': {func.__name__}")
+    logger.info("[Hook] {} -> {}", name, func.__name__)
 
 
 def unregister_module_hooks(module_name: str):
@@ -58,23 +58,27 @@ async def run_hooks(name: str, require_enabled: bool = True, **kwargs) -> list[A
             if inspect.iscoroutinefunction(func):
                 coro = func(**kwargs)
             else:
+                from core.executor import run_io
 
-                async def _run_sync():
-                    return func(**kwargs)
-
-                coro = _run_sync()
+                coro = run_io(lambda: func(**kwargs))
 
             result = await asyncio.wait_for(coro, timeout=DEFAULT_HOOK_TIMEOUT)
             if result:
                 results.append(result)
         except TimeoutError:
             logger.error(
-                f"[HOOK:{name}] Таймаут в {getattr(func, '__name__', func)} при timeout={DEFAULT_HOOK_TIMEOUT}",
+                "[Hook:{}] Таймаут {} с в {}",
+                name,
+                DEFAULT_HOOK_TIMEOUT,
+                getattr(func, "__name__", func),
                 exc_info=True,
             )
         except Exception as e:
             logger.error(
-                f"[HOOK:{name}] Ошибка в {getattr(func, '__name__', func)}: {e}",
+                "[Hook:{}] Ошибка в {}: {}",
+                name,
+                getattr(func, "__name__", func),
+                e,
                 exc_info=True,
             )
     return results

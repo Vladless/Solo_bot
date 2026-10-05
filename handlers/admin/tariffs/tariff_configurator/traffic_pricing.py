@@ -11,6 +11,7 @@ from sqlalchemy.orm import attributes
 from database.models import Tariff
 from filters.admin import IsAdminFilter
 
+from ...panel.headers import menu_text, quote, section
 from .. import router
 from .common import (
     TariffConfigState,
@@ -28,11 +29,11 @@ async def ask_traffic_step(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TariffConfigState.entering_traffic_step)
     await state.update_data(tariff_id=tariff_id)
 
-    text = (
-        "💰 Базовый шаг доплаты за трафик.\n\n"
-        "Введите цену в рублях за 1 ГБ сверх базового лимита.\n"
-        "Например: <code>5</code>\n\n"
-        "Чтобы выключить автоматическую доплату за трафик, отправьте <code>0</code>."
+    text = menu_text(
+        "Шаг за трафик",
+        "Цена в рублях за 1 ГБ сверх базового лимита.",
+        quote("Например: <code>5</code>"),
+        quote("<code>0</code> выключает автодоплату за трафик."),
     )
     await callback.message.edit_text(text=text, reply_markup=build_cancel_config_kb(tariff_id))
 
@@ -48,7 +49,7 @@ async def save_traffic_step(message: Message, state: FSMContext, session: AsyncS
             raise ValueError
     except ValueError:
         await message.answer(
-            "❌ Некорректное значение. Введите целое число 0 или больше.",
+            menu_text("Конфигуратор", "❌ Нужно число от нуля."),
             reply_markup=build_cancel_config_kb(tariff_id),
         )
         return
@@ -56,13 +57,12 @@ async def save_traffic_step(message: Message, state: FSMContext, session: AsyncS
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await message.answer("❌ Тариф не найден.")
+        await message.answer(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
     tariff.traffic_step_rub = price
     tariff.updated_at = datetime.utcnow()
-    await session.commit()
 
     await state.set_state(TariffConfigState.choosing_section)
 
@@ -77,14 +77,14 @@ async def open_traffic_overrides_menu(callback: CallbackQuery, state: FSMContext
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await callback.message.edit_text("❌ Тариф не найден.")
+        await callback.message.edit_text(menu_text("Конфигуратор", "❌ Тариф не найден."))
         return
 
     await state.set_state(TariffConfigState.entering_traffic_overrides)
     await state.update_data(tariff_id=tariff_id, traffic_override_gb=None)
 
     text, markup = build_traffic_overrides_screen(tariff)
-    await callback.message.edit_text(text=text, reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Конфигуратор", text), reply_markup=markup)
 
 
 @router.callback_query(
@@ -100,7 +100,7 @@ async def choose_traffic_override_option(callback: CallbackQuery, state: FSMCont
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await callback.message.edit_text("❌ Тариф не найден.")
+        await callback.message.edit_text(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -120,11 +120,11 @@ async def choose_traffic_override_option(callback: CallbackQuery, state: FSMCont
     else:
         label = f"лимит {gb_value} ГБ"
 
-    text = (
-        f"📊 {label}.\n\n"
-        f"Текущая доплата для этого варианта: <b>{effective_extra}₽</b> ({note}).\n\n"
-        "Введите новую <u>доплату за трафик</u> для этого лимита в рублях.\n"
-        "Отправьте <code>0</code>, чтобы вернуть расчёт по базовому шагу."
+    text = menu_text(
+        "Доплата за вариант",
+        f"<b>{label}</b>",
+        section("💰 Сейчас", f"Доплата: {effective_extra} ₽", f"Расчёт: {note}"),
+        quote("Пришлите новую доплату в рублях. Ноль вернёт расчёт по базовому шагу."),
     )
     await callback.message.edit_text(text=text, reply_markup=build_cancel_config_kb(tariff_id))
 
@@ -138,18 +138,17 @@ async def clear_traffic_overrides(callback: CallbackQuery, state: FSMContext, se
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await callback.message.edit_text("❌ Тариф не найден.")
+        await callback.message.edit_text(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
     tariff.traffic_overrides = None
     tariff.updated_at = datetime.utcnow()
-    await session.commit()
 
     text, markup = build_traffic_overrides_screen(tariff)
 
     try:
-        await callback.message.edit_text(text=text, reply_markup=markup)
+        await callback.message.edit_text(text=menu_text("Конфигуратор", text), reply_markup=markup)
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
@@ -162,7 +161,7 @@ async def save_traffic_override_price(message: Message, state: FSMContext, sessi
     gb_value = data.get("traffic_override_gb")
 
     if not tariff_id or gb_value is None:
-        await message.answer("Сначала выберите вариант лимита трафика из списка.")
+        await message.answer(menu_text("Конфигуратор", "Сначала выберите вариант лимита трафика из списка."))
         return
 
     try:
@@ -171,7 +170,7 @@ async def save_traffic_override_price(message: Message, state: FSMContext, sessi
             raise ValueError
     except ValueError:
         await message.answer(
-            "❌ Некорректное значение. Введите целое число 0 или больше.",
+            menu_text("Конфигуратор", "❌ Нужно число от нуля."),
             reply_markup=build_cancel_config_kb(int(tariff_id)),
         )
         return
@@ -179,7 +178,7 @@ async def save_traffic_override_price(message: Message, state: FSMContext, sessi
     result = await session.execute(select(Tariff).where(Tariff.id == int(tariff_id)))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await message.answer("❌ Тариф не найден.")
+        await message.answer(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -195,9 +194,8 @@ async def save_traffic_override_price(message: Message, state: FSMContext, sessi
     tariff.traffic_overrides = overrides if overrides else None
     attributes.flag_modified(tariff, "traffic_overrides")
     tariff.updated_at = datetime.utcnow()
-    await session.commit()
 
     await state.update_data(traffic_override_gb=None)
 
     text, markup = build_traffic_overrides_screen(tariff)
-    await message.answer(text=text, reply_markup=markup)
+    await message.answer(text=menu_text("Конфигуратор", text), reply_markup=markup)

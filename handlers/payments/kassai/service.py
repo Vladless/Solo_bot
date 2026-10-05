@@ -3,6 +3,7 @@ import hmac
 import time
 
 import aiohttp
+
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -11,7 +12,25 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
+from database import register_pending_payment
+from database.models import User
+from handlers.payments.keyboards import (
+    balance_fallback_kb,
+    build_amounts_keyboard,
+    parse_amount_from_callback,
+    pay_keyboard,
+    payment_options_for_user,
+)
+from handlers.utils import edit_or_send_message
+from logger import logger
+from services.payments.currency_rates import (
+    format_for_user,
+    pick_currency,
+    to_rub,
+)
+from services.payments.payment_links import register_payment_creator
+from settings.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
+from settings.config import (
     KASSAI_API_KEY,
     KASSAI_DOMAIN,
     KASSAI_FAILURE_URL,
@@ -20,29 +39,12 @@ from config import (
     KASSAI_SUCCESS_URL,
     PROVIDERS_ENABLED,
 )
-from database import add_payment, async_session_maker
-from database.models import User
-from handlers.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
-from handlers.payments.currency_rates import (
-    format_for_user,
-    pick_currency,
-    to_rub,
-)
-from handlers.payments.keyboards import (
-    build_amounts_keyboard,
-    parse_amount_from_callback,
-    pay_keyboard,
-    payment_options_for_user,
-)
-from handlers.payments.providers import get_providers
-from handlers.texts import (
-    ENTER_SUM,
+from settings.texts import (
     KASSAI_CARDS_DESCRIPTION,
     KASSAI_PAYMENT_MESSAGE,
     KASSAI_SBP_DESCRIPTION,
 )
-from handlers.utils import edit_or_send_message
-from logger import logger
+
 
 router = Router()
 
@@ -78,7 +80,7 @@ KASSAI_METHODS = {
 }
 
 
-@router.callback_query(F.data == "pay_kassai")
+@router.callback_query(F.data == "pay_kassai", flags={"popup": True})
 async def process_callback_pay_kassai(
     callback_query: types.CallbackQuery,
     state: FSMContext,
@@ -238,7 +240,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
                 await edit_or_send_message(
                     target_message=message,
                     text=f"❌ Минимальная сумма для оплаты картой — {currency_symbol}{min_amount}.",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+                    reply_markup=balance_fallback_kb(),
                 )
                 return
         elif method_name == "sbp":
@@ -248,7 +250,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
                 await edit_or_send_message(
                     target_message=message,
                     text=f"❌ Минимальная сумма для оплаты через СБП — {currency_symbol}{min_amount}.",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+                    reply_markup=balance_fallback_kb(),
                 )
                 return
     except Exception:
@@ -262,7 +264,8 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     if currency == "RUB":
         amount_rub = user_amount
     else:
-        async with aiohttp.ClientSession() as session_http:
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session_http:
             amount_rub = int(await to_rub(user_amount, "USD", session=session_http))
 
     await state.update_data(amount=amount_rub)
@@ -316,14 +319,14 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         await edit_or_send_message(
             target_message=callback_query.message,
             text="❌ Минимальная сумма для оплаты картой — 50₽.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            reply_markup=balance_fallback_kb(),
         )
         return
     elif method_name == "sbp" and amount < 10:
         await edit_or_send_message(
             target_message=callback_query.message,
             text="❌ Минимальная сумма для оплаты через СБП — 10₽.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            reply_markup=balance_fallback_kb(),
         )
         return
 
@@ -354,14 +357,22 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
 
 async def generate_kassai_payment_link(
-    amount: int, tg_id: int, method: dict, session: AsyncSession | None = None
+    amount: int,
+    tg_id: int,
+    method: dict,
+    session: AsyncSession | None = None,
+    *,
+    payment_id: str | None = None,
+    success_url: str | None = None,
+    failure_url: str | None = None,
+    metadata: dict | None = None,
 ) -> str:
     """
     Создание заказа в KassaAI и получение ссылки на оплату.
     session — сессия из хендлера; если не передана, создаётся своя (лишняя нагрузка на пул).
     """
     nonce = int(time.time())
-    unique_payment_id = f"{nonce}_{tg_id}"
+    unique_payment_id = payment_id or f"{nonce}_{tg_id}"
     url = "https://api.fk.life/v1/orders/create"
 
     headers = {"Content-Type": "application/json"}
@@ -377,8 +388,8 @@ async def generate_kassai_payment_link(
         "ip": client_ip,
         "amount": int(amount),
         "currency": "RUB",
-        "success_url": KASSAI_SUCCESS_URL,
-        "failure_url": KASSAI_FAILURE_URL,
+        "success_url": success_url or KASSAI_SUCCESS_URL,
+        "failure_url": failure_url or KASSAI_FAILURE_URL,
         "paymentId": unique_payment_id,
     }
 
@@ -387,10 +398,9 @@ async def generate_kassai_payment_link(
 
     data = {**data_for_signature, "signature": signature}
 
-    db_session = session
-
+    timeout = aiohttp.ClientTimeout(total=60, connect=10)
     try:
-        async with aiohttp.ClientSession() as http_session:
+        async with aiohttp.ClientSession(timeout=timeout) as http_session:
             async with http_session.post(url, headers=headers, json=data, timeout=60) as resp:
                 if resp.status == 200:
                     try:
@@ -398,27 +408,14 @@ async def generate_kassai_payment_link(
                         if resp_json.get("type") == "success":
                             payment_url = resp_json.get("location")
                             if payment_url:
-                                if db_session is not None:
-                                    await add_payment(
-                                        session=db_session,
-                                        tg_id=tg_id,
-                                        amount=float(amount),
-                                        payment_system="KASSAI",
-                                        status="pending",
-                                        currency="RUB",
-                                        payment_id=unique_payment_id,
-                                    )
-                                else:
-                                    async with async_session_maker() as dbs:
-                                        await add_payment(
-                                            session=dbs,
-                                            tg_id=tg_id,
-                                            amount=float(amount),
-                                            payment_system="KASSAI",
-                                            status="pending",
-                                            currency="RUB",
-                                            payment_id=unique_payment_id,
-                                        )
+                                await register_pending_payment(
+                                    payment_id=unique_payment_id,
+                                    tg_id=tg_id,
+                                    amount=float(amount),
+                                    payment_system="kassai",
+                                    currency="RUB",
+                                    metadata=metadata,
+                                )
                                 logger.info(f"KassaAI payment URL created for user {tg_id}")
                                 return payment_url
                             logger.error(f"KassaAI: No location in response: {resp_json}")
@@ -441,3 +438,45 @@ async def generate_kassai_payment_link(
     except Exception as e:
         logger.error(f"Error creating KassaAI order: {e}")
         return "https://fk.life/"
+
+
+def create_link_factory(method_name: str):
+    async def create_link(
+        session: AsyncSession,
+        tg_id: int,
+        amount: float,
+        currency: str,
+        success_url: str | None,
+        failure_url: str | None,
+        metadata: dict | None,
+    ) -> tuple[str, str | None]:
+        if currency != "RUB":
+            raise ValueError("KassaI поддерживает только RUB")
+        method = KASSAI_METHODS.get(method_name)
+        if not method or not method.get("enable"):
+            raise ValueError("Способ оплаты KassaI недоступен")
+        amount_int = int(amount)
+        payment_id = f"{int(time.time())}_{tg_id}"
+        if method_name == "cards" and amount_int < 50:
+            raise ValueError("Минимальная сумма для карт — 50₽")
+        if method_name == "sbp" and amount_int < 10:
+            raise ValueError("Минимальная сумма для СБП — 10₽")
+        url = await generate_kassai_payment_link(
+            amount_int,
+            tg_id,
+            method,
+            session,
+            payment_id=payment_id,
+            success_url=success_url,
+            failure_url=failure_url,
+            metadata=metadata,
+        )
+        if not url or url == "https://fk.life/":
+            raise ValueError("Не удалось создать платёж KassaI")
+        return (url, payment_id)
+
+    return create_link
+
+
+register_payment_creator("KASSAI_CARDS", create_link_factory("cards"))
+register_payment_creator("KASSAI_SBP", create_link_factory("sbp"))

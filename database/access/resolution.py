@@ -1,0 +1,190 @@
+from dataclasses import dataclass
+from enum import Enum, StrEnum
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database.models import Identity, User
+
+
+class ActorSurface(StrEnum):
+    TELEGRAM = "telegram"
+    WEB = "web"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class ResolvedActor:
+    surface: ActorSurface
+    billing_user_id: int | None
+    telegram_chat_id: int | None
+    identity_id: str | None
+
+
+def public_tg_id(value: int | None) -> int | None:
+    """Telegram id для показа и ссылок: синтетический (отрицательный) наружу не отдаём."""
+    if value is None:
+        return None
+    tg = int(value)
+    return tg if tg > 0 else None
+
+
+def telegram_chat_id(user: User | None) -> int | None:
+    """Адрес чата в Telegram; у синтетического tg_id чата нет."""
+    return public_tg_id(None if user is None else user.tg_id)
+
+
+async def user_id_from_legacy_ref(session: AsyncSession, ref: int) -> int | None:
+    """Приводит users.id или tg_id к users.id."""
+    by_id = await session.scalar(select(User.id).where(User.id == ref))
+    if by_id is not None:
+        return int(by_id)
+    by_tg = await session.scalar(select(User.id).where(User.tg_id == ref))
+    return int(by_tg) if by_tg is not None else None
+
+
+async def chat_id_for_user(session: AsyncSession, user_id: int) -> int | None:
+    """Адрес чата клиента; None у клиента без Telegram."""
+    tg = await session.scalar(select(User.tg_id).where(User.id == user_id))
+    return None if tg is None or int(tg) <= 0 else int(tg)
+
+
+async def resolve_user_optional(session: AsyncSession, legacy_id: int) -> User | None:
+    r = await session.execute(select(User).where(User.tg_id == legacy_id))
+    u = r.scalar_one_or_none()
+    if u is not None:
+        return u
+    r2 = await session.execute(select(User).where(User.id == legacy_id))
+    return r2.scalar_one_or_none()
+
+
+async def invalidate_uid_cache(*legacy_ids: int | None) -> None:
+    """Снимает кешированный маппинг legacy_ref → users.id."""
+    from core.redis_cache import cache_delete, cache_key
+
+    for ref in legacy_ids:
+        if ref is None:
+            continue
+        await cache_delete(cache_key("uref", ref))
+        await cache_delete(cache_key("user_exists", ref))
+
+
+async def resolve_uid_cached(session: AsyncSession, legacy_id: int) -> int | None:
+    """Кешированный резолв legacy_ref → users.id для горячих читателей.
+
+    Маппинг практически иммутабелен (id не меняется, tg_id уникален), поэтому
+    безопасно кешируется. Негатив не кешируем — юзер может появиться сразу после /start.
+    """
+    from core.redis_cache import cache_get, cache_key, cache_set
+    from settings.cache_config import UREF_CACHE_TTL_SEC
+
+    cached = await cache_get(cache_key("uref", legacy_id))
+    if cached is not None:
+        try:
+            return int(cached)
+        except (TypeError, ValueError):
+            pass
+    u = await resolve_user_optional(session, legacy_id)
+    if u is None:
+        return None
+    uid = int(u.id)
+    await cache_set(cache_key("uref", legacy_id), uid, UREF_CACHE_TTL_SEC)
+    return uid
+
+
+async def ensure_legacy_tg_ref(session: AsyncSession, user_id: int) -> int:
+    """Единственная точка, где рождается синтетический tg (-users.id).
+
+    Нужен только слою совместимости: модули на tg-ключах и уже выданные ссылки на подписку
+    (`subscription_owner_ref`). Расчёты ядра ведутся по `users.id` и его не используют.
+    """
+    from database.models import User as _User
+
+    current = await session.scalar(select(_User.tg_id).where(_User.id == int(user_id)))
+    if current is not None:
+        return int(current)
+    synthetic = -int(user_id)
+    await session.execute(update(_User).where(_User.id == int(user_id)).values(tg_id=synthetic))
+    return synthetic
+
+
+async def subscription_owner_ref(session: AsyncSession, legacy_ref: int) -> int:
+    """Хвост ссылки на подписку. У клиента с сайта это синтетический tg_id (минус id),
+    а не users.id: панель заводит клиента именно под ним, и ссылка обязана совпасть."""
+    user = await resolve_user_optional(session, legacy_ref)
+    if user is not None and user.tg_id is not None:
+        return int(user.tg_id)
+    return int(legacy_ref)
+
+
+async def panel_identity_fields(session: AsyncSession, legacy_ref: int) -> tuple[int | None, str | None]:
+    """Поля владельца ключа для внешней панели: (telegram_id, email).
+
+    Источник истины — identity. Три случая:
+    - только сайт: (None, email);
+    - только Telegram: (tg, None);
+    - связанные аккаунты: (tg, email).
+    """
+    user = await resolve_user_optional(session, legacy_ref)
+    if user is None:
+        return None, None
+    identity = None
+    if user.identity_id:
+        from database.identities import get_identity_by_id
+
+        identity = await get_identity_by_id(session, user.identity_id)
+    src_tg = identity.tg_id if identity is not None else user.tg_id
+    tg = int(src_tg) if src_tg is not None and int(src_tg) > 0 else None
+    email = identity.email if identity is not None else None
+    return tg, email
+
+
+async def notify_telegram_chat_id(session: AsyncSession, legacy_ref: int) -> int | None:
+    payer = await resolve_user_optional(session, legacy_ref)
+    tg = telegram_chat_id(payer)
+    if tg is not None:
+        return tg
+    if payer is None:
+        return legacy_ref
+    return None
+
+
+async def resolve_actor_from_legacy_ref(session: AsyncSession, legacy_ref: int) -> ResolvedActor:
+    user = await resolve_user_optional(session, legacy_ref)
+    if user is None:
+        return ResolvedActor(
+            surface=ActorSurface.UNKNOWN,
+            billing_user_id=None,
+            telegram_chat_id=legacy_ref,
+            identity_id=None,
+        )
+
+    user_tg = telegram_chat_id(user)
+    if user_tg is not None and int(user_tg) == int(legacy_ref):
+        surface = ActorSurface.TELEGRAM
+    elif int(user.id) == int(legacy_ref):
+        surface = ActorSurface.WEB
+    elif user_tg is None:
+        surface = ActorSurface.WEB
+    else:
+        surface = ActorSurface.UNKNOWN
+
+    return ResolvedActor(
+        surface=surface,
+        billing_user_id=int(user.id),
+        telegram_chat_id=user_tg,
+        identity_id=user.identity_id,
+    )
+
+
+async def resolve_actor_from_identity(session: AsyncSession, identity: Identity) -> ResolvedActor:
+    from database.identities import ensure_billing_user_for_identity
+
+    billing_uid = await ensure_billing_user_for_identity(session, identity)
+    user = await resolve_user_optional(session, billing_uid)
+    return ResolvedActor(
+        surface=ActorSurface.WEB,
+        billing_user_id=billing_uid,
+        telegram_chat_id=telegram_chat_id(user),
+        identity_id=identity.id,
+    )

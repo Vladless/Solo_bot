@@ -4,29 +4,75 @@ from sqlalchemy import and_, exists, func, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
-from database.models import Key, Payment, Referral, Tariff, User
+from database.models import Identity, Key, Payment, Referral, Tariff, User
+from database.users import exclude_shadow_placeholders
 
 
 async def count_total_users(session: AsyncSession) -> int:
-    return await session.scalar(select(func.count()).select_from(User))
+    return await session.scalar(select(func.count()).select_from(User).where(exclude_shadow_placeholders()))
+
+
+async def count_users_with_tg_id(session: AsyncSession) -> int:
+    return await session.scalar(
+        select(func.count()).select_from(User).where(User.tg_id.isnot(None), exclude_shadow_placeholders())
+    )
+
+
+async def count_identities_with_email(session: AsyncSession) -> int:
+    return await session.scalar(select(func.count()).select_from(Identity).where(Identity.email.isnot(None)))
 
 
 async def count_users_updated_today(session: AsyncSession, today: date) -> int:
-    return await session.scalar(select(func.count()).select_from(User).where(User.updated_at >= today))
+    return await session.scalar(
+        select(func.count()).select_from(User).where(User.updated_at >= today, exclude_shadow_placeholders())
+    )
 
 
 async def count_users_registered_since(session: AsyncSession, since: date) -> int:
-    return await session.scalar(select(func.count()).select_from(User).where(User.created_at >= since))
+    return await session.scalar(
+        select(func.count()).select_from(User).where(User.created_at >= since, exclude_shadow_placeholders())
+    )
 
 
 async def count_users_registered_between(session: AsyncSession, start: date, end: date) -> int:
     return await session.scalar(
-        select(func.count()).select_from(User).where(User.created_at >= start, User.created_at < end)
+        select(func.count())
+        .select_from(User)
+        .where(User.created_at >= start, User.created_at < end, exclude_shadow_placeholders())
     )
 
 
 async def count_total_keys(session: AsyncSession) -> int:
     return await session.scalar(select(func.count()).select_from(Key))
+
+
+async def count_keys_created_between(session: AsyncSession, start_ms: int, end_ms: int) -> int:
+    """Число подписок, созданных в интервале (Key.created_at — миллисекунды UTC)."""
+    stmt = (
+        select(func.count())
+        .select_from(Key)
+        .where(Key.created_at.isnot(None))
+        .where(Key.created_at >= start_ms)
+        .where(Key.created_at < end_ms)
+    )
+    return await session.scalar(stmt) or 0
+
+
+async def count_keys_expiring_between(session: AsyncSession, start_ms: int, end_ms: int) -> int:
+    """Число активных подписок, у которых срок истекает в интервале (риск невозобновления)."""
+    stmt = select(func.count()).select_from(Key).where(Key.expiry_time >= start_ms).where(Key.expiry_time < end_ms)
+    return await session.scalar(stmt) or 0
+
+
+async def count_paying_users(session: AsyncSession) -> int:
+    """Число уникальных пользователей хотя бы с одной успешной оплатой (без внутренних систем)."""
+    stmt = (
+        select(func.count(func.distinct(Payment.user_id)))
+        .where(Payment.amount > 0)
+        .where(Payment.status == "success")
+        .where(Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED))
+    )
+    return await session.scalar(stmt) or 0
 
 
 async def count_active_keys(session: AsyncSession) -> int:
@@ -75,35 +121,11 @@ async def get_tariff_distribution(
     return tariff_counts, no_tariff_keys
 
 
-async def get_tariff_names(session: AsyncSession, tariff_ids: list[int]) -> dict[int, str]:
-    if not tariff_ids:
-        return {}
-
-    result = await session.execute(select(Tariff.id, Tariff.name).where(Tariff.id.in_(tariff_ids)))
-    return dict(result.all())
-
-
 async def get_tariff_groups(session: AsyncSession, tariff_ids: list[int]) -> dict[int, str]:
     if not tariff_ids:
         return {}
 
     result = await session.execute(select(Tariff.id, Tariff.group_code).where(Tariff.id.in_(tariff_ids)))
-    return dict(result.all())
-
-
-async def get_tariff_durations(session: AsyncSession, tariff_ids: list[int]) -> dict[int, int]:
-    if not tariff_ids:
-        return {}
-
-    result = await session.execute(select(Tariff.id, Tariff.duration_days).where(Tariff.id.in_(tariff_ids)))
-    return dict(result.all())
-
-
-async def get_tariff_subgroups(session: AsyncSession, tariff_ids: list[int]) -> dict[int, str | None]:
-    if not tariff_ids:
-        return {}
-
-    result = await session.execute(select(Tariff.id, Tariff.subgroup_title).where(Tariff.id.in_(tariff_ids)))
     return dict(result.all())
 
 
@@ -138,6 +160,22 @@ async def sum_payments_between(session: AsyncSession, start: date, end: date) ->
     return round(float(result), 2)
 
 
+async def count_payments_between(session: AsyncSession, start: date, end: date) -> int:
+    result = await session.scalar(
+        select(func.count())
+        .select_from(Payment)
+        .where(
+            and_(
+                Payment.created_at >= start,
+                Payment.created_at < end,
+                Payment.status == "success",
+                Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
+            )
+        )
+    )
+    return int(result or 0)
+
+
 async def sum_total_payments(session: AsyncSession) -> float:
     result = await session.scalar(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
@@ -152,15 +190,15 @@ async def sum_total_payments(session: AsyncSession) -> float:
 
 async def count_hot_leads(session: AsyncSession) -> int:
     subquery_active_keys = (
-        select(Key.tg_id).where(Key.expiry_time > int(datetime.utcnow().timestamp() * 1000)).distinct()
+        select(Key.user_id).where(Key.expiry_time > int(datetime.utcnow().timestamp() * 1000)).distinct()
     )
 
     stmt = (
-        select(Payment.tg_id)
+        select(Payment.user_id)
         .where(Payment.amount > 0)
         .where(Payment.status == "success")
         .where(Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED))
-        .where(not_(exists(subquery_active_keys.where(Key.tg_id == Payment.tg_id))))
+        .where(not_(exists(subquery_active_keys.where(Key.user_id == Payment.user_id))))
         .distinct()
     )
 

@@ -1,0 +1,87 @@
+import { formatDayMonthYear } from "@/lib/format-date";
+import { f } from "..";
+import type { CabinetTariffFeature } from "@/components/constructor/blockData/blocks";
+
+export type AccountKeyRenewLite = { payment_required?: boolean; payment_url?: string | null; requires_tariff_selection?: boolean };
+
+export const PANEL_SCREENS = ["main", "switch", "addons", "pickOptions"] as const;
+
+export const TARIFF_PANEL_SCHEMA = {
+  dayForms: f.str("день/дня/дней"),
+  panelHeader: f.str("Текущий тариф"),
+  panelHeaderHint: f.str(""),
+  currentTariffLabel: f.str("Текущий тариф"),
+  progressActiveFormat: f.str("Осталось {leftDays}"),
+  expiryUrgentDays: f.num(3),
+  expiryUrgentFormat: f.str("⚠️ Подписка заканчивается через {leftDays}. Продлите, чтобы не потерять доступ."),
+  pricePrimary: f.str("399"),
+  pricePeriodLabel: f.str("₽ / мес"),
+  renewalText: f.str(""),
+  features: f.array<CabinetTariffFeature>(),
+  primaryButtonLabel: f.strTrim("Продлить"),
+  primaryButtonHref: f.str(""),
+  addonsButtonLabel: f.str("Докупить"),
+  renewalUpsellHint: f.str("Нужно больше устройств или трафика? Добавьте через «Докупить»."),
+  addonsButtonHref: f.str(""),
+  switchTariffLabel: f.str("Сменить тариф"),
+  switchTariffHref: f.href("/tariffs"),
+  switchTariffMode: f.enum(["inside", "screen", "page"] as const, "inside"),
+  switchTariffScreenGroup: f.str(""),
+  switchTariffScreenId: f.str(""),
+  switchTariffGroupCode: f.str(""),
+  switchTariffEmptyText: f.str("Доступных тарифов нет"),
+  switchTariffCurrentBadge: f.str("Текущий"),
+  switchTariffUpgradeLabel: f.str("Перейти →"),
+  switchTariffSelectLabel: f.str("Выбрать"),
+  switchTariffBackLabel: f.str("← Назад"),
+  switchTariffPerDayLabel: f.str("в день"),
+  switchTariffPageLabel: f.str("Страница"),
+  checkoutSlug: f.str("checkout"),
+  addonsDialogTitle: f.str("Докупить опции"),
+  addonsDialogHint: f.str("Доп. устройства/трафик к текущему тарифу"),
+  addonsDevicesLabel: f.str("Устройства"),
+  addonsTrafficLabel: f.str("Трафик"),
+  addonsTotalLabel: f.str("Итого к оплате"),
+  addonsSubmitLabel: f.str("Оформить"),
+  addonsCancelLabel: f.str("Отмена"),
+  addonsUnavailableText: f.str("Для текущего тарифа нет доступных опций"),
+  addonsDeviceUnitFormat: f.str("{n} устр."),
+  addonsDeviceUnlimitedText: f.str("∞ устр."),
+  addonsTrafficUnitFormat: f.str("{n} ГБ"),
+  addonsTrafficUnlimitedText: f.str("∞"),
+  renameErrorText: f.str("Не удалось переименовать. Попробуйте ещё раз."),
+  noKeysText: f.str("Нет активной подписки"),
+  buyTariffLabel: f.str("Купить тариф"),
+  renewalPrefix: f.str("Истекает"),
+  labelDevices: f.str("Устройств"),
+  labelTraffic: f.str("Трафик"),
+  labelExpiry: f.str("До"),
+  labelAlias: f.str("Имя"),
+  trafficUnlimitedText: f.str("∞"),
+  connectHint: f.str("Подключение к VPN"),
+  connectSubtitleText: f.str("Ключ доступа к подписке"),
+  connectLabel: f.str("Подключить"),
+  copyLabel: f.str("Копировать"),
+  copiedLabel: f.str("Скопировано"),
+  shareLabel: f.str("Поделиться"),
+  shareTitle: f.str("Подключение к VPN"),
+  qrLabel: f.str("QR-код"),
+  qrCloseLabel: f.str("Закрыть QR"),
+  qrErrorText: f.str("Не удалось загрузить QR"),
+  qrShareHint: f.str("Если хотите поделиться подпиской — на устройстве друга откройте такое же приложение и через него наведите на этот QR."),
+  qrLoadingText: f.str("Загрузка..."),
+  renamePlaceholder: f.str("Имя подписки"),
+  showConnectSection: f.bool(true),
+  showConnect: f.bool(true),
+  showCopy: f.bool(true),
+  showLink: f.bool(true),
+  showShare: f.bool(true),
+  showQr: f.bool(true),
+  showRename: f.bool(true),
+};
+
+export function formatExpiryDate(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const d = new Date(ms);
+  return formatDayMonthYear(d);
+}

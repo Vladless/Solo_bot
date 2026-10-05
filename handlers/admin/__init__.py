@@ -5,6 +5,7 @@ from aiogram import Router
 from .ads import router as ads_router
 from .backups import router as backups_router
 from .bans import router as bans_router
+from .bulk import router as bulk_router
 from .clusters import router as clusters_router
 from .coupons import router as coupons_router
 from .emoji import router as emoji_router
@@ -41,4 +42,5 @@ router.include_routers(
     tariffs_router,
     gifts_router,
     settings_router,
+    bulk_router,
 )

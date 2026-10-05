@@ -1,5 +1,9 @@
-from . import (
-    server_manage,  # noqa: F401
-    server_wizard,  # noqa: F401
-)
+from . import server_manage, server_wizard
 from .server_states import router
+
+
+__all__ = (
+    "router",
+    "server_manage",
+    "server_wizard",
+)

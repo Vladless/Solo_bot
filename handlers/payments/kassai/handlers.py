@@ -6,19 +6,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_temporary_data
 from database.models import User
-from handlers.buttons import MAIN_MENU, PAY_2
-from handlers.payments.currency_rates import format_for_user
-from handlers.texts import DEFAULT_PAYMENT_MESSAGE
+from handlers.payments.keyboards import balance_fallback_kb
 from handlers.utils import edit_or_send_message
 from logger import logger
-from ..constants import ALLOWED_TEMP_PAYMENT_STATES
+from services.payments.currency_rates import format_for_user
+from settings.buttons import MAIN_MENU, PAY_2
+from settings.texts import DEFAULT_PAYMENT_MESSAGE
 
+from ..constants import ALLOWED_TEMP_PAYMENT_STATES
 from .service import (
     KASSAI_METHODS,
     generate_kassai_payment_link,
     process_callback_pay_kassai,
     router as service_router,
 )
+
 
 router = Router(name="kassai_router")
 router.include_router(service_router)
@@ -94,6 +96,7 @@ async def _handle_custom_amount_input_kassai(
         await edit_or_send_message(
             target_message=message,
             text=error_msg,
+            reply_markup=balance_fallback_kb(),
         )
         return
 

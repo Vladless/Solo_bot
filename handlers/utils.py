@@ -4,30 +4,74 @@ import re
 import secrets
 import string
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import aiofiles
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     BufferedInputFile,
+    CallbackQuery,
     InlineKeyboardMarkup,
+    InlineQuery,
     InputMediaAnimation,
     InputMediaPhoto,
     InputMediaVideo,
     Message,
 )
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID
-from database import get_servers
-from database.models import Key, Notification, Server
-from hooks.processors import process_cluster_balancer
+from database.access.resolution import resolve_user_optional
+from database.models import Key, Notification
 from logger import logger
+from services.formatting import format_days, format_hours, format_minutes
+from settings.config import ADMIN_ID
 
 
-ALLOWED_GROUP_CODES = ["trial", "discounts", "discounts_max", "gifts"]
+ALLOWED_GROUP_CODES = ["trial", "discounts", "discounts_max", "cold_discounts", "cold_discounts_max", "gifts"]
+
+
+_CALLBACK_ANSWER_IGNORE = (
+    "query is too old",
+    "response timeout expired",
+    "query id is invalid",
+)
+
+_MESSAGE_NOT_MODIFIED = "message is not modified"
+
+
+def _is_message_not_modified(exc: BaseException) -> bool:
+    return isinstance(exc, TelegramBadRequest) and _MESSAGE_NOT_MODIFIED in str(exc).lower()
+
+
+async def safe_answer_callback(
+    callback_query: CallbackQuery, text: str | None = None, show_alert: bool = False, **kwargs
+) -> None:
+    """
+    Вызывает callback_query.answer(), не поднимая исключение при устаревшем/уже отвеченном callback.
+    Использовать в хендлерах после долгой обработки или при наплыве пользователей.
+    """
+    try:
+        await callback_query.answer(text=text, show_alert=show_alert, **kwargs)
+    except TelegramBadRequest as e:
+        msg = str(e).lower()
+        if not any(phrase in msg for phrase in _CALLBACK_ANSWER_IGNORE):
+            raise
+
+
+async def safe_answer_inline_query(inline_query: InlineQuery, *args: object, **kwargs: object) -> None:
+    """
+    Вызывает inline_query.answer(), не поднимая исключение при устаревшем запросе
+    (query is too old / response timeout). При нагрузке inline может обрабатываться с задержкой.
+    """
+    try:
+        await inline_query.answer(*args, **kwargs)
+    except TelegramBadRequest as e:
+        msg = str(e).lower()
+        if not any(phrase in msg for phrase in _CALLBACK_ANSWER_IGNORE):
+            raise
 
 
 async def generate_random_email(
@@ -47,98 +91,47 @@ async def generate_random_email(
 
 
 async def get_least_loaded_cluster(session: AsyncSession) -> str:
-    servers = await get_servers(session)
-    server_to_cluster = {}
-    cluster_loads = {}
+    """Делегирует в services.clusters.select_cluster()."""
+    from services.clusters import select_cluster
 
-    for cluster_name, cluster_servers in servers.items():
-        cluster_loads[cluster_name] = 0
-        for server in cluster_servers:
-            server_to_cluster[server["server_name"]] = cluster_name
-
-    result = await session.execute(select(Key))
-    keys = result.scalars().all()
-
-    for key in keys:
-        server_id = key.server_id
-        cluster_id = server_to_cluster.get(server_id, server_id)
-        if cluster_id in cluster_loads:
-            cluster_loads[cluster_id] += 1
-
-    available_clusters = {}
-    for cluster_name, cluster_servers in servers.items():
-        enabled_servers = [server for server in cluster_servers if server.get("enabled", True)]
-
-        if not enabled_servers:
-            continue
-
-        available_servers = []
-        for server in enabled_servers:
-            if await check_server_key_limit(server, session):
-                available_servers.append(server)
-
-        if available_servers:
-            available_clusters[cluster_name] = cluster_loads[cluster_name]
-        else:
-            continue
-
-    filtered_clusters = await process_cluster_balancer(available_clusters=available_clusters, session=session)
-    if filtered_clusters:
-        available_clusters = filtered_clusters
-
-    if not available_clusters:
-        logger.warning("❌ Нет доступных кластеров с лимитом ключей!")
-        raise ValueError("⚠️ Сервисы временно недоступны. Попробуйте позже.")
-
-    least_loaded_cluster = min(available_clusters, key=lambda k: (available_clusters[k], k))
-    logger.info(
-        f"Выбран наименее загруженный кластер: {least_loaded_cluster} (загрузка: {available_clusters[least_loaded_cluster]})"
-    )
-    return least_loaded_cluster
+    result = await select_cluster(session)
+    return result.cluster_name
 
 
 async def check_server_key_limit(server_info: dict, session: AsyncSession) -> bool:
-    server_name = server_info.get("server_name")
-    cluster_name = server_info.get("cluster_name")
-    max_keys = server_info.get("max_keys")
+    """Делегирует в services.clusters.check_server_key_limit() с Telegram-callback для уведомлений."""
+    from services.clusters import check_server_key_limit as _svc_check
 
-    if not max_keys:
-        return True
-
-    identifier = cluster_name if cluster_name else server_name
-
-    result = await session.execute(select(func.count()).select_from(Key).where(Key.server_id == identifier))
-    total_keys = result.scalar() or 0
-
-    if total_keys >= max_keys:
-        logger.warning(f"[Key Limit] Сервер {server_name} достиг лимита: {total_keys}/{max_keys}")
-        return False
-
-    usage_percent = total_keys / max_keys
-
-    if usage_percent >= 0.9:
+    async def _notify_admin_capacity(server_name: str, total_keys: int, max_keys: int) -> None:
         notif_key = f"server_warn_{server_name}"
-
-        result = await session.execute(
-            select(Notification).where(Notification.tg_id == 0, Notification.notification_type == notif_key)
-        )
-        already_sent = result.scalar_one_or_none()
-
+        anchor_uid = None
+        if ADMIN_ID:
+            au = await resolve_user_optional(session, int(ADMIN_ID[0]))
+            if au is not None:
+                anchor_uid = au.id
+        already_sent = None
+        if anchor_uid is not None:
+            result = await session.execute(
+                select(Notification).where(
+                    Notification.user_id == anchor_uid,
+                    Notification.notification_type == notif_key,
+                )
+            )
+            already_sent = result.scalar_one_or_none()
         if not already_sent:
             for admin_id in ADMIN_ID:
                 try:
                     await bot.send_message(
                         admin_id,
-                        f"⚠️ Сервер <b>{server_name}</b> почти заполнен ({int(usage_percent * 100)}%)."
+                        f"⚠️ Сервер <b>{server_name}</b> почти заполнен ({int(total_keys / max_keys * 100)}%)."
                         f"\nРекомендуется создать новый для балансировки.",
                     )
                 except Exception:
                     pass
+            if anchor_uid is not None:
+                session.add(Notification(user_id=anchor_uid, notification_type=notif_key))
 
-            session.add(Notification(tg_id=0, notification_type=notif_key))
-            await session.commit()
-
-    return True
+    return await _svc_check(server_info, session, on_capacity_warning=_notify_admin_capacity)
 
 
 async def handle_error(tg_id: int, callback_query: object | None = None, message: str = "") -> None:
@@ -158,42 +151,94 @@ async def handle_error(tg_id: int, callback_query: object | None = None, message
         logger.error(f"Ошибка при обработке ошибки: {e}")
 
 
-def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:
-    """Универсальная функция для получения правильной формы множественного числа"""
-    n = abs(num) % 100
-    if 10 < n < 20:
-        return form3
-    return {1: form1, 2: form2, 3: form2, 4: form2}.get(n % 10, form3)
+class _TemplateValues(dict):
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
 
 
-def format_months(months: int) -> str:
-    """Форматирует количество месяцев с правильным склонением"""
-    if months <= 0:
-        return "0 месяцев"
-    return f"{months} {get_plural_form(months, 'месяц', 'месяца', 'месяцев')}"
+_CODE_BLOCK_RE = re.compile(r"<code>(.*?)</code>", re.S)
+_EMPTY_SECTION_RE = re.compile(r"(?:<b>[^<]*</b>\n)?<blockquote><code></code></blockquote>\n?")
 
 
-def format_days(days: int) -> str:
-    """
-    Форматирует количество дней с правильным склонением.
-    """
-    if days <= 0:
-        return "0 дней"
-    return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
+def _row_is_filled(row: str) -> bool:
+    """Строка таблицы пуста, если у метки нет значения."""
+    _label, sep, value = row.partition(": ")
+    return bool(value.strip()) if sep else bool(row.strip())
 
 
-def format_minutes(minutes: int) -> str:
-    """Форматирует количество минут с правильным склонением"""
-    if minutes <= 0:
-        return "0 минут"
-    return f"{minutes} {get_plural_form(minutes, 'минута', 'минуты', 'минут')}"
+def _drop_empty_rows(text: str) -> str:
+    """Убирает из таблиц строки, у которых не оказалось значения."""
+
+    def replace(match: re.Match) -> str:
+        rows = [row for row in match.group(1).split("\n") if _row_is_filled(row)]
+        return "<code>" + "\n".join(rows) + "</code>"
+
+    return _CODE_BLOCK_RE.sub(replace, text)
 
 
-def format_hours(hours: int) -> str:
-    """Форматирует количество часов с правильным склонением"""
-    if hours <= 0:
-        return "0 часов"
-    return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
+def _drop_empty_sections(text: str) -> str:
+    """Убирает блок вместе с его заголовком, если внутри не осталось строк."""
+    first_line_end = text.find("\n")
+    head, tail = (text[: first_line_end + 1], text[first_line_end + 1 :]) if first_line_end > 0 else (text, "")
+    return head + _EMPTY_SECTION_RE.sub("", tail)
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_EMPTY_ANCHOR_RE = re.compile(r"<a\s+href=['\"]\s*['\"][^>]*>.*?</a>", re.S | re.I)
+_DANGLING_SEPARATOR_RE = re.compile(r"(?m)^\s*[·|]\s*|\s*[·|]\s*$")
+
+
+def _markup_of(line: str) -> str:
+    """Оставляет от строки только теги: строка уходит, а открытые блоки не рвутся."""
+    return "".join(_TAG_RE.findall(line))
+
+
+def _drop_empty_links(text: str) -> str:
+    """Убирает ссылки без адреса и строки-метки, у которых не осталось значения."""
+    lines = []
+    for line in _EMPTY_ANCHOR_RE.sub("", text).split("\n"):
+        cleaned = _DANGLING_SEPARATOR_RE.sub("", line)
+        bare = _TAG_RE.sub("", cleaned).strip()
+        drop = False
+        if bare.endswith(":") and ": " in cleaned + " ":
+            _label, sep, value = cleaned.rpartition(":")
+            drop = bool(sep) and not _TAG_RE.sub("", value).strip()
+        if not drop and not bare and _TAG_RE.sub("", line).strip():
+            drop = True
+        if drop:
+            markup = _markup_of(cleaned)
+            if markup:
+                lines.append(markup)
+            continue
+        lines.append(cleaned)
+    return "\n".join(lines)
+
+
+def fill_text(template: str, **values: object) -> str:
+    """Подставляет значения в шаблон и убирает строки и блоки, для которых не оказалось данных."""
+    try:
+        text = template.format_map(_TemplateValues(values))
+    except (IndexError, ValueError) as error:
+        logger.warning(f"Некорректный шаблон в файле текстов: {error}")
+        return template
+    return _drop_empty_sections(_drop_empty_rows(_drop_empty_links(text))).strip("\n")
+
+
+def render_screen(*parts: str) -> str:
+    """Склеивает части экрана и выравнивает значения всех таблиц по одной вертикали."""
+    from handlers.admin.panel.headers import align_screen
+
+    return align_screen(join_blocks(*parts))
+
+
+def render_text(template: str, **values: object) -> str:
+    """Собирает экран из одного шаблона."""
+    return render_screen(fill_text(template, **values))
+
+
+def join_blocks(*blocks: str) -> str:
+    """Склеивает блоки экрана, пропуская пустые."""
+    return "\n".join(block for block in blocks if block)
 
 
 def get_media_type(media_path: str) -> str:
@@ -276,7 +321,9 @@ async def edit_or_send_message(
                             InputMediaAnimation(media=cached_id, caption=text), reply_markup=reply_markup
                         )
                     return
-                except Exception:
+                except Exception as e:
+                    if _is_message_not_modified(e):
+                        return
                     try:
                         if media_type == "photo":
                             await target_message.answer_photo(
@@ -320,7 +367,9 @@ async def edit_or_send_message(
                     msg = await target_message.edit_media(
                         InputMediaAnimation(media=upload, caption=text), reply_markup=reply_markup
                     )
-            except Exception:
+            except Exception as e:
+                if _is_message_not_modified(e):
+                    return
                 if media_type == "photo":
                     msg = await target_message.answer_photo(
                         photo=upload,
@@ -359,12 +408,14 @@ async def edit_or_send_message(
                             edit_or_send_message.cache.popitem(last=False)
             return
 
-    if not force_text and target_message.caption is not None:
+    caption = getattr(target_message, "caption", None)
+    if not force_text and caption is not None:
         try:
             await target_message.edit_caption(caption=text, reply_markup=reply_markup)
             return
-        except Exception:
-            pass
+        except Exception as e:
+            if _is_message_not_modified(e):
+                return
     try:
         await target_message.edit_text(
             text=text,
@@ -372,7 +423,9 @@ async def edit_or_send_message(
             disable_web_page_preview=disable_web_page_preview,
         )
         return
-    except Exception:
+    except Exception as e:
+        if _is_message_not_modified(e):
+            return
         await target_message.answer(
             text=text,
             reply_markup=reply_markup,
@@ -393,28 +446,9 @@ def convert_to_bytes(value: float, unit: str) -> int:
 
 
 async def is_full_remnawave_cluster(cluster_id: str, session: AsyncSession) -> bool:
-    result = await session.execute(select(Server.panel_type).where(Server.cluster_name == cluster_id))
-    panel_types = result.scalars().all()
+    from services.clusters import is_full_remnawave_cluster as _svc
 
-    if panel_types:
-        return all(pt.lower() == "remnawave" for pt in panel_types)
-
-    result = await session.execute(select(Server.panel_type).where(Server.server_name == cluster_id))
-    panel_type = result.scalar_one_or_none()
-    return panel_type and panel_type.lower() == "remnawave"
-
-
-def sanitize_key_name(key_name: str) -> str:
-    """
-    Очищает название ключа, оставляя только допустимые символы.
-
-    Args:
-        key_name (str): Исходное название ключа.
-
-    Returns:
-        str: Очищенное название ключа в нижнем регистре.
-    """
-    return re.sub(r"[^a-z0-9@._-]", "", key_name.lower())
+    return await _svc(cluster_id, session)
 
 
 RUSSIAN_MONTHS = {
@@ -459,7 +493,9 @@ def get_username(user) -> str:
 
 def format_discount_time_left(last_time: datetime, discount_hours: int) -> str:
     expires_at = last_time + timedelta(hours=discount_hours)
-    current_time = datetime.utcnow()
+    current_time = datetime.now(timezone.utc)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
     time_left = expires_at - current_time
 
     if time_left.total_seconds() <= 0:
@@ -487,3 +523,52 @@ def extract_user_data(user) -> dict:
         "language_code": user.language_code,
         "is_bot": user.is_bot,
     }
+
+
+def resolve_actor_data(message, *, actor=None, saved: dict | None = None) -> dict:
+    """Данные клиента для сценария старта: явный автор, затем сохранённые, затем автор сообщения.
+
+    У сообщения, отправленного ботом, `from_user` — сам бот, поэтому такой автор отбрасывается:
+    иначе сценарий уходит на клиента с номером бота.
+    """
+    if actor is not None and not getattr(actor, "is_bot", False):
+        return extract_user_data(actor)
+    if saved and saved.get("tg_id") and not saved.get("is_bot"):
+        return dict(saved)
+    author = getattr(message, "from_user", None)
+    if author is not None and not getattr(author, "is_bot", False):
+        return extract_user_data(author)
+    chat = getattr(message, "chat", None)
+    return {
+        "tg_id": getattr(chat, "id", None),
+        "username": getattr(chat, "username", None),
+        "first_name": getattr(chat, "first_name", None),
+        "last_name": getattr(chat, "last_name", None),
+        "language_code": None,
+        "is_bot": False,
+    }
+
+
+async def build_support_button(text: str | None = None) -> "InlineKeyboardButton | None":
+    from aiogram.types import InlineKeyboardButton
+
+    from settings.buttons import SUPPORT
+    from settings.config import SUPPORT_CHAT_URL
+
+    label = text or SUPPORT
+    url = (SUPPORT_CHAT_URL or "").strip()
+    if url.startswith(("http://", "https://", "tg://")):
+        return InlineKeyboardButton(text=label, url=url)
+
+    from core.settings.modes_config import MODES_CONFIG
+
+    if MODES_CONFIG.get("SUPPORT_TICKETS_ENABLED"):
+        try:
+            from support_bot import support_deeplink
+
+            deeplink = await support_deeplink()
+        except Exception:
+            deeplink = None
+        if deeplink:
+            return InlineKeyboardButton(text=label, url=deeplink)
+    return None

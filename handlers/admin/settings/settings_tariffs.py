@@ -4,11 +4,12 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
-from handlers.buttons import BACK
 
 from core.settings.tariffs_config import TARIFFS_CONFIG, update_tariffs_config
 from filters.admin import IsAdminFilter
+from settings.buttons import BACK
 
+from ..panel.headers import menu_text, note, quote, section
 from ..panel.keyboard import AdminPanelCallback
 
 
@@ -36,6 +37,7 @@ def build_tariffs_settings_kb() -> InlineKeyboardMarkup:
     allow_downgrade = bool(TARIFFS_CONFIG.get("ALLOW_DOWNGRADE", True))
     pack_mode = TARIFFS_CONFIG.get("KEY_ADDONS_PACK_MODE") or ""
     recalc_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False))
+    carry_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_CARRY_ON_RENEWAL", False))
 
     builder = InlineKeyboardBuilder()
 
@@ -60,6 +62,14 @@ def build_tariffs_settings_kb() -> InlineKeyboardMarkup:
         )
     )
 
+    if pack_mode:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"Переносить опции: {'да' if carry_enabled else 'нет'}",
+                callback_data=AdminPanelCallback(action="settings_tariffs_toggle_addons_carry").pack(),
+            )
+        )
+
     builder.row(
         InlineKeyboardButton(
             text=BACK,
@@ -75,25 +85,36 @@ def build_tariffs_settings_text() -> str:
     allow_downgrade = bool(TARIFFS_CONFIG.get("ALLOW_DOWNGRADE", True))
     pack_mode = TARIFFS_CONFIG.get("KEY_ADDONS_PACK_MODE") or ""
     recalc_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False))
+    carry_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_CARRY_ON_RENEWAL", False))
 
-    lines: list[str] = [
-        "⚙️ Настройки тарификации",
-        "",
-        f"• Понижение условий при изменении: {'включено' if allow_downgrade else 'выключено'}",
-        f"• Режим доплат: {format_pack_mode_label(pack_mode)}",
-        f"• Перерасчёт при докупке: {'да' if recalc_enabled else 'нет'}",
-        "",
-        "ℹ️ Как работают режимы доплат:",
-        "",
-        "🔹 <b>Пакеты</b>",
-        "<blockquote>Позволяет докупать трафик и устройства к активной подписке неограниченное количество раз.",
-        "При продлении подписки все параметры возвращаются к исходно сконфигурированному тарифу.",
-        "</blockquote>\n\n🔹 <b>Базовый конфигуратор (выкл. режим пакетов)</b>",
-        "<blockquote>Позволяет выбрать параметры тарифа из доступных опций.",
-        "Выбранные условия сохраняются и будут использоваться при последующих продлениях.",
-        "При включённом понижении клиент сможет понижать условия тарифа.</blockquote>",
+    rules = [
+        f"Понижение: {'да' if allow_downgrade else 'нет'}",
+        f"Доплаты: {format_pack_mode_label(pack_mode)}",
+        f"Перерасчёт: {'да' if recalc_enabled else 'нет'}",
     ]
-    return "\n".join(lines)
+    if pack_mode:
+        rules.append(f"Перенос опций: {'да' if carry_enabled else 'нет'}")
+
+    packs_note = (
+        "Трафик и устройства докупаются к активной подписке сколько угодно раз. "
+        + (
+            "При продлении опции сохраняются, их цена входит в стоимость продления."
+            if carry_enabled
+            else "При продлении всё возвращается к исходному тарифу."
+        )
+    )
+
+    return menu_text(
+        "Тарификация",
+        "Правила смены тарифа и докупки опций.",
+        section("⚙️ Правила", *rules),
+        note("📦 Пакеты", packs_note),
+        note(
+            "🧩 Базовый конфигуратор",
+            "Клиент собирает тариф из доступных опций, и выбор сохраняется на "
+            "последующие продления. При разрешённом понижении условия можно и урезать.",
+        ),
+    )
 
 
 async def refresh_tariffs_settings_screen(callback: CallbackQuery) -> None:
@@ -150,22 +171,23 @@ def build_tariffs_packs_text() -> str:
     """Текст экрана выбора режима пакетов."""
     current = TARIFFS_CONFIG.get("KEY_ADDONS_PACK_MODE") or ""
 
-    lines: list[str] = [
-        "📦 Режим доплат пакетами",
-        "",
-        "При активной подписке можно продавать не новый тариф, а доплаты к текущим лимитам.",
-        "",
-        "Режимы:",
-        "<blockquote>",
-        "• Выкл — доплаты пакетами отключены, работает обычный конфигуратор лимитов (клиент меняет конфигурацию тарифа для продления).",
-        "• Только трафик — пользователь докупает ГБ до продления, количество устройств не меняется.",
-        "• Только устройства — пользователь докупает устройства до продления, лимит трафика не меняется.",
-        "• Трафик и устройства — можно одновременно докупать и трафик, и устройства до продления как единый пакет.",
-        f"</blockquote>\nТекущий режим: {format_pack_mode_label(current)}",
-        "",
-        "Выберите режим, который покажет варианты для доплаты.\n ❗Доплаты не переносятся при продлении.",
-    ]
-    return "\n".join(lines)
+    return menu_text(
+        "Доплаты пакетами",
+        f"Сейчас: <b>{format_pack_mode_label(current)}</b>",
+        section(
+            "📦 Режимы",
+            "Выкл: конфигуратор лимитов",
+            "Трафик: докупка ГБ",
+            "Устройства: докупка штук",
+            "Оба: одним пакетом",
+        ),
+        quote(
+            "При активной подписке клиенту продаётся не новый тариф, а доплата к текущим лимитам.",
+            "✅ Доплаты переносятся на следующий срок при продлении."
+            if bool(TARIFFS_CONFIG.get("KEY_ADDONS_CARRY_ON_RENEWAL", False))
+            else "❌ Доплаты не переносятся на следующий срок при продлении.",
+        ),
+    )
 
 
 async def refresh_tariffs_packs_screen(callback: CallbackQuery) -> None:
@@ -202,6 +224,18 @@ async def toggle_tariffs_addons_recalc(callback: CallbackQuery, session: AsyncSe
 
     new_config: dict[str, Any] = dict(TARIFFS_CONFIG)
     new_config["KEY_ADDONS_RECALC_PRICE"] = not current
+
+    await update_tariffs_config(session, new_config)
+    await refresh_tariffs_settings_screen(callback)
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_tariffs_toggle_addons_carry"))
+async def toggle_tariffs_addons_carry(callback: CallbackQuery, session: AsyncSession) -> None:
+    """Переключает перенос докупленных опций на следующий срок."""
+    current = bool(TARIFFS_CONFIG.get("KEY_ADDONS_CARRY_ON_RENEWAL", False))
+
+    new_config: dict[str, Any] = dict(TARIFFS_CONFIG)
+    new_config["KEY_ADDONS_CARRY_ON_RENEWAL"] = not current
 
     await update_tariffs_config(session, new_config)
     await refresh_tariffs_settings_screen(callback)

@@ -8,20 +8,25 @@ import psutil
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from filters.admin import IsAdminFilter
+from core.executor import run_io, spawn
+from filters.admin import HasPermission, IsAdminFilter
+from filters.permissions import PERM_MANAGEMENT
 
+from ..panel.headers import menu_text
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 
 router = Router()
+router.callback_query.filter(HasPermission(PERM_MANAGEMENT))
+router.message.filter(HasPermission(PERM_MANAGEMENT))
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "restart"), IsAdminFilter())
 async def handle_restart_confirm(callback_query: CallbackQuery, callback_data: AdminPanelCallback):
     kb = build_admin_back_kb()
-    await callback_query.message.edit_text("🔄 Перезапускаем бота...", reply_markup=kb)
+    await callback_query.message.edit_text(menu_text("Перезапуск", "🔄 Перезапускаем бота..."), reply_markup=kb)
 
-    asyncio.create_task(restart_bot())
+    spawn(restart_bot())
 
 
 async def restart_bot():
@@ -32,10 +37,7 @@ async def restart_bot():
         is_systemd = parent and "systemd" in parent.name().lower()
 
         if is_systemd:
-            subprocess.run(
-                ["sudo", "systemctl", "restart", "bot.service"],
-                check=True,
-            )
+            await run_io(lambda: subprocess.run(["sudo", "systemctl", "restart", "bot.service"], check=True))
         else:
             python_exe = sys.executable
             script_path = os.path.abspath(sys.argv[0])

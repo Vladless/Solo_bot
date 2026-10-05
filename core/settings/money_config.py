@@ -4,11 +4,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+from database.settings_cache import settings_cache
 
 from ..defaults import DEFAULT_MONEY_CONFIG
+from .runtime_sync import publish_runtime_config, register_runtime_config
 
 
 MONEY_CONFIG: dict[str, Any] = DEFAULT_MONEY_CONFIG.copy()
+register_runtime_config("MONEY_CONFIG", MONEY_CONFIG)
 
 
 def get_currency_mode() -> tuple[str, bool]:
@@ -73,3 +76,5 @@ async def update_money_config(session: AsyncSession, new_values: dict[str, Any])
 
     MONEY_CONFIG.clear()
     MONEY_CONFIG.update(money_config)
+    settings_cache.update("MONEY_CONFIG", money_config)
+    await publish_runtime_config("MONEY_CONFIG", money_config)

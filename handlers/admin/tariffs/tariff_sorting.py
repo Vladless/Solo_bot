@@ -10,12 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Tariff
 from database.tariffs import (
+    find_subgroup_by_hash,
     get_tariffs,
+    move_subgroup as db_move_subgroup,
     move_tariff_down as db_move_tariff_down,
     move_tariff_up as db_move_tariff_up,
 )
 from filters.admin import IsAdminFilter
+from handlers.keys.utils import order_tariff_items
 
+from ..panel.headers import card, menu_text, quote, section
 from . import router
 from .keyboard import (
     AdminTariffCallback,
@@ -33,19 +37,18 @@ async def show_tariff_arrangement_menu(callback: CallbackQuery, session: AsyncSe
     groups = [row[0] for row in result.fetchall()]
 
     if not groups:
-        await callback.message.edit_text("❌ Нет доступных групп тарифов.")
+        await callback.message.edit_text(menu_text("Расположение тарифов", "❌ Нет доступных групп тарифов."))
         return
 
     await callback.message.edit_text(
-        "🔢 <b>Управление расположением тарифов</b>\n\n"
-        "📋 <b>Как это работает:</b>\n"
-        "• Тарифы отображаются в порядке их расположения\n"
-        "• Меньший номер = выше в списке\n"
-        "• Новые тарифы добавляются в конец списка\n"
-        "• ⬆️ поднимает тариф выше (номер уменьшается)\n"
-        "• ⬇️ опускает тариф ниже (номер увеличивается)\n"
-        "• Подгруппы сортируются по общей сумме тарифов внутри\n\n"
-        "Выберите группу для управления расположением:",
+        menu_text(
+            "Расположение тарифов",
+            "Порядок, в котором клиент видит тарифы.",
+            quote(
+                "Клиент видит тарифы в этом порядке: чем меньше номер, тем выше в списке. Новые встают в конец, подгруппы — по сумме тарифов внутри."
+            ),
+            quote("Выберите группу."),
+        ),
         reply_markup=build_tariff_arrangement_groups_kb(groups),
     )
 
@@ -56,97 +59,92 @@ async def show_tariffs_arrangement(callback: CallbackQuery, callback_data: Admin
 
     tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
     tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
-    subgroup_weights = tariffs_data["subgroup_weights"]
+    tariffs_data["subgroup_weights"]
 
     if not tariffs:
-        await callback.message.edit_text("❌ В этой группе пока нет активных тарифов.")
+        await callback.message.edit_text(
+            menu_text("Расположение тарифов", "❌ В этой группе пока нет активных тарифов.")
+        )
         return
 
     grouped_tariffs = defaultdict(list)
     for t in tariffs:
         grouped_tariffs[t.get("subgroup_title")].append(t)
 
-    sorted_subgroups = sorted(
-        [k for k in grouped_tariffs if k],
-        key=lambda x: (subgroup_weights.get(x, 999999), x),
-    )
-
     moscow_tz = pytz.timezone("Europe/Moscow")
     now = datetime.now(moscow_tz)
     current_time = now.strftime("%d.%m.%y %H:%M:%S МСК")
 
-    text = f"🔢 <b>Итоговая сортировка тарифов в группе: {group_code}</b>\n\n"
+    markup = build_tariffs_arrangement_kb(group_code, tariffs)
+    rows = []
+    for kind, payload in order_tariff_items(grouped_tariffs):
+        if kind == "tariff":
+            rows.append(f"{payload.get('name')}: {payload.get('sort_order') or 1}")
+        else:
+            sub_tariffs = grouped_tariffs[payload]
+            rows.append(f"{payload}: {min((t.get('sort_order') or 1) for t in sub_tariffs)}")
+            rows += [f"— {t.get('name')}: {t.get('sort_order') or 1}" for t in sub_tariffs]
 
-    if grouped_tariffs.get(None):
-        text += "<b>📋 Основные тарифы:</b>\n"
-        for t in grouped_tariffs[None]:
-            sort_order = t.get("sort_order", 1)
-            text += f"• {t.get('name')} <code>[позиция: {sort_order}]</code>\n"
-        text += "\n"
-
-    if sorted_subgroups:
-        text += "<b>📁 Подгруппы:</b>\n"
-        for subgroup in sorted_subgroups:
-            subgroup_weight = subgroup_weights.get(subgroup, 999999)
-            text += f"• <b>{subgroup}</b> <code>[вес группы: {subgroup_weight}]</code>\n"
-            for t in grouped_tariffs[subgroup]:
-                sort_order = t.get("sort_order", 1)
-                text += f"  └ {t.get('name')} <code>[позиция: {sort_order}]</code>\n"
-            text += "\n"
-
-    text += f"\n{current_time}"
-
-    await callback.message.edit_text(
-        text,
-        reply_markup=build_tariffs_arrangement_kb(group_code, tariffs),
+    text = menu_text(
+        "Расположение тарифов",
+        f"Группа <b>{group_code}</b> — порядок, как его видит клиент.",
+        card(section("📦 Порядок", *rows), section("⏱ Обновлено", current_time)),
     )
 
+    await callback.message.edit_text(text, reply_markup=markup)
 
-@router.callback_query(AdminTariffCallback.filter(F.action.startswith("move_up|")), IsAdminFilter())
+
+@router.callback_query(
+    AdminTariffCallback.filter(F.action.startswith("move_up|")), IsAdminFilter(), flags={"popup": True}
+)
 async def move_tariff_up(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     tariff_id = int(callback_data.action.split("|")[1])
 
     success = await db_move_tariff_up(session, tariff_id)
 
     if not success:
-        await callback.answer("❌ Ошибка при перемещении тарифа", show_alert=True)
+        await callback.answer("Не удалось переместить тариф", show_alert=True)
         return
 
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
 
     if not tariff:
-        await callback.answer("❌ Тариф не найден", show_alert=True)
+        await callback.answer("Тариф не найден", show_alert=True)
         return
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=text, reply_markup=markup)
-    await callback.answer("✅ Тариф перемещен выше (-1)")
+    await callback.message.edit_text(text=menu_text("Расположение тарифов", text), reply_markup=markup)
+    await callback.answer(menu_text("Расположение тарифов", "✅ Тариф перемещен выше (-1)"))
 
 
-@router.callback_query(AdminTariffCallback.filter(F.action.startswith("move_down|")), IsAdminFilter())
+@router.callback_query(
+    AdminTariffCallback.filter(F.action.startswith("move_down|")), IsAdminFilter(), flags={"popup": True}
+)
 async def move_tariff_down(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     tariff_id = int(callback_data.action.split("|")[1])
 
     success = await db_move_tariff_down(session, tariff_id)
 
     if not success:
-        await callback.answer("❌ Ошибка при перемещении тарифа", show_alert=True)
+        await callback.answer("Не удалось переместить тариф", show_alert=True)
         return
 
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
 
     if not tariff:
-        await callback.answer("❌ Тариф не найден", show_alert=True)
+        await callback.answer("Тариф не найден", show_alert=True)
         return
 
     text, markup = render_tariff_card(tariff)
-    await callback.message.edit_text(text=text, reply_markup=markup)
-    await callback.answer("✅ Тариф перемещен ниже (+1)")
+    await callback.message.edit_text(text=menu_text("Расположение тарифов", text), reply_markup=markup)
+    await callback.answer(menu_text("Расположение тарифов", "✅ Тариф перемещен ниже (+1)"))
 
 
-@router.callback_query(AdminTariffCallback.filter(F.action.startswith("quick_move_up|")), IsAdminFilter())
+@router.callback_query(
+    AdminTariffCallback.filter(F.action.startswith("quick_move_up|")), IsAdminFilter(), flags={"popup": True}
+)
 async def quick_move_tariff_up(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     parts = callback_data.action.split("|")
     tariff_id = int(parts[1])
@@ -155,15 +153,17 @@ async def quick_move_tariff_up(callback: CallbackQuery, callback_data: AdminTari
     success = await db_move_tariff_up(session, tariff_id)
 
     if not success:
-        await callback.answer("❌ Ошибка при перемещении тарифа", show_alert=True)
+        await callback.answer("Не удалось переместить тариф", show_alert=True)
         return
 
-    await callback.answer("✅ Тариф перемещен выше (-1)")
+    await callback.answer(menu_text("Расположение тарифов", "✅ Тариф перемещен выше (-1)"))
     new_callback_data = AdminTariffCallback(action=f"arrange_group|{group_code}")
     await show_tariffs_arrangement(callback, new_callback_data, session)
 
 
-@router.callback_query(AdminTariffCallback.filter(F.action.startswith("quick_move_down|")), IsAdminFilter())
+@router.callback_query(
+    AdminTariffCallback.filter(F.action.startswith("quick_move_down|")), IsAdminFilter(), flags={"popup": True}
+)
 async def quick_move_tariff_down(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     parts = callback_data.action.split("|")
     tariff_id = int(parts[1])
@@ -172,9 +172,38 @@ async def quick_move_tariff_down(callback: CallbackQuery, callback_data: AdminTa
     success = await db_move_tariff_down(session, tariff_id)
 
     if not success:
-        await callback.answer("❌ Ошибка при перемещении тарифа", show_alert=True)
+        await callback.answer("Не удалось переместить тариф", show_alert=True)
         return
 
-    await callback.answer("✅ Тариф перемещен ниже (+1)")
+    await callback.answer(menu_text("Расположение тарифов", "✅ Тариф перемещен ниже (+1)"))
     new_callback_data = AdminTariffCallback(action=f"arrange_group|{group_code}")
     await show_tariffs_arrangement(callback, new_callback_data, session)
+
+
+async def _move_subgroup(callback: CallbackQuery, session: AsyncSession, direction: str) -> None:
+    _, subgroup_hash, group_code = callback.data.split("|", 2)
+    subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+    if not subgroup_title:
+        await callback.answer("Подгруппа не найдена", show_alert=True)
+        return
+    ok = await db_move_subgroup(session, group_code, subgroup_title, direction)
+    if not ok:
+        await callback.answer(menu_text("Расположение тарифов", "⛔ Дальше двигать некуда"))
+        return
+    await callback.answer(
+        menu_text(
+            "Расположение тарифов",
+            "✅ Подгруппа перемещена выше" if direction == "up" else "✅ Подгруппа перемещена ниже",
+        )
+    )
+    await show_tariffs_arrangement(callback, AdminTariffCallback(action=f"arrange_group|{group_code}"), session)
+
+
+@router.callback_query(F.data.startswith("submove_up|"), IsAdminFilter())
+async def quick_move_subgroup_up(callback: CallbackQuery, session: AsyncSession):
+    await _move_subgroup(callback, session, "up")
+
+
+@router.callback_query(F.data.startswith("submove_down|"), IsAdminFilter())
+async def quick_move_subgroup_down(callback: CallbackQuery, session: AsyncSession):
+    await _move_subgroup(callback, session, "down")

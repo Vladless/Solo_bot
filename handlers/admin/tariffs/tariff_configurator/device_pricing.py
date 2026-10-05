@@ -10,6 +10,7 @@ from sqlalchemy.orm import attributes
 from database.models import Tariff
 from filters.admin import IsAdminFilter
 
+from ...panel.headers import menu_text, quote, section
 from .. import router
 from .common import (
     TariffConfigState,
@@ -27,11 +28,11 @@ async def ask_device_step(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TariffConfigState.entering_device_step)
     await state.update_data(tariff_id=tariff_id)
 
-    text = (
-        "💰 Базовый шаг доплаты за устройства.\n\n"
-        "Введите цену в рублях за КАЖДОЕ устройство сверх базового лимита.\n"
-        "Например: <code>50</code>\n\n"
-        "Чтобы выключить автоматическую доплату за устройства, отправьте <code>0</code>."
+    text = menu_text(
+        "Шаг за устройство",
+        "Цена в рублях за каждое устройство сверх базового лимита.",
+        quote("Например: <code>50</code>"),
+        quote("<code>0</code> выключает автодоплату за устройства."),
     )
     await callback.message.edit_text(text=text, reply_markup=build_cancel_config_kb(tariff_id))
 
@@ -47,7 +48,7 @@ async def save_device_step(message: Message, state: FSMContext, session: AsyncSe
             raise ValueError
     except ValueError:
         await message.answer(
-            "❌ Некорректное значение. Введите целое число 0 или больше.",
+            menu_text("Конфигуратор", "❌ Нужно число от нуля."),
             reply_markup=build_cancel_config_kb(tariff_id),
         )
         return
@@ -55,13 +56,12 @@ async def save_device_step(message: Message, state: FSMContext, session: AsyncSe
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await message.answer("❌ Тариф не найден.")
+        await message.answer(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
     tariff.device_step_rub = price
     tariff.updated_at = datetime.utcnow()
-    await session.commit()
 
     await state.set_state(TariffConfigState.choosing_section)
 
@@ -76,13 +76,17 @@ async def open_device_overrides_menu(callback: CallbackQuery, state: FSMContext,
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await callback.message.edit_text("❌ Тариф не найден.")
+        await callback.message.edit_text(menu_text("Конфигуратор", "❌ Тариф не найден."))
         return
 
     device_options = tariff.device_options or []
     if not device_options:
         await callback.message.edit_text(
-            "Сначала настройте варианты устройств (кнопка «📱 Варианты устройств»).",
+            menu_text(
+                "Доплаты за устройства",
+                "Сначала задайте варианты устройств.",
+                quote("Кнопка «Варианты устройств» в конфигураторе."),
+            ),
             reply_markup=build_config_menu_kb(tariff_id),
         )
         return
@@ -91,7 +95,7 @@ async def open_device_overrides_menu(callback: CallbackQuery, state: FSMContext,
     await state.update_data(tariff_id=tariff_id, devices_override=None)
 
     text, markup = build_device_overrides_screen(tariff)
-    await callback.message.edit_text(text=text, reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Конфигуратор", text), reply_markup=markup)
 
 
 @router.callback_query(
@@ -107,7 +111,7 @@ async def choose_device_override_option(callback: CallbackQuery, state: FSMConte
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await callback.message.edit_text("❌ Тариф не найден.")
+        await callback.message.edit_text(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -127,11 +131,11 @@ async def choose_device_override_option(callback: CallbackQuery, state: FSMConte
     else:
         label = f"{devices} устройств"
 
-    text = (
-        f"📊 {label}.\n\n"
-        f"Текущая доплата для этого варианта: <b>{effective_extra}₽</b> ({note}).\n\n"
-        "Введите новую <u>доплату за устройства</u> для этого варианта в рублях.\n"
-        "Отправьте <code>0</code>, чтобы вернуть расчёт по базовому шагу."
+    text = menu_text(
+        "Доплата за вариант",
+        f"<b>{label}</b>",
+        section("💰 Сейчас", f"Доплата: {effective_extra} ₽", f"Расчёт: {note}"),
+        quote("Пришлите новую доплату в рублях. Ноль вернёт расчёт по базовому шагу."),
     )
     await callback.message.edit_text(text=text, reply_markup=build_cancel_config_kb(tariff_id))
 
@@ -145,16 +149,15 @@ async def clear_device_overrides(callback: CallbackQuery, state: FSMContext, ses
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await callback.message.edit_text("❌ Тариф не найден.")
+        await callback.message.edit_text(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
     tariff.device_overrides = None
     tariff.updated_at = datetime.utcnow()
-    await session.commit()
 
     text, markup = build_device_overrides_screen(tariff)
-    await callback.message.edit_text(text=text, reply_markup=markup)
+    await callback.message.edit_text(text=menu_text("Конфигуратор", text), reply_markup=markup)
 
 
 @router.message(TariffConfigState.entering_device_overrides, IsAdminFilter())
@@ -164,7 +167,7 @@ async def save_device_override_price(message: Message, state: FSMContext, sessio
     devices = data.get("devices_override")
 
     if not tariff_id or devices is None:
-        await message.answer("Сначала выберите вариант устройств из списка.")
+        await message.answer(menu_text("Конфигуратор", "Сначала выберите вариант устройств из списка."))
         return
 
     try:
@@ -173,7 +176,7 @@ async def save_device_override_price(message: Message, state: FSMContext, sessio
             raise ValueError
     except ValueError:
         await message.answer(
-            "❌ Некорректное значение. Введите целое число 0 или больше.",
+            menu_text("Конфигуратор", "❌ Нужно число от нуля."),
             reply_markup=build_cancel_config_kb(int(tariff_id)),
         )
         return
@@ -181,7 +184,7 @@ async def save_device_override_price(message: Message, state: FSMContext, sessio
     result = await session.execute(select(Tariff).where(Tariff.id == int(tariff_id)))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await message.answer("❌ Тариф не найден.")
+        await message.answer(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -197,9 +200,8 @@ async def save_device_override_price(message: Message, state: FSMContext, sessio
     tariff.device_overrides = overrides if overrides else None
     attributes.flag_modified(tariff, "device_overrides")
     tariff.updated_at = datetime.utcnow()
-    await session.commit()
 
     await state.update_data(devices_override=None)
 
     text, markup = build_device_overrides_screen(tariff)
-    await message.answer(text=text, reply_markup=markup)
+    await message.answer(text=menu_text("Конфигуратор", text), reply_markup=markup)

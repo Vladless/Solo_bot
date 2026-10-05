@@ -1,0 +1,251 @@
+{
+  "id": "default",
+  "name": "Стандарт",
+  "version": "1.2.3",
+  "hostApiVersion": 19,
+  "entry": "bundle.js",
+  "seed": "seed.json",
+  "traits": {
+    "panelRadiusPx": 22,
+    "contentAnim": {
+      "type": "soft",
+      "ms": 300
+    },
+    "interactionMotion": "soft",
+    "ownsPalette": true
+  },
+  "elements": [
+    {
+      "type": "defaultAdminTools",
+      "label": "Стандарт: админ-инструменты"
+    },
+    {
+      "type": "defaultAppDownload",
+      "label": "Стандарт: установка приложения"
+    },
+    {
+      "type": "defaultBackdrop",
+      "label": "Стандарт: подложка лендинга"
+    },
+    {
+      "type": "defaultBalanceTopUp",
+      "label": "Стандарт: пополнение баланса"
+    },
+    {
+      "type": "defaultChangePassword",
+      "label": "Стандарт: смена пароля"
+    },
+    {
+      "type": "defaultCheckout",
+      "label": "Оплата (дефолт)"
+    },
+    {
+      "type": "defaultCheckoutBanner",
+      "label": "Оплата: баннер (дефолт)"
+    },
+    {
+      "type": "defaultCheckoutProvider",
+      "label": "Стандарт: способ оплаты"
+    },
+    {
+      "type": "defaultCheckoutTrust",
+      "label": "Стандарт: гарантии оплаты"
+    },
+    {
+      "type": "defaultConnectCta",
+      "label": "Стандарт: подключить"
+    },
+    {
+      "type": "defaultCtaBanner",
+      "label": "Стандарт: финальный CTA"
+    },
+    {
+      "type": "defaultDailyBonus",
+      "label": "Стандарт: ежедневный бонус"
+    },
+    {
+      "type": "defaultDeviceList",
+      "label": "Стандарт: подключённые устройства"
+    },
+    {
+      "type": "defaultFaq",
+      "label": "Стандарт: FAQ-аккордеон"
+    },
+    {
+      "type": "defaultFeaturesGrid",
+      "label": "Стандарт: фичи N×"
+    },
+    {
+      "type": "defaultFriendsList",
+      "label": "Стандарт: приведённые друзья"
+    },
+    {
+      "type": "defaultGiftCardsGrid",
+      "label": "Стандарт: подарки-карточки"
+    },
+    {
+      "type": "defaultGiftCta",
+      "label": "Стандарт: подарить (CTA)"
+    },
+    {
+      "type": "defaultGiftHistory",
+      "label": "Стандарт: история подарков"
+    },
+    {
+      "type": "defaultGiftRedeem",
+      "label": "Стандарт: активация подарка"
+    },
+    {
+      "type": "defaultHapticSettings",
+      "label": "Стандарт: сила вибрации"
+    },
+    {
+      "type": "defaultHero",
+      "label": "Стандарт: hero лендинга"
+    },
+    {
+      "type": "defaultInvoiceList",
+      "label": "Стандарт: история платежей"
+    },
+    {
+      "type": "defaultLoginBanner",
+      "label": "Стандарт: баннер входа"
+    },
+    {
+      "type": "defaultLoginForm",
+      "label": "Форма входа (дефолт)"
+    },
+    {
+      "type": "defaultLoginHistory",
+      "label": "Стандарт: история входов"
+    },
+    {
+      "type": "defaultNodeStatus",
+      "label": "Стандарт: статус серверов"
+    },
+    {
+      "type": "defaultNotifChannels",
+      "label": "Стандарт: каналы уведомлений"
+    },
+    {
+      "type": "defaultNotifFeed",
+      "label": "Стандарт: лента уведомлений"
+    },
+    {
+      "type": "defaultOrbit",
+      "label": "Стандарт: орбита серверов"
+    },
+    {
+      "type": "defaultPageHeader",
+      "label": "Стандарт: заголовок раздела"
+    },
+    {
+      "type": "defaultPartnerPayouts",
+      "label": "Стандарт: партнёрка — заявки на вывод"
+    },
+    {
+      "type": "defaultPaymentMethod",
+      "label": "Стандарт: метод оплаты"
+    },
+    {
+      "type": "defaultPayoutHistory",
+      "label": "Стандарт: партнёрка — история выводов"
+    },
+    {
+      "type": "defaultPayoutRequest",
+      "label": "Стандарт: партнёрка — запрос на вывод"
+    },
+    {
+      "type": "defaultProfileCard",
+      "label": "Стандарт: профиль"
+    },
+    {
+      "type": "defaultPromoActivate",
+      "label": "Стандарт: активация промокода"
+    },
+    {
+      "type": "defaultPushPermission",
+      "label": "Стандарт: разрешения уведомлений"
+    },
+    {
+      "type": "defaultPwaInstall",
+      "label": "Стандарт: установка приложения"
+    },
+    {
+      "type": "defaultQuickActions",
+      "label": "Стандарт: быстрые действия"
+    },
+    {
+      "type": "defaultReferralCard",
+      "label": "Стандарт: реф-карточка"
+    },
+    {
+      "type": "defaultReferralTier",
+      "label": "Стандарт: статистика реф-программы"
+    },
+    {
+      "type": "defaultSectionTabs",
+      "label": "Стандарт: табы раздела"
+    },
+    {
+      "type": "defaultSecurityPanel",
+      "label": "Стандарт: безопасность"
+    },
+    {
+      "type": "defaultSidebar",
+      "label": "Стандарт: сайдбар"
+    },
+    {
+      "type": "defaultStatRow",
+      "label": "Стандарт: полоса метрик"
+    },
+    {
+      "type": "defaultStatStrip",
+      "label": "Стандарт: метрики 4×"
+    },
+    {
+      "type": "defaultSteps",
+      "label": "Стандарт: шаги подключения"
+    },
+    {
+      "type": "defaultSupport",
+      "label": "Стандарт: поддержка"
+    },
+    {
+      "type": "defaultTariffPanel",
+      "label": "Стандарт: текущий тариф"
+    },
+    {
+      "type": "defaultTariffSwitcher",
+      "label": "Стандарт: выбор тарифа"
+    },
+    {
+      "type": "defaultTariffsGrid",
+      "label": "Стандарт: тарифы 2-5"
+    },
+    {
+      "type": "defaultThemeMode",
+      "label": "Стандарт: переключатель темы"
+    },
+    {
+      "type": "defaultTopbar",
+      "label": "Стандарт: шапка"
+    },
+    {
+      "type": "defaultTrafficTrend",
+      "label": "Стандарт: график трафика"
+    },
+    {
+      "type": "defaultTrafficUsage",
+      "label": "Стандарт: трафик"
+    },
+    {
+      "type": "defaultTrialCard",
+      "label": "Стандарт: пробный период"
+    },
+    {
+      "type": "defaultUsageRings",
+      "label": "Стандарт: трафик и устройства"
+    }
+  ]
+}

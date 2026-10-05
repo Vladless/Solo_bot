@@ -6,12 +6,11 @@ from datetime import datetime
 from itertools import cycle
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import USE_COUNTRY_SELECTION
 from core.bootstrap import MODES_CONFIG
 from database.models import Key, Server, User
+from settings.config import USE_COUNTRY_SELECTION
 
 
 async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple[int, int]:
@@ -76,53 +75,49 @@ async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple
 
         user_exists = await session.execute(select(User).where(User.tg_id == tg_id))
         if not user_exists.scalar():
-            try:
-                session.add(
-                    User(
-                        tg_id=tg_id,
-                        username=None,
-                        first_name=None,
-                        last_name=None,
-                        language_code=None,
-                        is_bot=False,
-                        balance=0.0,
-                        trial=1,
-                        source_code=None,
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow(),
-                    )
+            session.add(
+                User(
+                    tg_id=tg_id,
+                    username=None,
+                    first_name=None,
+                    last_name=None,
+                    language_code=None,
+                    is_bot=False,
+                    balance=0.0,
+                    trial=1,
+                    source_code=None,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
                 )
-            except SQLAlchemyError as e:
-                await session.rollback()
-                raise RuntimeError(f"Ошибка при импорте пользователя tg_id={tg_id}") from e
+            )
+
+        await session.flush()
+        user_row = await session.execute(select(User.id).where(User.tg_id == tg_id))
+        bill_uid = user_row.scalar_one()
 
         key_exists = await session.execute(select(Key).where(Key.client_id == client_id))
         if key_exists.scalar():
             skipped += 1
             continue
 
-        try:
-            session.add(
-                Key(
-                    tg_id=tg_id,
-                    client_id=client_id,
-                    email=email,
-                    created_at=created_at,
-                    expiry_time=expiry_time,
-                    key="",
-                    server_id=server_id,
-                    remnawave_link=None,
-                    tariff_id=None,
-                    is_frozen=False,
-                    alias=None,
-                    notified=False,
-                    notified_24h=False,
-                )
+        session.add(
+            Key(
+                user_id=bill_uid,
+                tg_id=tg_id,
+                client_id=client_id,
+                email=email,
+                created_at=created_at,
+                expiry_time=expiry_time,
+                key="",
+                server_id=server_id,
+                remnawave_link=None,
+                tariff_id=None,
+                is_frozen=False,
+                alias=None,
+                notified=False,
+                notified_24h=False,
             )
-            imported += 1
-        except SQLAlchemyError as e:
-            await session.rollback()
-            raise RuntimeError(f"Ошибка при импорте ключа client_id={client_id}") from e
+        )
+        imported += 1
 
-    await session.commit()
     return imported, skipped

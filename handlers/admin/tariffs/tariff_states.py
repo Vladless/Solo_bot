@@ -15,6 +15,7 @@ class TariffCreateState(StatesGroup):
 class TariffEditState(StatesGroup):
     choosing_field = State()
     editing_value = State()
+    visibility_count = State()
 
 
 class TariffSubgroupState(StatesGroup):
@@ -26,3 +27,4 @@ class SubgroupEditState(StatesGroup):
     entering_new_title = State()
     confirming_deletion = State()
     editing_tariffs = State()
+    entering_description = State()

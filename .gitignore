@@ -27,15 +27,23 @@ env/
 *.db
 
 # Sensitive configuration files
-config.py
-config.ini
-alembic.ini
-.env
+/config.py
+/settings/config.py
+/settings/texts.py
+config_beta.py
+texts_beta.py
+/config.ini
+/alembic.ini
+/.env
 
 # Backup files
 *.bak
 *.swp
 *~
+backups/
+backup_bot/
+Solo_backup/
+.cursor/
 
 # Specific project files
 vpn_users.db
@@ -49,15 +57,53 @@ handlers/texts.py
 # Miscellaneous
 .DS_Store
 Thumbs.db
+undefined/
 
 nginx.conf
-scripts
+/scripts/load_balancer.py
+/scripts/__pycache__
 .csv
 /logs
-setup.py
 .ruff_cache
-.github/workflows/
-modules/
+modules/*
+!modules/partner_program/
 storage/
+static/
+packs/*
+!packs/default/
+packs/default/dist/
+packs/default/node_modules/
+reference/
 
 .license_state
+.solobot_docker.json
+.license_lease
+Solo_backup/
+
+# Node / Next.js artifacts (root — web-app has its own)
+node_modules/
+.next/
+.vite/
+.claude/
+
+.cursor/hooks.json
+.cursor/hooks/after-agent-response.cjs
+.cursor/hooks/before-submit-prompt.cjs
+.cursor/hooks/after-agent-response.js
+.cursor/hooks/before-submit-prompt.js
+.cursor/cursor-notifier.json
+.cursor/cursor-notifier-start.json
+nuitka-crash-report*
+api-*.json
+
+# личные черновики новостей (не коммитить)
+новость_*.md
+
+# Тесты и инструменты разработчика в репозиторий не идут — только рабочий код.
+tests/
+web-app/tests/
+modules/partner_program/tests/
+tools-dev/
+web-app/vitest.config.ts
+web-app/vitest.packs.config.ts
+web-app/playwright.config.ts

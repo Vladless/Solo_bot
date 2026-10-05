@@ -1,11 +1,11 @@
-__all__ = ("router",)
+__all__ = (
+    "router",
+    "_task_lifecycle",
+)
 
 from aiogram import Router
 
-from .general_notifications import router as general_notifications_router
-from .special_notifications import router as special_notifications_router
+from core.tasks import lifecycle as _task_lifecycle
 
 
 router = Router(name="notifications_main_router")
-
-router.include_routers(general_notifications_router, special_notifications_router)

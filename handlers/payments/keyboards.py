@@ -3,9 +3,9 @@ from collections.abc import Iterable
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import RENEWAL_PRICES
-from handlers.buttons import BACK, CUSTOM_AMOUNT
-from handlers.payments.currency_rates import format_for_user
+from services.payments.currency_rates import format_for_user
+from settings.buttons import BACK, CUSTOM_AMOUNT
+from settings.config import RENEWAL_PRICES
 
 
 async def payment_options_for_user(
@@ -93,4 +93,12 @@ def pay_keyboard(url: str, *, pay_text: str, back_cb: str) -> InlineKeyboardMark
 def back_keyboard(back_cb: str) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.row(InlineKeyboardButton(text=BACK, callback_data=back_cb))
+    return b.as_markup()
+
+
+def balance_fallback_kb() -> InlineKeyboardMarkup:
+    from settings.buttons import BALANCE
+
+    b = InlineKeyboardBuilder()
+    b.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
     return b.as_markup()

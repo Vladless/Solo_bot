@@ -1,3 +1,5 @@
+import ipaddress
+import json
 import time
 
 from dataclasses import dataclass
@@ -6,10 +8,10 @@ from typing import Any
 import httpx
 import py3xui
 
-from py3xui import AsyncApi
+from py3xui import AsyncApi, Client, Inbound
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, SUPERNODE, USE_XUI_TOKEN, XUI_TOKEN
 from logger import logger
+from settings.config import ADMIN_PASSWORD, ADMIN_USERNAME, SUPERNODE, USE_XUI_TOKEN, XUI_TOKEN
 
 
 @dataclass
@@ -23,13 +25,187 @@ class ClientConfig:
     total_gb: int
     expiry_time: int
     enable: bool
-    flow: str
     inbound_id: int
     sub_id: str
 
 
 _xui_instance_cache: dict[str, tuple[AsyncApi, float]] = {}
 SESSION_TTL = 1800
+
+
+_inbound_cache: dict[str, tuple[Inbound, float]] = {}
+INBOUND_CACHE_TTL = SESSION_TTL
+
+
+def _resolve_flow(inbound: Inbound) -> str:
+    """VLESS flow по stream_settings: vision только для (reality|tls)+tcp, иначе пусто."""
+    ss = getattr(inbound, "stream_settings", None)
+    if not ss or isinstance(ss, str):
+        return ""
+    security = (getattr(ss, "security", "") or "").lower()
+    network = (getattr(ss, "network", "") or "").lower()
+    if security in ("reality", "tls") and network == "tcp":
+        return "xtls-rprx-vision"
+    return ""
+
+
+def _stream_settings_dict(inbound: Inbound) -> dict[str, Any]:
+    ss = getattr(inbound, "stream_settings", None)
+    if ss is None:
+        return {}
+    if isinstance(ss, str):
+        try:
+            return json.loads(ss) if ss else {}
+        except json.JSONDecodeError:
+            return {}
+    if isinstance(ss, dict):
+        return ss
+    if hasattr(ss, "model_dump"):
+        return ss.model_dump(by_alias=True)
+    return {}
+
+
+def _client_identity(client: Client | None) -> str | None:
+    if not client:
+        return None
+    for value in (client.uuid, client.id):
+        if value is not None and str(value).strip():
+            return str(value)
+    return None
+
+
+def _apply_client_identity(client: Client, client_id: str) -> None:
+    client.id = client_id
+    client.uuid = client_id
+
+
+def _build_client(config: ClientConfig, flow: str) -> Client:
+    return Client(
+        id=config.client_id,
+        uuid=config.client_id,
+        email=config.email.lower(),
+        limit_ip=config.limit_ip if config.limit_ip is not None else 0,
+        total_gb=config.total_gb,
+        expiry_time=config.expiry_time,
+        enable=config.enable,
+        tg_id=config.tg_id,
+        sub_id=config.sub_id,
+        flow=flow,
+    )
+
+
+async def _get_inbound_cached(xui: AsyncApi, inbound_id: int) -> Inbound:
+    """Inbound с TTL-кэшем по ключу (xui, inbound_id)."""
+    key = f"{id(xui)}|{inbound_id}"
+    now = time.time()
+    cached = _inbound_cache.get(key)
+    if cached and (now - cached[1] < INBOUND_CACHE_TTL):
+        return cached[0]
+    inbound = await xui.inbound.get_by_id(int(inbound_id))
+    _inbound_cache[key] = (inbound, now)
+    return inbound
+
+
+_NODES_CACHE: dict[str, tuple[list[dict], float]] = {}
+NODES_CACHE_TTL = 60
+
+
+def _is_routable_host(value: str) -> bool:
+    """Проверяет, годится ли адрес инбаунда для клиентской ссылки."""
+    host = (value or "").strip()
+    if not host or host[0] in ("@", "/"):
+        return False
+    if host.lower() == "localhost":
+        return False
+    try:
+        address = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return True
+    return not (address.is_unspecified or address.is_loopback)
+
+
+async def _panel_get(xui: AsyncApi, api_url: str, endpoint: str) -> Any | None:
+    """Выполняет GET к панели под сессией py3xui для ручек, которых нет в клиенте."""
+    session = getattr(xui.inbound, "session", None)
+    if not session:
+        return None
+    url = f"{api_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    try:
+        async with httpx.AsyncClient(cookies={"3x-ui": session}, timeout=10.0) as client:
+            response = await client.get(url)
+        if response.status_code != 200:
+            return None
+        payload = response.json()
+    except Exception as error:
+        logger.debug(f"[XUI] Ручка {endpoint} недоступна: {error}")
+        return None
+    if not isinstance(payload, dict) or not payload.get("success"):
+        return None
+    return payload.get("obj")
+
+
+async def get_panel_nodes(xui: AsyncApi, api_url: str) -> list[dict]:
+    """Возвращает узлы мастер-панели 3x-ui; для панели без узлов список пуст."""
+    now = time.time()
+    cached = _NODES_CACHE.get(api_url)
+    if cached and now - cached[1] < NODES_CACHE_TTL:
+        return cached[0]
+    obj = await _panel_get(xui, api_url, "panel/api/nodes/list")
+    nodes = [node for node in obj if isinstance(node, dict)] if isinstance(obj, list) else []
+    _NODES_CACHE[api_url] = (nodes, now)
+    return nodes
+
+
+async def get_inbound_raw(xui: AsyncApi, api_url: str, inbound_id: int) -> dict | None:
+    """Возвращает инбаунд как его отдаёт панель, вместе с полями узла и стратегии адреса."""
+    obj = await _panel_get(xui, api_url, f"panel/api/inbounds/get/{int(inbound_id)}")
+    return obj if isinstance(obj, dict) else None
+
+
+async def get_inbound_node(xui: AsyncApi, api_url: str, inbound_id: int) -> dict | None:
+    """Возвращает узел, к которому привязан инбаунд, если панель работает мастером."""
+    raw = await get_inbound_raw(xui, api_url, inbound_id)
+    if not raw:
+        return None
+    node_id = raw.get("nodeId")
+    if node_id is None:
+        return None
+    for node in await get_panel_nodes(xui, api_url):
+        if node.get("id") == node_id:
+            return node
+    return None
+
+
+async def resolve_inbound_host(xui: AsyncApi, api_url: str, inbound_id: int, fallback_host: str) -> str:
+    """Возвращает адрес для ссылки по правилу панели: узел, адрес прослушивания или свой адрес."""
+    raw = await get_inbound_raw(xui, api_url, inbound_id)
+    if not raw:
+        return fallback_host
+
+    node_host = ""
+    node_id = raw.get("nodeId")
+    if node_id is not None:
+        for node in await get_panel_nodes(xui, api_url):
+            if node.get("id") == node_id:
+                node_host = str(node.get("address") or "").strip()
+                break
+
+    listen = str(raw.get("listen") or "").strip()
+    listen_host = listen if _is_routable_host(listen) else ""
+    custom_host = str(raw.get("shareAddr") or "").strip()
+
+    strategy = str(raw.get("shareAddrStrategy") or "node").strip().lower()
+    if strategy == "listen":
+        candidates = [listen_host, node_host]
+    elif strategy == "custom":
+        candidates = [custom_host, node_host, listen_host]
+    else:
+        candidates = [node_host, listen_host]
+
+    for candidate in candidates:
+        if candidate:
+            return candidate
+    return fallback_host
 
 
 async def get_xui_instance(api_url: str) -> AsyncApi:
@@ -59,27 +235,19 @@ async def get_xui_instance(api_url: str) -> AsyncApi:
     return xui
 
 
-async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, Any]:
+async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, Any] | None:
     try:
-        client = py3xui.Client(
-            id=config.client_id,
-            email=config.email.lower(),
-            limit_ip=config.limit_ip if config.limit_ip is not None else 0,
-            total_gb=config.total_gb,
-            expiry_time=config.expiry_time,
-            enable=config.enable,
-            tg_id=config.tg_id,
-            sub_id=config.sub_id,
-            flow=config.flow,
-        )
+        inbound = await _get_inbound_cached(xui, config.inbound_id)
+        flow = _resolve_flow(inbound)
+        client = _build_client(config, flow)
 
-        response = await xui.client.add(config.inbound_id, [client])
-        logger.info(f"Клиент {config.email} успешно добавлен с ID {config.client_id}")
-        return response if response else {"status": "failed"}
+        await xui.client.add(config.inbound_id, [client])
+        logger.info(f"Клиент {config.email} успешно добавлен с ID {config.client_id} (flow={flow!r})")
+        return {"status": "success", "email": config.email, "client_id": config.client_id}
 
     except httpx.ConnectTimeout as e:
         logger.error(f"Ошибка при добавлении клиента {config.email}: {e}")
-        return {"status": "failed", "error": "Timeout"}
+        return None
 
     except Exception as e:
         error_message = str(e)
@@ -88,7 +256,7 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
             return {"status": "duplicate", "email": config.email}
 
         logger.error(f"Ошибка при добавлении клиента {config.email}: {error_message}")
-        return {"status": "failed", "error": error_message}
+        return None
 
 
 async def extend_client_key(
@@ -104,15 +272,18 @@ async def extend_client_key(
 ) -> bool | None:
     try:
         client = await xui.client.get_by_email(email)
-        if not client or not client.id:
+        if not client or not _client_identity(client):
             logger.warning(f"Клиент с email {email} не найден или не имеет ID.")
             return None
 
         logger.info(f"Обновление ключа клиента {email} с ID {client.id} до {new_expiry_time}")
 
-        client.id = client_id
+        inbound = await _get_inbound_cached(xui, inbound_id)
+        flow = _resolve_flow(inbound)
+
+        _apply_client_identity(client, client_id)
         client.expiry_time = new_expiry_time
-        client.flow = "xtls-rprx-vision"
+        client.flow = flow
         client.sub_id = sub_id
         client.total_gb = total_gb
         client.enable = True
@@ -120,9 +291,9 @@ async def extend_client_key(
         client.inbound_id = inbound_id
         client.tg_id = tg_id
 
-        await xui.client.update(client.id, client)
+        await xui.client.update(client_id, client)
         await xui.client.reset_stats(inbound_id, email)
-        logger.info(f"Ключ клиента {email} успешно продлён до {new_expiry_time}")
+        logger.info(f"Ключ клиента {email} успешно продлён до {new_expiry_time} (flow={flow!r})")
         return True
 
     except httpx.ConnectTimeout as e:
@@ -151,8 +322,7 @@ async def delete_client(
             logger.warning(f"Клиент с email {email} и ID {client_id} не найден")
             return False
 
-        client.id = client_id
-        await xui.client.delete(inbound_id, client.id)
+        await xui.client.delete(inbound_id, client_id)
         logger.info(f"Клиент с ID {client_id} был удален успешно")
         return True
 
@@ -165,15 +335,54 @@ async def delete_client(
         return False
 
 
-async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str) -> dict[str, Any]:
+_LEGACY_TRAFFIC_ENDPOINT = "panel/api/inbounds/getClientTrafficsById/{key}"
+_MODERN_TRAFFIC_ENDPOINT = "panel/api/clients/traffic/{key}"
+_modern_panels: set[str] = set()
+
+
+def _traffic_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        return [payload]
+    return [row for row in (payload or []) if isinstance(row, dict)]
+
+
+async def _fetch_traffic(xui: py3xui.AsyncApi, endpoint: str, key: str) -> list[dict[str, Any]] | None:
+    """None — маршрут не отвечает данными: панель другого поколения."""
+    api = xui.client
     try:
-        traffic_data = await xui.client.get_traffic_by_id(client_id)
-        if not traffic_data:
+        response = await api._get(api._url(endpoint.format(key=key)), {"Accept": "application/json"})
+        body = response.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict) or not body.get("success"):
+        return None
+    return _traffic_rows(body.get("obj"))
+
+
+async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str, email: str | None = None) -> dict[str, Any]:
+    try:
+        host = str(getattr(xui.client, "_host", "") or "")
+        rows = None
+
+        if email and host in _modern_panels:
+            rows = await _fetch_traffic(xui, _MODERN_TRAFFIC_ENDPOINT, email)
+        if rows is None:
+            rows = await _fetch_traffic(xui, _LEGACY_TRAFFIC_ENDPOINT, client_id)
+            if rows is not None:
+                _modern_panels.discard(host)
+        if rows is None and email:
+            rows = await _fetch_traffic(xui, _MODERN_TRAFFIC_ENDPOINT, email)
+            if rows is not None:
+                _modern_panels.add(host)
+                logger.info(f"[XUI] Панель {host} отвечает по маршрутам 3.6, перешёл на них.")
+
+        if not rows:
             logger.warning(f"Трафик для клиента {client_id} не найден.")
             return {"status": "not_found", "client_id": client_id}
 
-        logger.info(f"Трафик для клиента {client_id} успешно получен.")
-        return {"status": "success", "client_id": client_id, "traffic": traffic_data}
+        used_bytes = sum(int(row.get("up") or 0) + int(row.get("down") or 0) for row in rows)
+        logger.info(f"Трафик для клиента {client_id} успешно получен: {used_bytes} байт.")
+        return {"status": "success", "client_id": client_id, "used_bytes": used_bytes, "traffic": rows}
 
     except httpx.ConnectTimeout as e:
         logger.error(f"Ошибка при получении трафика клиента {client_id}: {e}")
@@ -197,16 +406,19 @@ async def toggle_client(
             logger.warning(f"Клиент с email {email} и ID {client_id} не найден.")
             return False
 
+        inbound = await _get_inbound_cached(xui, inbound_id)
+        flow = _resolve_flow(inbound)
+
         client.sub_id = email
         client.enable = enable
-        client.id = client_id
-        client.flow = "xtls-rprx-vision"
+        _apply_client_identity(client, client_id)
+        client.flow = flow
         client.limit_ip = 0
         client.inbound_id = inbound_id
 
-        await xui.client.update(client.id, client)
+        await xui.client.update(client_id, client)
         status = "включен" if enable else "отключен"
-        logger.info(f"Клиент с email {email} и ID {client_id} успешно {status}.")
+        logger.info(f"Клиент с email {email} и ID {client_id} успешно {status} (flow={flow!r}).")
         return True
 
     except httpx.ConnectTimeout as e:
@@ -220,6 +432,62 @@ async def toggle_client(
         return False
 
 
+async def change_client_email(
+    xui: py3xui.AsyncApi,
+    inbound_id: int,
+    old_email: str,
+    new_email: str,
+    new_sub_id: str,
+    client_id: str,
+) -> bool:
+    """Меняет email/ссылку клиента: удаляет старого и создаёт нового с тем же UUID.
+
+    3x-ui не умеет переименовывать email через updateClient (матчит по email → record not found),
+    поэтому delete+add. UUID (client_id) сохраняется → активные конфиги юзера продолжают работать,
+    срок и квота переносятся.
+    """
+    try:
+        client = await xui.client.get_by_email(old_email)
+        if not client or not _client_identity(client):
+            logger.warning(f"Клиент {old_email} не найден для смены ссылки (ID {client_id}).")
+            return False
+
+        expiry_time = int(getattr(client, "expiry_time", 0) or 0)
+        total_gb = int(getattr(client, "total_gb", 0) or 0)
+        limit_ip = int(getattr(client, "limit_ip", 0) or 0)
+        enable = bool(getattr(client, "enable", True))
+        tg_id_val = getattr(client, "tg_id", "") or ""
+
+        if not await delete_client(xui, inbound_id, old_email, client_id):
+            logger.error(f"Не удалось удалить клиента {old_email} при смене ссылки (ID {client_id}).")
+            return False
+
+        result = await add_client(
+            xui,
+            ClientConfig(
+                client_id=client_id,
+                email=new_email,
+                tg_id=tg_id_val,
+                limit_ip=limit_ip,
+                total_gb=total_gb,
+                expiry_time=expiry_time,
+                enable=enable,
+                inbound_id=inbound_id,
+                sub_id=new_sub_id,
+            ),
+        )
+        if not result or result.get("status") not in ("success", "duplicate"):
+            logger.error(f"Не удалось создать клиента {new_email} при смене ссылки (ID {client_id}).")
+            return False
+
+        logger.info(f"Ссылка сменена: {old_email} → {new_email} (ID {client_id}).")
+        return True
+
+    except Exception as e:
+        logger.error(f"Ошибка смены email {old_email} → {new_email} (ID {client_id}): {e}")
+        return False
+
+
 def build_vless_link_from_inbound(
     inbound: py3xui.Inbound,
     user_uuid: str,
@@ -230,15 +498,16 @@ def build_vless_link_from_inbound(
     client_flow: str | None = None,
 ) -> str:
     name = remark or email
-    security = (inbound.stream_settings.security or "").lower()
-    network = (inbound.stream_settings.network or "").lower()
+    stream = _stream_settings_dict(inbound)
+    security = (stream.get("security") or "").lower()
+    network = (stream.get("network") or "").lower()
 
     def _first(val):
         if isinstance(val, list) and val:
             return val[0]
         return val or ""
 
-    rs = inbound.stream_settings.reality_settings or {}
+    rs = stream.get("realitySettings") or {}
     rs_settings = rs.get("settings") or {}
 
     pbk = rs_settings.get("publicKey") or rs.get("publicKey") or ""
@@ -263,7 +532,7 @@ def build_vless_link_from_inbound(
         return "".join(parts)
 
     if network == "ws":
-        ws = inbound.stream_settings.ws_settings or {}
+        ws = stream.get("wsSettings") or {}
         path = (ws.get("path") or "/").strip() or "/"
         host_hdr = external_host
         if security == "tls":
@@ -303,7 +572,7 @@ async def get_vless_link_for_client(
         if getattr(inbound, "settings", None) and getattr(inbound.settings, "clients", None):
             for c in inbound.settings.clients:
                 if getattr(c, "email", None) == email:
-                    true_uuid = getattr(c, "id", None)
+                    true_uuid = _client_identity(c)
                     client_flow = getattr(c, "flow", None)
                     break
 

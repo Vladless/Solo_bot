@@ -1,13 +1,26 @@
 import logging
 import os
 import sys
+import time
 
 from datetime import timedelta
 from pathlib import Path
 
 from loguru import logger
 
-import config as cfg
+from settings import config as cfg
+
+
+try:
+    from settings.cache_config import (
+        ERROR_THROTTLE_MAX_KEYS,
+        ERROR_THROTTLE_MESSAGE_MAX_LEN,
+        ERROR_THROTTLE_WINDOW_SEC,
+    )
+except ImportError:
+    ERROR_THROTTLE_WINDOW_SEC = 60
+    ERROR_THROTTLE_MAX_KEYS = 500
+    ERROR_THROTTLE_MESSAGE_MAX_LEN = 120
 
 
 LEVELS = {
@@ -41,6 +54,51 @@ LOG_ROTATION_TIME = getattr(cfg, "LOG_ROTATION_TIME", "1 day")
 log_folder = "logs"
 os.makedirs(log_folder, exist_ok=True)
 
+
+def _log_file_owner() -> tuple[int, int] | None:
+    """Хозяин файлов лога: под sudo — тот, кто запустил бота, иначе владельца не меняем."""
+    if os.name != "posix" or not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return None
+    raw_uid = os.environ.get("SUDO_UID")
+    if not raw_uid:
+        return None
+    try:
+        uid = int(raw_uid)
+        gid = int(os.environ.get("SUDO_GID") or uid)
+    except ValueError:
+        return None
+    return uid, gid
+
+
+_LOG_OWNER = _log_file_owner()
+
+
+def _hand_over(path: str) -> None:
+    """Возвращает файл или каталог тому, кто запустил бота, чтобы логи читались без sudo."""
+    if _LOG_OWNER is None:
+        return
+    try:
+        os.chown(path, *_LOG_OWNER)
+    except OSError:
+        pass
+
+
+def _open_log_file(path, flags):
+    """Файл лога открываем сами: сразу с читаемыми правами и нужным владельцем."""
+    descriptor = os.open(path, flags, 0o644)
+    if _LOG_OWNER is not None:
+        try:
+            os.fchown(descriptor, *_LOG_OWNER)
+        except OSError:
+            pass
+    return descriptor
+
+
+if _LOG_OWNER is not None:
+    _hand_over(log_folder)
+    for _name in os.listdir(log_folder):
+        _hand_over(os.path.join(log_folder, _name))
+
 logger.remove()
 
 logger.configure(
@@ -56,11 +114,26 @@ logger.configure(
 level_mapping = {50: "CRITICAL", 40: "ERROR", 30: "WARNING", 20: "INFO", 10: "DEBUG", 0: "NOTSET"}
 
 
+_HTTP_NOISE_MARKERS = (
+    "Invalid method encountered",
+    "Bad status line",
+    "Pause on PRI/Upgrade",
+    "Expected HTTP/",
+    "invalid constant string",
+)
+
+
 class InterceptHandler(logging.Handler):
     def emit(self, record):
-        logger.opt(depth=6, exception=record.exc_info).log(
-            level_mapping.get(record.levelno, "INFO"), record.getMessage()
-        )
+        message = record.getMessage()
+        if record.name.startswith("aiohttp.") and any(m in message for m in _HTTP_NOISE_MARKERS):
+            if "\\x16\\x03" in message:
+                hint = "TLS/HTTPS-данные (ожидался обычный HTTP)"
+            else:
+                hint = "не-HTTP данные (сканер/бот?)"
+            logger.opt(depth=6).warning(f"[HTTP] На порт пришли {hint}, соединение закрыто (400 Bad Request)")
+            return
+        logger.opt(depth=6, exception=record.exc_info).log(level_mapping.get(record.levelno, "INFO"), message)
 
 
 logging.basicConfig(handlers=[InterceptHandler()], level=0)
@@ -74,6 +147,13 @@ for name in (
     "async_api_base",
     "async_api",
     "async_api_client",
+    "charset_normalizer",
+    "asyncio",
+    "alembic",
+    "alembic.autogenerate",
+    "alembic.autogenerate.compare",
+    "alembic.runtime.migration",
+    "alembic.ddl.postgresql",
 ):
     lg = logging.getLogger(name)
     lg.setLevel(logging.ERROR)
@@ -82,8 +162,86 @@ for name in (
 _EXCLUDE = {"async_api_base", "async_api", "async_api_client"}
 
 
+_error_throttle = {}
+
+
+def _error_throttle_key(record):
+    msg = record.get("message", "")
+    if isinstance(msg, str):
+        first_line = msg.split("\n")[0].strip()[:ERROR_THROTTLE_MESSAGE_MAX_LEN]
+    else:
+        first_line = str(msg)[:ERROR_THROTTLE_MESSAGE_MAX_LEN]
+    return (record.get("module", ""), record.get("function", ""), first_line)
+
+
+def _error_throttle_prune():
+    if len(_error_throttle) <= ERROR_THROTTLE_MAX_KEYS:
+        return
+    time.monotonic()
+    by_ts = [(v[0], k) for k, v in _error_throttle.items()]
+    by_ts.sort()
+    for _, k in by_ts[: len(_error_throttle) - ERROR_THROTTLE_MAX_KEYS]:
+        _error_throttle.pop(k, None)
+
+
+def _throttle_allows(record):
+    key = _error_throttle_key(record)
+    now = time.monotonic()
+    if key in _error_throttle:
+        first_ts, count = _error_throttle[key]
+        if now - first_ts < ERROR_THROTTLE_WINDOW_SEC:
+            _error_throttle[key] = (first_ts, count + 1)
+            return False
+        if count > 0:
+            suffix = f" (повторялась {count} раз за последние {int(ERROR_THROTTLE_WINDOW_SEC)} сек)"
+            record["message"] = record["message"] + suffix
+        _error_throttle[key] = (now, 0)
+    else:
+        _error_throttle_prune()
+        _error_throttle[key] = (now, 0)
+    return True
+
+
 def _filter(record):
-    return record.get("name") not in _EXCLUDE and record.get("module") not in _EXCLUDE
+    """Пропускает запись, вердикт о подавлении повтора вычисляется один раз на запись."""
+    if record.get("name") in _EXCLUDE or record.get("module") in _EXCLUDE:
+        return False
+    level_no = getattr(record.get("level"), "no", 20)
+    if level_no < 40:
+        return True
+    extra = record.get("extra")
+    if not isinstance(extra, dict):
+        return _throttle_allows(record)
+    if "throttle_verdict" not in extra:
+        extra["throttle_verdict"] = _throttle_allows(record)
+    return extra["throttle_verdict"]
+
+
+SITE_LOG_TAG = "[Site]"
+SITE_LOG_PREFIX = "[Site"
+
+
+def is_site_record(record) -> bool:
+    """Строка сайта: её ставят метки вида [Site] и [Site:Auth]."""
+    message = record.get("message")
+    return isinstance(message, str) and SITE_LOG_PREFIX in message
+
+
+def _bot_file_filter(record):
+    """Файл бота: всё, кроме строк сайта, и не ниже настроенного уровня."""
+    if is_site_record(record):
+        return False
+    level_no = getattr(record.get("level"), "no", 20)
+    if level_no < BASE_LEVEL:
+        return False
+    return _filter(record)
+
+
+def _site_file_filter(record):
+    """Файл сайта: только его строки и при любом уровне логирования."""
+    if not is_site_record(record):
+        return False
+    return _filter(record)
 
 
 logger.add(
@@ -97,11 +255,23 @@ logger.add(
 log_file_path = os.path.join(log_folder, "logging.log")
 logger.add(
     log_file_path,
-    level=BASE_LEVEL,
+    level=0,
     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {extra[module_tag]} {message}",
     rotation=LOG_ROTATION_TIME,
     retention=timedelta(days=3),
-    filter=_filter,
+    filter=_bot_file_filter,
+    opener=_open_log_file,
+)
+
+site_log_file_path = os.path.join(log_folder, "site.log")
+logger.add(
+    site_log_file_path,
+    level=0,
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {extra[module_tag]} {message}",
+    rotation=LOG_ROTATION_TIME,
+    retention=timedelta(days=3),
+    filter=_site_file_filter,
+    opener=_open_log_file,
 )
 
 logger = logger

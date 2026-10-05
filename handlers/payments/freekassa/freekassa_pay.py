@@ -10,27 +10,30 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    FREEKASSA_SECRET1,
-    FREEKASSA_SECRET2,
-    FREEKASSA_SHOP_ID,
+from core.webhook_abuse import (
+    get_webhook_client_ip,
+    is_webhook_ip_blocked,
+    record_webhook_signature_failure,
 )
 from database import (
-    add_payment,
     add_user,
     async_session_maker,
     check_user_exists,
     clear_temporary_data,
     get_key_count,
-    get_payment_by_payment_id,
     get_temporary_data,
-    update_balance,
+    register_pending_payment,
 )
-from handlers.buttons import BACK, PAY_2
-from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
 from handlers.utils import edit_or_send_message
 from logger import logger
+from services.payments.payment_links import register_payment_creator
+from settings.buttons import BACK, PAY_2
+from settings.config import (
+    FREEKASSA_SECRET1,
+    FREEKASSA_SECRET2,
+    FREEKASSA_SHOP_ID,
+)
+from settings.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
 
 
 router = Router()
@@ -195,7 +198,20 @@ def verify_signature(params: dict) -> bool:
 
 
 async def freekassa_webhook(request: web.Request):
+    """Freekassa webhook через общий pipeline.
+
+    Провайдер-специфичная часть: MD5 подпись + проверка merchant_id +
+    извлечение tg_id из ``us_tg_id`` (custom param) либо из формата
+    ``order_<tg_id>_<rest>`` fallback. После pipeline.process_success_payment
+    отдельно очищаем ``temporary_data`` (FSM state), т.к. freekassa используется
+    из Telegram-bot flow в отличие от остальных web-провайдеров.
+    """
+    from services.payments.pipeline import ParsedPayment, process_success_payment
+
     try:
+        ip = get_webhook_client_ip(request)
+        if await is_webhook_ip_blocked(ip):
+            return web.Response(status=429)
         params = dict(request.query)
         logger.info(f"Received Freekassa webhook: {params}")
 
@@ -211,6 +227,7 @@ async def freekassa_webhook(request: web.Request):
 
         if not verify_signature(params):
             logger.error("Invalid signature in webhook")
+            await record_webhook_signature_failure(ip)
             return web.Response(status=400, text="Invalid signature")
 
         if str(merchant_id) != str(FREEKASSA_SHOP_ID):
@@ -232,21 +249,22 @@ async def freekassa_webhook(request: web.Request):
             logger.error(f"Error parsing parameters: {e}")
             return web.Response(status=400, text="Invalid parameter format")
 
-        async with async_session_maker() as session:
+        parsed = ParsedPayment(
+            payment_id=merchant_order_id,
+            tg_id=tg_id_int,
+            amount=amount_float,
+            currency="RUB",
+        )
+        result = await process_success_payment("freekassa", parsed)
+        if not result.ok:
+            return web.Response(status=500, text="Internal server error")
 
-            existing = await get_payment_by_payment_id(session, merchant_order_id)
-            if existing and existing.get("status") == "success":
-                logger.warning(
-                    f"[Freekassa] Повторный webhook. Платёж уже обработан: order_id={merchant_order_id}"
-                )
-                return web.Response(text="YES")
-
-            await update_balance(session, tg_id_int, amount_float)
-            await send_payment_success_notification(tg_id_int, amount_float, session)
-            await add_payment(
-                session, tg_id_int, amount_float, "freekassa", payment_id=merchant_order_id
-            )
-            await clear_temporary_data(session, tg_id_int)
+        try:
+            async with async_session_maker() as session:
+                await clear_temporary_data(session, tg_id_int)
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"[Freekassa] Не удалось очистить temporary_data: {e}")
 
         logger.info(f"Payment processed successfully. User: {tg_id_int}, Amount: {amount_float}")
         return web.Response(text="YES")
@@ -350,3 +368,30 @@ async def handle_custom_amount_input(
             text="Произошла ошибка при создании платежа. Попробуйте позже.",
             reply_markup=types.InlineKeyboardMarkup(),
         )
+
+
+async def create_link(
+    session: AsyncSession,
+    tg_id: int,
+    amount: float,
+    currency: str,
+    success_url: str | None,
+    failure_url: str | None,
+    metadata: dict | None,
+) -> tuple[str, str]:
+    if currency not in ("RUB", "USD"):
+        raise ValueError("Freekassa поддерживает только RUB или USD")
+    order_id = f"order_{tg_id}_{int(amount)}_{hash(str(tg_id) + str(amount))}"
+    url = generate_payment_link(amount, order_id, tg_id, currency)
+    await register_pending_payment(
+        payment_id=order_id,
+        tg_id=tg_id,
+        amount=float(amount),
+        payment_system="freekassa",
+        currency=currency,
+        metadata=metadata,
+    )
+    return (url, order_id)
+
+
+register_payment_creator("FREEKASSA", create_link)

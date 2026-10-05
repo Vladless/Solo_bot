@@ -1,20 +1,18 @@
-import time
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message, Update
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import ADMIN_ID, DISABLE_DIRECT_START
 from core.bootstrap import MODES_CONFIG
+from core.redis_cache import cache_get, cache_key, cache_set
 from database import check_user_exists
 from logger import logger
+from settings.cache_config import DIRECT_START_USER_EXISTS_CACHE_TTL_SEC
+from settings.config import ADMIN_ID, DISABLE_DIRECT_START
 
 
-_TTL = 20
-_cache_user_exists: dict[int, tuple[float, bool]] = {}
+_TTL = DIRECT_START_USER_EXISTS_CACHE_TTL_SEC
 
 
 class DirectStartBlockerMiddleware(BaseMiddleware):
@@ -35,7 +33,7 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
         if not user and getattr(event, "callback_query", None):
             user = getattr(event.callback_query, "from_user", None)
         if user:
-            admin_ids = set(ADMIN_ID) if isinstance(ADMIN_ID, (list, tuple)) else {ADMIN_ID}
+            admin_ids = set(ADMIN_ID) if isinstance(ADMIN_ID, list | tuple) else {ADMIN_ID}
             if user.id in admin_ids:
                 return await handler(event, data)
 
@@ -50,24 +48,23 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
                 return await handler(event, data)
 
         session = data.get("session")
-        if not isinstance(session, AsyncSession):
+        if session is None or not hasattr(session, "execute"):
             return await handler(event, data)
 
         tg_id = message.from_user.id
         text = message.text.strip()
-        now = time.time()
         user_in_data = bool(data.get("user"))
 
         async def user_exists_cached() -> bool:
             if user_in_data:
                 return True
 
-            cached = _cache_user_exists.get(tg_id)
-            if cached and cached[0] > now:
-                return cached[1]
+            cached = await cache_get(cache_key("direct_start_user_exists", tg_id))
+            if isinstance(cached, bool):
+                return cached
 
             exists = await check_user_exists(session, tg_id)
-            _cache_user_exists[tg_id] = (now + _TTL, exists)
+            await cache_set(cache_key("direct_start_user_exists", tg_id), bool(exists), _TTL)
             return exists
 
         if not text.startswith("/"):

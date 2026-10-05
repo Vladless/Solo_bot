@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+
 from typing import Any
 
 from aiogram import Bot
@@ -8,6 +9,7 @@ from aiogram.enums import MessageEntityType
 from aiogram.types import MessageEntity
 
 from logger import logger
+
 
 _PLACEHOLDER_CACHE: dict[str, str] = {}
 _BOT: Bot | None = None
@@ -274,6 +276,7 @@ def patch_bot_methods() -> bool:
     global _BOT
     try:
         from aiogram.types import Message
+
         from bot import bot
 
         _BOT = bot

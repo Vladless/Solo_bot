@@ -1,26 +1,57 @@
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
+
+import pytz
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject, Update
-from pytz import timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import ADMIN_ID, SUPPORT_CHAT_URL
-from database.models import ManualBan
+from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
+from database import async_session_maker
+from database.models import ManualBan, User
 from logger import logger
+from settings.cache_config import BAN_CACHE_TTL_SEC
+from settings.config import ADMIN_ID, SUPPORT_CHAT_URL
 
 
-TZ = timezone("Europe/Moscow")
-_BAN_CACHE_TTL = 30
-_ban_cache: dict[int, tuple[float, dict | None]] = {}
+TZ = pytz.timezone("Europe/Moscow")
+_BAN_CACHE_TTL = BAN_CACHE_TTL_SEC
+
+
+async def invalidate_ban_cache(tg_id: int) -> None:
+    """Сбросить кэш статуса бана после добавления/снятия бана."""
+    await cache_delete(cache_key("ban_status", tg_id))
 
 
 class BanCheckerMiddleware(BaseMiddleware):
-    def __init__(self, session_factory: Callable[[], AsyncSession] | None = None) -> None:
-        self.session_factory = session_factory
+    """Проверка банов."""
+
+    async def _load_ban_info(self, session: AsyncSession, tg_id: int) -> dict[str, Any] | None:
+        query = (
+            select(ManualBan.reason, ManualBan.until)
+            .join(User, ManualBan.user_id == User.id)
+            .where(
+                User.tg_id == tg_id,
+                (ManualBan.until.is_(None)) | (ManualBan.until > datetime.now(timezone.utc)),
+            )
+            .limit(1)
+        )
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            reason, until = row
+            await cache_set(
+                cache_key("ban_status", tg_id),
+                {"has_ban": True, "reason": reason or "не указана", "until": until.isoformat() if until else None},
+                _BAN_CACHE_TTL,
+            )
+            return {"reason": reason or "не указана", "until": until}
+
+        await cache_set(cache_key("ban_status", tg_id), {"has_ban": False}, _BAN_CACHE_TTL)
+        return None
 
     async def __call__(
         self,
@@ -45,33 +76,34 @@ class BanCheckerMiddleware(BaseMiddleware):
         if tg_id is None:
             return await handler(event, data)
 
-        now_ts = datetime.utcnow().timestamp()
-        cached = _ban_cache.get(tg_id)
-        if cached and cached[0] > now_ts:
-            ban_info = cached[1]
+        cached = await cache_get(cache_key("ban_status", tg_id))
+        if isinstance(cached, dict):
+            if not cached.get("has_ban"):
+                ban_info = None
+            else:
+                until_raw = cached.get("until")
+                until_parsed = None
+                if isinstance(until_raw, str):
+                    try:
+                        until_parsed = datetime.fromisoformat(until_raw)
+                    except ValueError:
+                        until_parsed = None
+                if until_parsed is not None and until_parsed < datetime.now(timezone.utc):
+                    ban_info = None
+                    await cache_delete(cache_key("ban_status", tg_id))
+                else:
+                    ban_info = {
+                        "reason": cached.get("reason") or "не указана",
+                        "until": until_parsed,
+                    }
         else:
             session = data.get("session")
-            if not isinstance(session, AsyncSession):
-                logger.error("[BanChecker] session отсутствует в data")
-                return await handler(event, data)
-
-            query = (
-                select(ManualBan.reason, ManualBan.until)
-                .where(
-                    ManualBan.tg_id == tg_id,
-                    (ManualBan.until.is_(None)) | (ManualBan.until > datetime.utcnow()),
-                )
-                .limit(1)
-            )
-            result = await session.execute(query)
-            row = result.first()
-            if row:
-                reason, until = row
-                ban_info = {"reason": reason or "не указана", "until": until}
+            if session is not None and getattr(session, "execute", None) is not None:
+                ban_info = await self._load_ban_info(session, tg_id)
             else:
-                ban_info = None
-
-            _ban_cache[tg_id] = (now_ts + _BAN_CACHE_TTL, ban_info)
+                async with async_session_maker() as short_session:
+                    ban_info = await self._load_ban_info(short_session, tg_id)
+                    await short_session.commit()
 
         if not ban_info:
             return await handler(event, data)
@@ -79,7 +111,7 @@ class BanCheckerMiddleware(BaseMiddleware):
         reason = ban_info["reason"]
         until = ban_info["until"]
 
-        admin_ids = set(ADMIN_ID) if isinstance(ADMIN_ID, (list, tuple)) else {ADMIN_ID}
+        admin_ids = set(ADMIN_ID) if isinstance(ADMIN_ID, list | tuple) else {ADMIN_ID}
         if tg_id in admin_ids:
             return await handler(event, data)
 
@@ -114,5 +146,6 @@ class BanCheckerMiddleware(BaseMiddleware):
         if isinstance(obj, Message):
             await obj.answer(text_html, parse_mode="HTML")
         elif isinstance(obj, CallbackQuery):
-            await obj.answer(text_plain, show_alert=True)
+            alert_text = text_plain if len(text_plain) <= 200 else text_plain[:197] + "..."
+            await obj.answer(alert_text, show_alert=True)
         return

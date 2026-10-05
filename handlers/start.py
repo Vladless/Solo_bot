@@ -1,17 +1,49 @@
 import os
+import re
 
 from typing import Any
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import (
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
+from core.client_origin import INVITE_REFERRAL, INVITE_UTM, set_client_invite
+from database import (
+    add_user,
+    check_user_exists,
+    get_user_snapshot,
+)
+from database.tracking_sources import attribute_source_if_known, is_known_tracking_source
+from handlers.captcha import generate_captcha
+from handlers.coupons import activate_coupon
+from handlers.instructions.instructions import send_instructions
+from handlers.keys.create.router import confirm_create_new_key
+from handlers.keys.view.router import process_callback_or_message_view_keys
+from handlers.payments.gifts import handle_gift_link
+from handlers.profile import process_callback_view_profile
+from handlers.refferal import invite_handler
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
+from logger import logger
+from middlewares.session import release_session_early
+from settings.buttons import (
+    ABOUT_VPN,
+    ADMIN_BTN,
+    BACK,
+    CHANNEL,
+    DONAT_BUTTON,
+    MAIN_MENU,
+    SUB_CHANELL,
+    SUB_CHANELL_DONE,
+    SUPPORT,
+    TRIAL_SUB,
+)
+from settings.config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
     CHANNEL_ID,
@@ -21,49 +53,18 @@ from config import (
     SUPPORT_CHAT_URL,
     TRIAL_TIME_DISABLE,
 )
-from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
-from database import (
-    upsert_user,
-    get_coupon_by_code,
-    get_user_snapshot,
-    upsert_source_if_empty,
-)
-from database.models import TrackingSource
-from handlers.buttons import (
-    ABOUT_VPN,
-    BACK,
-    CHANNEL,
-    DONAT_BUTTON,
-    MAIN_MENU,
-    SUB_CHANELL,
-    SUB_CHANELL_DONE,
-    SUPPORT,
-    TRIAL_SUB,
-    ADMIN_BTN,
-)
-from handlers.captcha import generate_captcha
-from handlers.coupons import activate_coupon
-from handlers.instructions.instructions import send_instructions
-from handlers.keys.key_create import confirm_create_new_key
-from handlers.keys.key_view import process_callback_or_message_view_keys
-from handlers.payments.gift import handle_gift_link
-from handlers.profile import process_callback_view_profile
-from handlers.refferal import invite_handler
-from handlers.texts import (
+from settings.texts import (
+    ABOUT_VPN_TEXT,
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
     SUBSCRIPTION_CONFIRMED_MSG,
     SUBSCRIPTION_REQUIRED_MSG,
     WELCOME_TEXT,
-    get_about_vpn,
 )
-from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
-from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link
-from .utils import edit_or_send_message, extract_user_data
+from .utils import build_support_button, edit_or_send_message, resolve_actor_data, safe_answer_callback
 
 
 router = Router()
@@ -91,7 +92,6 @@ async def start_entry(
     captcha: bool = True,
 ):
     message = event.message if isinstance(event, CallbackQuery) else event
-
     try:
         await run_hooks("start_entry", message=message, event=event, state=state, session=session, admin=admin)
     except Exception as e:
@@ -109,14 +109,12 @@ async def start_entry(
 
     text = getattr(event, "data", None) or message.text
 
-    user_data = None
-    if isinstance(event, CallbackQuery):
-        user_data = extract_user_data(event.from_user)
+    user_data = resolve_actor_data(message, actor=event.from_user)
 
     await process_start_logic(message, state, session, admin, text, user_data, user_snapshot=user_snapshot)
 
 
-@router.callback_query(F.data == "check_subscription")
+@router.callback_query(F.data == "check_subscription", flags={"popup": True})
 async def check_subscription_callback(callback: CallbackQuery, state: FSMContext, session: Any, admin: bool):
     user_id = callback.from_user.id
     try:
@@ -124,15 +122,19 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
         if member.status not in ["member", "administrator", "creator"]:
             await prompt_subscription(callback)
             return
-        await callback.answer(SUBSCRIPTION_CONFIRMED_MSG)
+        from core.redis_cache import cache_key, cache_set
+        from settings.cache_config import SUBSCRIPTION_CACHE_SUBSCRIBED_TTL_SEC
+
+        await cache_set(cache_key("channel_sub", user_id), True, SUBSCRIPTION_CACHE_SUBSCRIBED_TTL_SEC)
+        await safe_answer_callback(callback, SUBSCRIPTION_CONFIRMED_MSG)
         data = await state.get_data()
         original_text = data.get("original_text") or callback.message.text
-        user_data = data.get("user_data") or extract_user_data(callback.from_user)
+        user_data = resolve_actor_data(callback.message, actor=callback.from_user, saved=data.get("user_data"))
         await state.update_data(user_data=user_data)
         await process_start_logic(callback.message, state, session, admin, original_text, user_data)
     except Exception as e:
         logger.error(f"[CALLBACK] Ошибка подписки: {e}", exc_info=True)
-        await callback.answer(SUBSCRIPTION_CHECK_ERROR_MSG, show_alert=True)
+        await safe_answer_callback(callback, SUBSCRIPTION_CHECK_ERROR_MSG, show_alert=True)
 
 
 async def process_start_logic(
@@ -144,7 +146,7 @@ async def process_start_logic(
     user_data: dict | None = None,
     user_snapshot: tuple[int, int] | None = None,
 ):
-    user_data = user_data or extract_user_data(message.from_user or message.chat)
+    user_data = resolve_actor_data(message, saved=user_data)
     text = text_to_process or message.text or message.caption
 
     if text and text.startswith("/start "):
@@ -152,9 +154,35 @@ async def process_start_logic(
 
     await state.update_data(original_text=text, user_data=user_data)
 
+    if admin and text:
+        user_ref = parse_admin_user_ref(text.strip().lower())
+        if user_ref is not None:
+            from handlers.admin.users.users_manage import process_user_search
+
+            await state.clear()
+            await process_user_search(
+                message,
+                state,
+                session,
+                user_ref,
+                actor_tg_id=(message.from_user.id if message.from_user else None),
+            )
+            return
+
+    _MAX_START_PAYLOAD_LEN = 256
+    _MAX_START_PARTS = 20
+    if text and len(text) > _MAX_START_PAYLOAD_LEN:
+        text = text[:_MAX_START_PAYLOAD_LEN]
+    parts = _split_start_payload(text)
+    if len(parts) > _MAX_START_PARTS:
+        parts = parts[:_MAX_START_PARTS]
+
     gift_detected = False
-    if text:
-        for part in text.split("-"):
+    if parts:
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
             await run_hooks("start_link", message=message, state=state, session=session, user_data=user_data, part=part)
             if "coupons" in part:
                 await handle_coupon_link(part, message, state, session, admin, user_data)
@@ -168,11 +196,19 @@ async def process_start_logic(
             if "utm" in part:
                 await handle_utm_link(part, message, state, session, user_data)
 
+    text = "-".join(parts) if parts else (text or "")
+
     await state.clear()
     if gift_detected:
         return
 
-    await upsert_user(session=session, **user_data)
+    if not await check_user_exists(session, user_data["tg_id"]):
+        await add_user(session=session, **user_data)
+
+    from handlers.legal import legal_gate_passed
+
+    if not await legal_gate_passed(message, session, user_data["tg_id"]):
+        return
 
     tl = (text or "").strip().lower()
     if tl == "trial":
@@ -193,6 +229,9 @@ async def process_start_logic(
     if tl == "instructions":
         await send_instructions(message)
         return
+    if tl.startswith("tab_"):
+        if await handle_cabinet_tab_link(message, tl[4:]):
+            return
 
     trial_key = await get_or_load_user_snapshot(session, user_snapshot, user_data["tg_id"])
     trial = 0
@@ -211,13 +250,37 @@ async def process_start_logic(
         await show_start_menu(message, admin, session, trial=trial, key_count=key_count)
 
 
+_CABINET_TABS = {"profile", "keys", "instructions", "referrals", "partners", "gifts", "notifications"}
+
+
+async def handle_cabinet_tab_link(message, tab):
+    if tab not in _CABINET_TABS:
+        return False
+    from core.settings.web_config import get_site_url, is_web_enabled, is_web_open_in_browser
+
+    if not is_web_enabled():
+        return False
+    site_url = get_site_url()
+    if not site_url:
+        return False
+    from settings.buttons import WEB_CABINET
+
+    builder = InlineKeyboardBuilder()
+    if is_web_open_in_browser():
+        button = InlineKeyboardButton(text=WEB_CABINET, url=f"{site_url}/dashboard?tab={tab}")
+    else:
+        button = InlineKeyboardButton(
+            text=WEB_CABINET,
+            web_app=WebAppInfo(url=f"{site_url}/dashboard?tab={tab}&webapp=1"),
+        )
+    builder.row(button)
+    await message.answer(WELCOME_TEXT, reply_markup=builder.as_markup())
+    return True
+
+
 async def handle_coupon_link(part, message, state, session, admin, user_data):
     code = part.split("coupons")[1].strip("_")
-    coupon = await get_coupon_by_code(session, code)
-    if coupon:
-        await activate_coupon(message, state, session, code, admin=admin, user_data=user_data)
-        if getattr(coupon, "days", None):
-            return
+    await activate_coupon(message, state, session, code, admin=admin, user_data=user_data)
 
 
 async def handle_gift(part, message, state, session, user_data):
@@ -243,16 +306,54 @@ async def handle_gift(part, message, state, session, user_data):
         processing_gifts.discard(gift_id)
 
 
+_START_DIRECTIVE_RE = re.compile(r"^(?:coupons|gift|referral|utm|partner)[_a-z]*", re.IGNORECASE)
+
+
+def parse_admin_user_ref(payload: str) -> int | None:
+    """Разбирает payload /start suser_<ref>."""
+    if not payload.startswith("suser_"):
+        return None
+    ref = payload[6:]
+    return int(ref) if ref.removeprefix("-").isdigit() else None
+
+
+def _split_start_payload(text: str | None) -> list[str]:
+    """Делит склеенный payload по дефису, но только там, где начинается новая директива.
+    Коды партнёров и рефералов пишутся алфавитом base64url, где дефис легален,
+    и резать по нему вслепую значит терять часть кода."""
+    if not text:
+        return []
+    chunks = text.split("-")
+    parts: list[str] = []
+    for chunk in chunks:
+        if parts and not _START_DIRECTIVE_RE.match(chunk):
+            parts[-1] = f"{parts[-1]}-{chunk}"
+            continue
+        parts.append(chunk)
+    return parts
+
+
 async def handle_referral_link_safe(part, message, state, session, user_data):
     try:
         referrer_id = int(part.split("referral")[1].strip("_"))
+        set_client_invite(INVITE_REFERRAL, referrer_id)
+        results = await run_hooks(
+            "referral_link",
+            referrer_id=referrer_id,
+            message=message,
+            state=state,
+            session=session,
+            user_data=user_data,
+        )
+        if results and "HANDLED" in results:
+            return
         await handle_referral_link(referrer_id, message, state, session, user_data)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[Referral] Ошибка обработки реферальной ссылки '{}': {}", part, e)
 
 
 async def prompt_subscription(callback: CallbackQuery):
-    await callback.answer(NOT_SUBSCRIBED_YET_MSG, show_alert=True)
+    await safe_answer_callback(callback, NOT_SUBSCRIBED_YET_MSG, show_alert=True)
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
     kb.row(InlineKeyboardButton(text=SUB_CHANELL_DONE, callback_data="check_subscription"))
@@ -260,11 +361,22 @@ async def prompt_subscription(callback: CallbackQuery):
 
 
 async def handle_utm_link(utm_code: str, message: Message, state: FSMContext, session: AsyncSession, user_data: dict):
-    res = await session.execute(select(TrackingSource).where(TrackingSource.code == utm_code))
-    if not res.scalar_one_or_none():
+    if not await is_known_tracking_source(session, utm_code):
         await message.answer("❌ UTM ссылка не найдена.")
         return
-    await upsert_source_if_empty(session, user_data["tg_id"], utm_code)
+    set_client_invite(INVITE_UTM, utm_code)
+    await attribute_source_if_known(session, user_data["tg_id"], utm_code)
+
+
+async def show_webapp_only_start(message: Message, image_path: str) -> bool:
+    """Стартовый экран веб-режима: медиа и одна кнопка открытия приложения."""
+    from handlers.notifications.webapp_only import webapp_only_markup
+
+    markup = webapp_only_markup()
+    if markup is None:
+        return False
+    await edit_or_send_message(message, WELCOME_TEXT, reply_markup=markup, media_path=image_path)
+    return True
 
 
 async def show_start_menu(
@@ -276,6 +388,11 @@ async def show_start_menu(
 ):
     image_path = os.path.join("img", "pic.jpg")
     kb = InlineKeyboardBuilder()
+
+    if MODES_CONFIG.get("WEBAPP_ONLY_MODE", False):
+        if await show_webapp_only_start(message, image_path):
+            await release_session_early(session)
+            return
 
     if trial is None or key_count is None:
         snap = await get_user_snapshot(session, message.chat.id)
@@ -305,25 +422,29 @@ async def show_start_menu(
     if show_profile:
         kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
-        kb.row(
-            InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL),
-            InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL),
-        )
-    else:
-        kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    channel_enabled = bool(BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS))
+    bottom_row = []
+    if SUPPORT_CHAT_URL:
+        bottom_row.append(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    if channel_enabled and CHANNEL_URL:
+        bottom_row.append(InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL))
+    if bottom_row:
+        kb.row(*bottom_row)
 
     if admin:
         kb.row(InlineKeyboardButton(text=ADMIN_BTN, callback_data=AdminPanelCallback(action="admin").pack()))
 
     try:
-        module_buttons = await run_hooks("start_menu", chat_id=message.chat.id, session=session)
+        module_buttons = await run_hooks(
+            "start_menu", chat_id=message.chat.id, session=session, trial=trial_status, key_count=key_cnt
+        )
         kb = insert_hook_buttons(kb, module_buttons)
     except Exception as e:
-        logger.error(f"[Hooks:start_menu] Ошибка вставки кнопок: {e}", exc_info=True)
+        logger.error(f"[Hooks:start_menu] Ошибка вставки кнопов: {e}", exc_info=True)
 
     kb.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
 
+    await release_session_early(session)
     await edit_or_send_message(message, WELCOME_TEXT, reply_markup=kb.as_markup(), media_path=image_path)
 
 
@@ -339,16 +460,28 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
     if BUTTONS_CONFIG.get("DONATIONS_BUTTON_ENABLE", DONATIONS_ENABLE):
         kb.row(InlineKeyboardButton(text=DONAT_BUTTON, callback_data="donate"))
 
-    kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    if MODES_CONFIG.get("SUPPORT_TRIAGE_ENABLED", False):
+        from handlers.support_triage import TriageCallback
+
+        kb.row(InlineKeyboardButton(text=SUPPORT, callback_data=TriageCallback(action="root").pack()))
+    else:
+        support_btn = await build_support_button()
+        if support_btn:
+            kb.row(support_btn)
     if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         kb.row(InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL))
+
+    from handlers.legal import legal_doc_buttons
+
+    for legal_button in legal_doc_buttons():
+        kb.row(legal_button)
 
     module_buttons = await run_hooks("about_menu", chat_id=user_id, trial=trial, session=session)
     kb = insert_hook_buttons(kb, module_buttons)
 
     kb.row(InlineKeyboardButton(text=BACK, callback_data=back_target))
 
-    text = get_about_vpn("3.2.3-minor")
+    text = ABOUT_VPN_TEXT
     text_hooks = await run_hooks("about_text", chat_id=user_id, trial=trial, session=session)
     if text_hooks:
         text = text_hooks[0]

@@ -7,13 +7,13 @@ from datetime import datetime, timedelta
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ping3 import ping
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, PING_TIME
-from database import get_servers
+from core.executor import run_io
+from database import async_session_maker, get_servers
 from handlers.admin.servers.keyboard import AdminServerCallback
 from logger import logger
+from settings.config import ADMIN_ID, PING_TIME
 
 
 last_ping_times = {}
@@ -22,10 +22,15 @@ notified_servers = set()
 PING_SEMAPHORE = asyncio.Semaphore(3)
 
 
+def _sync_ping(server_ip: str, timeout: float = 3):
+    """Синхронный ping для вызова в пуле потоков."""
+    return ping(server_ip, timeout=timeout)
+
+
 async def ping_server(server_ip: str) -> bool:
     async with PING_SEMAPHORE:
         try:
-            response = await asyncio.to_thread(ping, server_ip, timeout=3)
+            response = await run_io(_sync_ping, server_ip, 3)
             if response is not None and response is not False:
                 return True
             return await check_tcp_connection(server_ip, 443)
@@ -86,13 +91,15 @@ async def notify_admin(server_name: str, status: str, down_duration: timedelta =
         await bot.send_message(admin_id, message, reply_markup=builder.as_markup())
 
 
-async def check_servers(session: AsyncSession):
+async def check_servers(sessionmaker=None):
     """
     Периодическая проверка серверов.
-    Использует asyncio.gather() для ускорения.
+    Использует короткую сессию на итерацию, чтобы не держать транзакцию во время ping.
     """
+    maker = sessionmaker or async_session_maker
     while True:
-        servers = await get_servers(session=session)
+        async with maker() as session:
+            servers = await get_servers(session=session)
         current_time = datetime.now()
 
         tasks = []

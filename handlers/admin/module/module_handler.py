@@ -6,7 +6,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from filters.admin import IsAdminFilter
+from core.executor import run_io
+from filters.admin import HasPermission, IsAdminFilter
+from filters.permissions import PERM_MODULES
+from handlers.admin.panel.headers import menu_text, quote, section
 from handlers.admin.panel.keyboard import AdminPanelCallback
 from utils.modules_manager import manager
 
@@ -14,6 +17,8 @@ from .keyboard import build_module_menu_kb, build_modules_kb
 
 
 router = Router()
+router.callback_query.filter(HasPermission(PERM_MODULES))
+router.message.filter(HasPermission(PERM_MODULES))
 
 
 def list_installed_modules() -> list[tuple[str, str | None]]:
@@ -50,7 +55,7 @@ async def handle_modules(callback_query: CallbackQuery, state: FSMContext, sessi
     packed = AdminPanelCallback.unpack(callback_query.data)
     page = max(1, packed.page or 1)
 
-    all_items = list_installed_modules()
+    all_items = await run_io(list_installed_modules)
     items = [(n, v) for n, v in all_items if n != "web_admin_panel"]
 
     per_page = 12
@@ -64,10 +69,15 @@ async def handle_modules(callback_query: CallbackQuery, state: FSMContext, sessi
         def fmt(n, v):
             return f"{n} v{v}" if v else n
 
-        lines = "\n".join(f"• {fmt(n, v)}" for n, v in chunk)
-        text = f"🧩 Мои модули\n\nНайдено: {len(items)}\n<blockquote>{lines}</blockquote>"
+        text = menu_text(
+            "Мои модули",
+            f"Установлено: <b>{len(items)}</b>",
+            section("📦 Список", *[fmt(n, v) for n, v in chunk]),
+        )
     else:
-        text = "🧩 Мои модули\n\nМодулей не найдено."
+        text = menu_text(
+            "Мои модули", "Пока ничего не установлено.", quote("Модули ставятся из магазина в боте автора.")
+        )
 
     markup = build_modules_kb(page, total_pages, chunk)
     try:
@@ -100,10 +110,10 @@ async def handle_module_restart(callback_query: CallbackQuery, state: FSMContext
     except Exception as e:
         result = f"❌ Ошибка перезапуска: {e}"
 
-    items = dict(list_installed_modules())
+    items = dict(await run_io(list_installed_modules))
     ver = items.get(name)
     title = f"{name} v{ver}" if ver else name
-    text = f"🧩 Модуль: <b>{title}</b>\n\n{result}"
+    text = menu_text("Модули", f"🧩 Модуль: <b>{title}</b>", quote(f"{result}"))
 
     markup = build_module_menu_kb(name, page)
     try:
@@ -129,10 +139,10 @@ async def handle_module_stop(callback_query: CallbackQuery, state: FSMContext, s
     except Exception as e:
         result = f"❌ Ошибка остановки: {e}"
 
-    items = dict(list_installed_modules())
+    items = dict(await run_io(list_installed_modules))
     ver = items.get(name)
     title = f"{name} v{ver}" if ver else name
-    text = f"🧩 Модуль: <b>{title}</b>\n\n{result}"
+    text = menu_text("Модули", f"🧩 Модуль: <b>{title}</b>", quote(f"{result}"))
 
     markup = build_module_menu_kb(name, page)
     try:
@@ -158,10 +168,10 @@ async def handle_module_start(callback_query: CallbackQuery, state: FSMContext, 
     except Exception as e:
         result = f"❌ Ошибка запуска: {e}"
 
-    items = dict(list_installed_modules())
+    items = dict(await run_io(list_installed_modules))
     ver = items.get(name)
     title = f"{name} v{ver}" if ver else name
-    text = f"🧩 Модуль: <b>{title}</b>\n\n{result}"
+    text = menu_text("Модули", f"🧩 Модуль: <b>{title}</b>", quote(f"{result}"))
 
     markup = build_module_menu_kb(name, page)
     try:

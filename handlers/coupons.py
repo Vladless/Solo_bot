@@ -13,32 +13,36 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import ADMIN_ID
 from database import (
-    add_payment,
     add_user,
     check_coupon_usage,
+    claim_coupon_slot,
     create_coupon_usage,
-    get_coupon_by_code,
+    get_coupon_by_code_ci,
     get_keys,
     get_tariff_by_id,
-    update_balance,
-    update_coupon_usage_count,
+    release_coupon_slot,
     update_key_expiry,
 )
-from handlers.buttons import MAIN_MENU
-from handlers.keys.operations import renew_key_in_cluster
-from handlers.payments.currency_rates import format_for_user
+from handlers.admin.panel.headers import section
 from handlers.profile import process_callback_view_profile
-from handlers.texts import (
-    COUPONS_DAYS_MESSAGE,
+from handlers.utils import edit_or_send_message
+from logger import logger
+from middlewares.session import release_session_early
+from services.formatting import format_days
+from services.operations import renew_key_in_cluster
+from services.payments.currency_rates import format_for_user
+from settings.buttons import MAIN_MENU
+from settings.cache_config import COUPON_ATTEMPTS_PER_MINUTE
+from settings.config import ADMIN_ID
+from settings.texts import (
+    COUPONS_DAYS_HINT,
+    COUPONS_DAYS_TITLE,
     COUPON_ALREADY_USED_MSG,
     COUPON_DAYS_ACTIVATED_MSG,
     COUPON_INPUT_PROMPT,
     COUPON_NOT_FOUND_MSG,
 )
-from handlers.utils import edit_or_send_message, format_days
-from logger import logger
 
 
 class CouponActivationState(StatesGroup):
@@ -51,22 +55,41 @@ router = Router()
 
 @router.callback_query(F.data == "activate_coupon")
 @router.message(F.text == "/activate_coupon")
-async def handle_activate_coupon(callback_query_or_message: Message | CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+async def handle_activate_coupon(callback_query_or_message: Message | CallbackQuery, state: FSMContext, session: Any):
+    from services.coupons import peek_percent_hold
 
     if isinstance(callback_query_or_message, CallbackQuery):
         target_message = callback_query_or_message.message
     else:
         target_message = callback_query_or_message
 
+    user_id = callback_query_or_message.from_user.id
+    held = await peek_percent_hold(session, user_id)
+
+    builder = InlineKeyboardBuilder()
+    text = COUPON_INPUT_PROMPT
+    if held is not None:
+        text = f"{COUPON_INPUT_PROMPT}\n\nСейчас активна скидка {held.percent}% по купону {held.coupon_code}."
+        builder.row(InlineKeyboardButton(text="🚫 Снять скидку", callback_data="drop_coupon_hold"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
     await edit_or_send_message(
         target_message=target_message,
-        text=COUPON_INPUT_PROMPT,
+        text=text,
         reply_markup=builder.as_markup(),
         media_path=None,
     )
     await state.set_state(CouponActivationState.waiting_for_coupon_code)
+
+
+@router.callback_query(F.data == "drop_coupon_hold")
+async def drop_coupon_hold(callback_query: CallbackQuery, state: FSMContext, session: Any):
+    """Снимает закрепление скидки и возвращает экран ввода купона."""
+    from services.coupons import drop_percent_coupon
+
+    await drop_percent_coupon(session, callback_query.from_user.id)
+    await callback_query.answer("Скидка снята")
+    await handle_activate_coupon(callback_query, state, session)
 
 
 @router.message(CouponActivationState.waiting_for_coupon_code, F.text)
@@ -84,7 +107,19 @@ async def activate_coupon(
     user_data: dict | None = None,
 ):
     logger.info(f"Активация купона: {coupon_code}")
-    coupon = await get_coupon_by_code(session, coupon_code)
+
+    if not admin:
+        from core.rate_limit import rate_limit_hit
+
+        _u = user_data or message.from_user or message.chat
+        _uid = _u["tg_id"] if isinstance(_u, dict) else getattr(_u, "id", 0)
+        _, exceeded = await rate_limit_hit(f"coupon_try:{_uid}", COUPON_ATTEMPTS_PER_MINUTE, 60)
+        if exceeded:
+            await message.answer("❌ Слишком много попыток. Попробуйте через минуту.")
+            await state.clear()
+            return
+
+    coupon = await get_coupon_by_code_ci(session, coupon_code)
 
     if not coupon:
         builder = InlineKeyboardBuilder()
@@ -107,11 +142,10 @@ async def activate_coupon(
         await state.clear()
         return
 
-    from database.models import User
-
     if getattr(coupon, "new_users_only", False):
-        exists = await session.scalar(select(User.tg_id).where(User.tg_id == user_id))
-        if exists is not None:
+        from services.coupons import is_new_user
+
+        if not await is_new_user(session, user_id):
             await message.answer("❌ Этот купон доступен только для новых пользователей.")
             await state.clear()
             return
@@ -131,12 +165,20 @@ async def activate_coupon(
 
     if coupon.amount > 0:
         try:
-            await update_balance(session, user_id, coupon.amount)
-            await update_coupon_usage_count(session, coupon.id)
-            await create_coupon_usage(session, coupon.id, user_id)
-            await add_payment(session, tg_id=user_id, amount=coupon.amount, payment_system="coupon")
-            amount_txt = await format_for_user(session, user_id, coupon.amount, language_code)
+            from services.coupons import apply_fixed_coupon
+            from services.errors import ServiceError
+
+            result = await apply_fixed_coupon(
+                session=session,
+                user_id=user_id,
+                tg_id=user_id,
+                code=coupon_code,
+            )
+            amount_txt = await format_for_user(session, user_id, result.amount, language_code)
             await message.answer(f"✅ Купон активирован, на баланс начислено {amount_txt}.")
+            await state.clear()
+        except ServiceError as e:
+            await message.answer(f"❌ {e.message}")
             await state.clear()
         except Exception as e:
             logger.error(f"Ошибка при активации купона на баланс: {e}")
@@ -156,20 +198,18 @@ async def activate_coupon(
 
             builder = InlineKeyboardBuilder()
             moscow_tz = pytz.timezone("Europe/Moscow")
-            response_message = COUPONS_DAYS_MESSAGE
+            key_rows = []
 
             for key in active_keys:
                 key_display = html.escape((key.alias or key.email).strip())
-                expiry_date = datetime.fromtimestamp(key.expiry_time / 1000, tz=moscow_tz).strftime(
-                    "до %d.%m.%y, %H:%M"
-                )
-                response_message += f"• <b>{key_display}</b> ({expiry_date})\n"
+                expiry_date = datetime.fromtimestamp(key.expiry_time / 1000, tz=moscow_tz).strftime("до %d.%m.%y")
+                key_rows.append(f"{key_display}: {expiry_date}")
                 builder.button(
                     text=key_display,
                     callback_data=f"extend_key|{key.client_id}|{coupon.id}",
                 )
 
-            response_message += "</blockquote>"
+            response_message = section(COUPONS_DAYS_TITLE, *key_rows) + f"\n{COUPONS_DAYS_HINT}"
             builder.button(text="Отмена", callback_data="cancel_coupon_activation")
             builder.adjust(1)
 
@@ -180,6 +220,32 @@ async def activate_coupon(
             logger.error(f"Ошибка при обработке купона на дни: {e}")
             await message.answer("❌ Ошибка при активации купона.")
             await state.clear()
+        return
+
+    if coupon.percent:
+        try:
+            from services.coupons import hold_percent_coupon
+            from services.errors import ServiceError
+
+            held = await hold_percent_coupon(session=session, user_id=user_id, code=coupon_code)
+        except ServiceError as e:
+            await message.answer(f"❌ {e.message}")
+            await state.clear()
+            return
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении скидки: {e}")
+            await message.answer("❌ Ошибка при активации купона.")
+            await state.clear()
+            return
+
+        conditions = []
+        if held.min_order_amount:
+            conditions.append(f"от {held.min_order_amount} ₽")
+        if held.max_discount_amount:
+            conditions.append(f"не больше {held.max_discount_amount} ₽")
+        tail = f" ({', '.join(conditions)})" if conditions else ""
+        await message.answer(f"✅ Скидка {held.percent}% сохранена{tail} — применится при ближайшей оплате.")
+        await state.clear()
         return
 
     await message.answer("❌ Купон недействителен (нет суммы или дней).")
@@ -193,6 +259,7 @@ async def handle_key_extension(
     session: AsyncSession,
     admin: bool = False,
 ):
+    from database.access.resolution import resolve_user_optional
     from database.models import Coupon, Key, User
 
     parts = callback_query.data.split("|")
@@ -221,7 +288,12 @@ async def handle_key_extension(
                 await state.clear()
                 return
 
-        result = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
+        owner = await resolve_user_optional(session, tg_id)
+        if owner is None:
+            await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
+            await state.clear()
+            return
+        result = await session.execute(select(Key).where(Key.user_id == owner.id, Key.client_id == client_id))
         key = result.scalar_one_or_none()
         if not key or key.is_frozen:
             await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
@@ -239,16 +311,42 @@ async def handle_key_extension(
         tariff_devices = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
 
         total_gb = (
-            int(key.current_traffic_limit) if getattr(key, "current_traffic_limit", None) is not None else tariff_gb
+            int(key.current_traffic_limit)
+            if getattr(key, "current_traffic_limit", None) is not None
+            else int(key.selected_traffic_limit)
+            if getattr(key, "selected_traffic_limit", None) is not None
+            else tariff_gb
         )
         device_limit = (
-            int(key.current_device_limit) if getattr(key, "current_device_limit", None) is not None else tariff_devices
+            int(key.current_device_limit)
+            if getattr(key, "current_device_limit", None) is not None
+            else int(key.selected_device_limit)
+            if getattr(key, "selected_device_limit", None) is not None
+            else tariff_devices
         )
 
         key_subgroup = None
         if tariff:
             key_subgroup = tariff.get("subgroup_title")
 
+        if not await claim_coupon_slot(session, coupon.id):
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text="❌ Лимит активаций купона исчерпан.",
+            )
+            await state.clear()
+            return
+        reserved = await create_coupon_usage(session, coupon.id, tg_id)
+        if not reserved:
+            await release_coupon_slot(session, coupon.id)
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text="❌ Вы уже активировали этот купон.",
+            )
+            await state.clear()
+            return
+
+        await release_session_early(session)
         await renew_key_in_cluster(
             cluster_id=key.server_id,
             email=key.email,
@@ -263,8 +361,6 @@ async def handle_key_extension(
             plan=key.tariff_id,
         )
         await update_key_expiry(session, client_id, new_expiry)
-        await update_coupon_usage_count(session, coupon.id)
-        await create_coupon_usage(session, coupon.id, tg_id)
 
         alias = key.alias or key.email
         expiry_date = datetime.fromtimestamp(new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")).strftime(
@@ -277,7 +373,10 @@ async def handle_key_extension(
         await state.clear()
     except Exception as e:
         logger.error(f"Ошибка при продлении ключа: {e}")
-        await callback_query.message.edit_text("❌ Ошибка при активации купона.")
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="❌ Ошибка при активации купона.",
+        )
         await state.clear()
 
 
