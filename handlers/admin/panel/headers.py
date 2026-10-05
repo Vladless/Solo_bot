@@ -170,6 +170,13 @@ def align_screen(text: str) -> str:
         if not rows:
             return match.group(0)
         if rows not in aligned:
+            pairs = [_split_pair(row) for row in rows]
+            if all(pairs):
+                cells = cells_of(rows)
+                fallback_width = max(LABEL_COLUMN + 2, max(len(label) for label, _ in cells))
+                return "\n".join(
+                    f"<code>{label.ljust(fallback_width)}</code>  <code>{value}</code>" for label, value in cells
+                )
             lines = [branch(row, index == len(rows) - 1) for index, row in enumerate(rows)]
             return "<code>" + "\n".join(lines) + "</code>"
         lines = []
