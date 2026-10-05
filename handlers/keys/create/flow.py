@@ -84,6 +84,11 @@ async def handle_key_creation(
         logger.warning(f"[AntiSpam] Пользователь {tg_id} повторно нажал на покупку — игнор.")
         return
 
+    # Buying a new key must not inherit a renewal mode left in FSM storage.
+    from handlers.tariffs.buy.config import clear_user_renewal_context
+
+    await clear_user_renewal_context(state)
+
     await state.update_data(key_creation_in_progress=True)
 
     target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query

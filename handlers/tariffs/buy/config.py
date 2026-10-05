@@ -21,13 +21,27 @@ class TariffUserConfigState(StatesGroup):
 
 
 async def clear_user_renewal_context(state: FSMContext) -> None:
-    """Удаляет контекст прошлого продления перед началом новой покупки."""
+    """Удаляет renewal-контекст и связанную конфигурацию, не трогая прочие FSM-данные."""
     data = await state.get_data()
+    had_renewal_context = any(key.startswith("renew_") for key in data)
     stale_keys = [key for key in data if key.startswith("renew_")]
+    if had_renewal_context:
+        stale_keys.extend(
+            key
+            for key in (
+                "config_tariff_id",
+                "tariff_config",
+                "config_selected_device_limit",
+                "config_selected_traffic_gb",
+            )
+            if key in data
+        )
     if stale_keys:
         for key in stale_keys:
             data.pop(key, None)
         await state.set_data(data)
+    if had_renewal_context:
+        await state.set_state(None)
 
 
 async def start_tariff_config(
