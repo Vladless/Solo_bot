@@ -132,6 +132,7 @@ async def _finalize_renewal(
         selected_traffic_limit=selected_traffic,
         selected_price_rub=int(full_price),
         credited_to_balance_rub=max(0, int(round(-cost))),
+        state=state,
     )
 
 
@@ -161,6 +162,7 @@ async def complete_key_renewal(
     selected_traffic_limit: int | None = None,
     selected_price_rub: int | None = None,
     credited_to_balance_rub: int = 0,
+    state: FSMContext | None = None,
 ):
     """Продлевает подписку через сервис и отправляет Telegram-уведомление."""
     from services.errors import ServiceError
@@ -234,6 +236,16 @@ async def complete_key_renewal(
             except Exception as notify_err:
                 logger.warning(f"[Renew] Не удалось показать ошибку продления: {notify_err}")
             return False
+
+        # The renewal is committed at this point. Clear its FSM context now so
+        # notification/rendering failures cannot leave a stale renewal mode.
+        if state is not None:
+            try:
+                from handlers.tariffs.buy.config import clear_user_renewal_context
+
+                await clear_user_renewal_context(state)
+            except Exception as state_error:
+                logger.warning(f"[Renew] Не удалось очистить FSM после успешного продления: {state_error}")
 
         tariff = await get_tariff_by_id(session, tariff_id)
         tariff_name = tariff["name"] if tariff else ""

@@ -91,6 +91,12 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             await callback_query.answer("Доступ запрещён.", show_alert=True)
             return
 
+        # Starting a renewal for another key must not reuse a previous key's
+        # renewal/configuration context.
+        from handlers.tariffs.buy.config import clear_user_renewal_context
+
+        await clear_user_renewal_context(state)
+
         client_id = record["client_id"]
         expiry_time_raw = record["expiry_time"]
         expiry_time = normalize_expiry_ms(expiry_time_raw)
@@ -305,6 +311,8 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         if not client_id or not key_name:
             await callback.message.answer("❌ Данные для подгруппы не найдены.")
             return
+
+        await state.update_data(renew_subgroup_hash=subgroup_hash)
 
         record = await get_key_details(session, key_name)
         if not record:
@@ -688,6 +696,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             cost,
             callback_query,
             tariff_id,
+            state=state,
         )
 
     except Exception as e:
@@ -831,6 +840,7 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
             selected_device_limit=int(selected_devices) if selected_devices is not None else None,
             selected_traffic_limit=int(selected_traffic_gb) if selected_traffic_gb is not None else None,
             selected_price_rub=int(final_price),
+            state=state,
         )
 
     except Exception as e:

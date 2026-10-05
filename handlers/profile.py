@@ -68,6 +68,12 @@ async def process_callback_view_profile(
     chat_id = chat.id
     username = get_username(user or chat)
 
+    # Leaving the renewal flow for the main profile is a cancellation; discard
+    # only renewal-owned FSM data so it cannot affect a later purchase.
+    from handlers.tariffs.buy.config import clear_user_renewal_context
+
+    await clear_user_renewal_context(state)
+
     cached = await cache_get(cache_key("profile_data", chat_id))
     has_email = None
     if isinstance(cached, dict) and "key_count" in cached and "balance_rub" in cached and "trial_status" in cached:
