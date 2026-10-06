@@ -21,8 +21,8 @@
 #   4. На хосте разрешите подключения из Docker:
 #        PostgreSQL: listen_addresses = '*' и в pg_hba.conf строка
 #                    host all all 172.16.0.0/12 scram-sha-256
-#        Redis:      bind 0.0.0.0 (и обязательно requirepass / firewall)
-#      Порты 5432/6379 наружу не открывайте — только для docker-сети.
+#        Redis:      слушать адрес Docker-шлюза и разрешить доступ только из Docker-сети
+#      Не публикуйте порты 5432/6379 в интернет; ограничьте их firewall правилом для Docker-сети.
 #
 # Бот слушает 127.0.0.1:3001 (вебхук Telegram, ссылки подписок) и 127.0.0.1:3004 (API).
 # HTTPS-домен направьте на 3001 через nginx/Caddy на хосте.
@@ -78,6 +78,7 @@ services:
     container_name: solobot-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    # Порт Redis не публикуется на хост: бот обращается к нему по имени сервиса.
     volumes:
       - redis_data:/data
     healthcheck:

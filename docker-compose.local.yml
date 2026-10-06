@@ -22,6 +22,7 @@ services:
     container_name: solobot-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    # systemd-бот работает на хосте, поэтому Redis доступен только через loopback.
     ports:
       - "127.0.0.1:6379:6379"
     volumes:

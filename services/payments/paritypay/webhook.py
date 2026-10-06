@@ -15,7 +15,7 @@ from services.payments.pipeline import (
     process_cancelled_payment,
     process_success_payment,
 )
-from settings.config import PARITYPAY_CALLBACK_SECRET_KEY
+from settings.config import PARITYPAY_CALLBACK_SECRET_KEY, PARITYPAY_SHOP_ID
 
 
 _PROVIDER = "paritypay"
@@ -90,6 +90,12 @@ async def paritypay_webhook(request: web.Request):
             await record_webhook_signature_failure(ip)
             return web.Response(status=400)
 
+        shop_id = str(data.get("shop_id") or "").strip()
+        configured_shop_id = str(PARITYPAY_SHOP_ID or "").strip()
+        if not configured_shop_id or not hmac.compare_digest(shop_id.casefold(), configured_shop_id.casefold()):
+            logger.error("[ParityPay] shop_id в уведомлении не совпадает с настроенной кассой")
+            return web.Response(status=400)
+
         logger.info(f"[ParityPay] webhook: {json.dumps(data, ensure_ascii=False)}")
 
         order_id = str(data.get("order_id") or "")
@@ -134,15 +140,20 @@ async def paritypay_webhook(request: web.Request):
             logger.info(f"[ParityPay] Платёж обработан: tg_id={tg_id}, amount={amount:.2f} ₽, order_id={order_id}")
             return web.Response(status=200, text="OK")
 
-        if status in ("EXPIRED", "REFUNDED"):
-            new_status = "failed" if status == "EXPIRED" else "refunded"
+        if status in ("EXPIRED", "ERROR", "REFUNDED"):
+            new_status = "refunded" if status == "REFUNDED" else "failed"
             parsed = ParsedPayment(
                 payment_id=order_id,
                 tg_id=int(tg_id) if tg_id is not None else None,
                 amount=float(amount),
                 currency="RUB",
             )
-            await process_cancelled_payment(_PROVIDER, parsed, new_status=new_status)
+            result = await process_cancelled_payment(_PROVIDER, parsed, new_status=new_status)
+            if not result.ok:
+                logger.error(
+                    f"[ParityPay] Pipeline вернул ошибку: {result.error}, order_id={order_id}, status={status}"
+                )
+                return web.Response(status=500)
             logger.warning(f"[ParityPay] Транзакция {status}: order_id={order_id}")
             return web.Response(status=200, text="OK")
 
