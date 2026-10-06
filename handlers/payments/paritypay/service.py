@@ -1,7 +1,7 @@
-import hashlib
-import hmac
 import json
 import time
+import uuid
+from urllib.parse import urlsplit
 
 import aiohttp
 
@@ -68,26 +68,22 @@ PARITYPAY_METHODS = {
 }
 
 
-def _build_signature_string(payload: dict) -> str:
-    parts: list[str] = []
-    for key in sorted(payload.keys()):
-        value = payload[key]
-        if value is None:
-            parts.append("")
-        elif isinstance(value, bool):
-            parts.append("1" if value else "0")
-        else:
-            parts.append(str(value))
-    return "".join(parts)
+def _new_paritypay_order_id(tg_id: int) -> str:
+    # Keep the Telegram ID as the second component for webhook lookup, and make
+    # every invoice unique even if the user starts multiple payments per second.
+    return f"{int(time.time())}_{int(tg_id)}_{uuid.uuid4().hex}"
 
 
-def _sign_request(payload: dict) -> str:
-    sign_string = _build_signature_string(payload)
-    return hmac.new(
-        PARITYPAY_API_SECRET_KEY.encode("utf-8"),
-        sign_string.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+def _paritypay_invoice_create_url() -> str:
+    configured_url = (PARITYPAY_API_URL or "").strip().rstrip("/")
+    configured_host = (urlsplit(configured_url).hostname or "").casefold()
+    if configured_host in {"api.paritypay.ru", "api.paritypay.net"}:
+        # Existing user configs can still have the v1 host. v2 has one
+        # documented production host, so migrate those configs transparently.
+        return "https://api.paritypay.net/v2/invoice/create"
+    if not configured_url:
+        configured_url = "https://api.paritypay.net"
+    return f"{configured_url}/v2/invoice/create"
 
 
 async def process_callback_pay_paritypay(
@@ -328,26 +324,27 @@ async def generate_paritypay_payment_link(
     fail_url: str | None = None,
     metadata: dict | None = None,
 ) -> str | None:
-    unique_order_id = order_id or f"{int(time.time())}_{tg_id}"
+    unique_order_id = order_id or _new_paritypay_order_id(tg_id)
     payload = {
-        "shop_id": PARITYPAY_SHOP_ID,
         "amount": int(amount),
         "order_id": unique_order_id,
         "service": method["service"],
         "success_url": success_url or PARITYPAY_SUCCESS_URL or "",
         "fail_url": fail_url or PARITYPAY_FAIL_URL or "",
         "callback_url": PARITYPAY_CALLBACK_URL or "",
-        "user_hash": str(tg_id),
     }
     payload = {k: v for k, v in payload.items() if v not in (None, "")}
-    signature = _sign_request(payload)
-    headers = {"Content-Type": "application/json", "X-SIGNATURE": signature}
-    url = f"{PARITYPAY_API_URL.rstrip('/')}/invoice/create"
+    headers = {
+        "Content-Type": "application/json",
+        "X-ShopId": PARITYPAY_SHOP_ID,
+        "X-SecretKey": PARITYPAY_API_SECRET_KEY,
+    }
+    url = _paritypay_invoice_create_url()
 
     timeout = aiohttp.ClientTimeout(total=30, connect=10)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as http_session:
-            async with http_session.post(url, headers=headers, data=json.dumps(payload)) as resp:
+            async with http_session.post(url, headers=headers, json=payload) as resp:
                 text = await resp.text()
                 if resp.status != 200:
                     logger.error(f"ParityPay API error: status={resp.status}, body={text}")
@@ -397,7 +394,7 @@ def _create_link_factory(method_name: str):
         amount_int = int(amount)
         if amount_int < method["min_amount"]:
             raise ValueError(f"Минимальная сумма — {method['min_amount']}₽")
-        order_id = f"{int(time.time())}_{tg_id}"
+        order_id = _new_paritypay_order_id(tg_id)
         url = await generate_paritypay_payment_link(
             amount_int,
             tg_id,

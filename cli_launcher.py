@@ -461,7 +461,7 @@ DEFAULT_SERVICE_NAME = "bot.service"
 VENV_PYTHON = os.path.join(PROJECT_DIR, "venv", "bin", "python")
 SOLOBOT_CMD_PATH = "/usr/local/bin/solobot"
 SETTINGS_DIR = os.path.join(PROJECT_DIR, "settings")
-CLI_VERSION = "v1.3.0"
+CLI_VERSION = "v1.3.1"
 
 
 def _ensure_solobot_command() -> None:
@@ -738,10 +738,14 @@ def has_local_config() -> bool:
 
 def bootstrap_project_files(branch: str = "main", force: bool = False) -> bool:
     refresh_service_name()
-    if has_project_code() and not force:
+    project_present = has_project_code()
+    if project_present and not force:
         return True
 
-    step_warn("Полный проект рядом не найден. Подтягиваю файлы бота...")
+    if project_present:
+        step_info(f"Обновляю файлы проекта из ветки {branch}...")
+    else:
+        step_warn("Полный проект рядом не найден. Подтягиваю файлы бота...")
     install_core_packages_if_needed()
     install_rsync_if_needed()
 
@@ -1010,25 +1014,25 @@ def _prompt_db_creds() -> dict:
     return creds
 
 
-def _ensure_data_services(creds: dict) -> bool:
+def _start_local_data_service(service: str, creds: dict) -> bool:
     compose_file = os.path.join(PROJECT_DIR, "docker-compose.local.yml")
     if not os.path.exists(compose_file):
-        step_warn("Файл docker-compose.local.yml не найден — данные не поднять автоматически.")
+        step_warn("Файл docker-compose.local.yml не найден — сервис не поднять автоматически.")
         return False
     if not _ensure_docker():
         return False
-    for port, svc in ((5432, "PostgreSQL"), (6379, "Redis")):
-        owner = _port_owner(port)
-        if owner and "docker" not in owner.lower():
-            console.print(
-                f"[warn]Порт {port} уже занят процессом «{owner}» (не Docker) — это помешает поднять {svc}.[/warn]"
-            )
-            console.print(
-                f"[faint]Обычно это системный {svc}. Остановите его (например: sudo systemctl stop postgresql) "
-                f"или освободите порт {port}, затем повторите.[/faint]"
-            )
-            if not safe_confirm("Попробовать поднять контейнеры всё равно?", default=False):
-                return False
+    port, label = {"postgres": (5432, "PostgreSQL"), "redis": (6379, "Redis")}[service]
+    owner = _port_owner(port)
+    if owner and "docker" not in owner.lower():
+        console.print(
+            f"[warn]Порт {port} уже занят процессом «{owner}» (не Docker) — это помешает поднять {label}.[/warn]"
+        )
+        console.print(
+            f"[faint]Если это уже установленный {label}, оставьте его работающим. "
+            f"Иначе освободите порт {port} и повторите.[/faint]"
+        )
+        if not safe_confirm(f"Попробовать поднять контейнер {label} всё равно?", default=False):
+            return False
     env = {
         **os.environ,
         "POSTGRES_USER": creds["user"],
@@ -1036,12 +1040,18 @@ def _ensure_data_services(creds: dict) -> bool:
         "POSTGRES_DB": creds["name"],
     }
     base = ["docker", "compose", "-f", compose_file, "up", "-d"]
-    with console.status("[warn.bold]Запуск PostgreSQL и Redis…[/warn.bold]"):
-        res = subprocess.run(base + ["--wait"], capture_output=True, text=True, env=env)
+    with console.status(f"[warn.bold]Запуск {label}…[/warn.bold]"):
+        res = subprocess.run(base + ["--wait", service], capture_output=True, text=True, env=env)
         if res.returncode != 0:
-            res = subprocess.run(base, capture_output=True, text=True, env=env)
+            res = subprocess.run(base + [service], capture_output=True, text=True, env=env)
     if res.returncode != 0:
         console.print(f"[err]{(res.stderr or '').strip()[:500]}[/err]")
+        return False
+    return True
+
+
+def _ensure_postgres_service(creds: dict) -> bool:
+    if not _start_local_data_service("postgres", creds):
         return False
     for _ in range(30):
         chk = subprocess.run(
@@ -1054,6 +1064,38 @@ def _ensure_data_services(creds: dict) -> bool:
         sleep(2)
     step_warn("PostgreSQL запущен, но не ответил готовностью за отведённое время.")
     return False
+
+
+def _ensure_redis_service(creds: dict) -> bool:
+    if not _start_local_data_service("redis", creds):
+        return False
+    for _ in range(30):
+        chk = subprocess.run(
+            ["docker", "exec", "solobot-redis", "redis-cli", "ping"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if chk.returncode == 0 and (chk.stdout or "").strip().upper() == "PONG":
+            return True
+        sleep(2)
+    step_warn("Redis запущен, но не ответил за отведённое время.")
+    return False
+
+
+def _install_redis_for_system_update(version: str | None) -> None:
+    if (_version_major(version) or 0) < 6:
+        return
+    step_info("Отдельный шаг Redis: в версии 6 он используется для кеша и межпроцессной синхронизации.")
+    if not safe_confirm(
+        "Установить и запустить Redis в Docker? Он будет доступен только через localhost.", default=True
+    ):
+        step_warn("Redis пропущен по выбору администратора; бот продолжит работу с резервным режимом.")
+        return
+    if _ensure_redis_service(_read_config_db_creds()):
+        step_ok("Redis установлен и запущен.")
+    else:
+        step_warn("Redis автоматически не запущен. Проверьте порт 6379 и повторите установку Redis позже.")
 
 
 def install_bot():
@@ -1077,7 +1119,7 @@ def install_bot():
     if not safe_confirm("Запустить автоматическую установку?", default=True):
         return
 
-    total = 9
+    total = 10
     try:
         step_rule(1, total, "Файлы проекта")
         console.print(
@@ -1199,21 +1241,34 @@ def install_bot():
             return
         step_ok("Зависимости установлены.")
 
-        step_rule(6, total, "Данные (PostgreSQL и Redis)")
+        step_rule(6, total, "PostgreSQL")
         console.print(
             "[faint]Зададим доступ к базе данных (Enter — значения по умолчанию). Эти значения пропишутся "
-            "в config.py и в контейнер PostgreSQL, чтобы бот и база точно совпали. Затем подниму PostgreSQL и Redis.[/faint]"
+            "в config.py и в контейнер PostgreSQL, чтобы бот и база точно совпали.[/faint]"
         )
         db_creds = _prompt_db_creds()
-        if _ensure_data_services(db_creds):
-            step_ok("PostgreSQL и Redis запущены.")
+        if _ensure_postgres_service(db_creds):
+            step_ok("PostgreSQL запущен.")
         else:
             step_warn(
-                "Не удалось поднять данные автоматически. Подними вручную: "
-                "docker compose -f docker-compose.local.yml up -d"
+                "Не удалось поднять PostgreSQL автоматически. Подними вручную: "
+                "docker compose -f docker-compose.local.yml up -d postgres"
             )
 
-        step_rule(7, total, "База данных")
+        step_rule(7, total, "Redis")
+        console.print(
+            "[faint]Redis будет запущен отдельным Docker-контейнером. Порт 6379 привязан только к localhost "
+            "для системной службы бота и не доступен из внешней сети.[/faint]"
+        )
+        if safe_confirm("Установить и запустить Redis?", default=True):
+            if _ensure_redis_service(db_creds):
+                step_ok("Redis установлен и запущен.")
+            else:
+                step_warn("Redis не удалось запустить автоматически. Проверьте порт 6379 и повторите позже.")
+        else:
+            step_warn("Redis пропущен; бот продолжит работу с резервным режимом без кеша.")
+
+        step_rule(8, total, "База данных")
         console.print(
             "[faint]Создаю таблицы по доступам из config.py. "
             "Если данные базы в config.py неверные — шаг можно завершить позже, перезапустив бота из меню.[/faint]"
@@ -1228,7 +1283,7 @@ def install_bot():
                 "Пересоздать БД (СОТРЁТ данные): docker compose -f docker-compose.local.yml down -v, затем переустановите.[/faint]"
             )
 
-        step_rule(8, total, "Служба автозапуска")
+        step_rule(9, total, "Служба автозапуска")
         console.print(
             "[faint]Создаю systemd-службу, чтобы бот стартовал сам и поднимался после перезагрузки сервера.[/faint]"
         )
@@ -1237,7 +1292,7 @@ def install_bot():
             return
         step_ok(f"Служба {SERVICE_NAME} настроена.")
 
-        step_rule(9, total, "Права и запуск")
+        step_rule(10, total, "Права и запуск")
         console.print(
             "[faint]Назначаю владельца и права на файлы проекта, закрываю секреты (config.py, тексты) и запускаю бота.[/faint]"
         )
@@ -2561,6 +2616,7 @@ def update_from_beta():
 
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
+        _install_redis_for_system_update(local_version(PROJECT_DIR))
         install_dependencies()
         fix_permissions()
         restart_service()
@@ -2624,6 +2680,7 @@ def _do_update_to_tag(tag_name: str, update_buttons: bool, update_img: bool, upd
 
     subprocess.run(["rm", "-rf", TEMP_DIR])
 
+    _install_redis_for_system_update(tag_name)
     install_dependencies()
     fix_permissions()
     restart_service()
@@ -4886,7 +4943,7 @@ def _branch_bot_major(branch: str) -> int | None:
     return None
 
 
-def _choose_docker_source_branch() -> str | None:
+def _choose_docker_source_branch(default: str | None = None) -> str | None:
     """Ветка с кодом для установки в Docker: годится только версия 6 и выше."""
     checked = []
     with console.status("[brand]Проверяю версии в ветках проекта...[/brand]", spinner="dots"):
@@ -4920,7 +4977,8 @@ def _choose_docker_source_branch() -> str | None:
     if len(allowed) == 1:
         step_info(f"Беру код из ветки {allowed[0]} — она единственная подходит.")
         return allowed[0]
-    return safe_prompt("[accent]Ветка с кодом[/accent]", choices=allowed, default=allowed[0])
+    preferred = default if default in allowed else allowed[0]
+    return safe_prompt("[accent]Ветка с кодом[/accent]", choices=allowed, default=preferred)
 
 
 def _resolve_source_branch() -> str | None:
@@ -4981,7 +5039,7 @@ def _docker_state_path() -> str:
 
 
 def _read_docker_state() -> dict:
-    """Параметры прошлой установки в Docker: ветка кода и внешние БД."""
+    """Параметры прошлой установки в Docker: ветка кода и расположение данных."""
     try:
         with open(_docker_state_path(), encoding="utf-8") as f:
             data = json.load(f)
@@ -5008,6 +5066,53 @@ def _compose_up_args(build: bool = False) -> list[str]:
     if _read_docker_state().get("external_data"):
         args += ["--no-deps", "bot"]
     return args
+
+
+def _docker_redis_is_external() -> bool:
+    state = _read_docker_state()
+    if "redis_external" in state:
+        return bool(state["redis_external"])
+    env_path = os.path.join(PROJECT_DIR, ".env")
+    try:
+        with open(env_path, encoding="utf-8") as f:
+            return any(line.startswith("REDIS_URL=") and bool(line.partition("=")[2].strip()) for line in f)
+    except OSError:
+        return False
+
+
+def _docker_redis_is_running() -> bool:
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Status}}", "solobot-redis"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode == 0 and (result.stdout or "").strip() == "running"
+    except Exception:
+        return False
+
+
+def _start_docker_redis_service() -> bool:
+    """Запускает Redis только внутри compose-сети; сервис не публикует порт на хост."""
+    result = _dc("up", "-d", "--wait", "redis")
+    if result.returncode != 0:
+        result = _dc("up", "-d", "redis")
+    if result.returncode != 0:
+        step_fail("Не удалось запустить Redis-контейнер.")
+        return False
+    for _ in range(30):
+        chk = subprocess.run(
+            ["docker", "exec", "solobot-redis", "redis-cli", "ping"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if chk.returncode == 0 and (chk.stdout or "").strip().upper() == "PONG":
+            return True
+        sleep(2)
+    step_fail("Redis-контейнер запущен, но не ответил за отведённое время.")
+    return False
 
 
 def _migrate_docker_web_packs_to_volume() -> bool:
@@ -5139,7 +5244,7 @@ def install_bot_docker():
     if not safe_confirm("Запустить установку в Docker?", default=True):
         return
 
-    total = 6
+    total = 7
     try:
         step_rule(1, total, "Файлы проекта")
         source = _prepare_project_source()
@@ -5196,37 +5301,56 @@ def install_bot_docker():
             return
         step_ok("Docker готов.")
 
-        step_rule(4, total, "База данных и Redis")
-        console.print("[accent]Где будут база и Redis:[/accent]")
+        step_rule(4, total, "База данных")
+        console.print("[accent]Где будет PostgreSQL:[/accent]")
         console.print("  1. Поднять в Docker вместе с ботом (рекомендуется)")
-        console.print("  2. Уже установлены на хосте — подключиться к ним")
+        console.print("  2. Уже установлен на хосте — подключиться к нему")
         mode = safe_prompt("Выбор", choices=["1", "2"], default="1", show_choices=False)
         external = mode == "2"
 
         creds = _prompt_db_creds()
         if external:
             _write_config_value("PG_HOST", "host.docker.internal")
-            redis_external = safe_confirm("Redis тоже на хосте?", default=True)
             console.print(
-                "[faint]Не забудьте разрешить подключения из docker-сети: PostgreSQL — listen_addresses='*' "
-                "и строка «host all all 172.16.0.0/12 scram-sha-256» в pg_hba.conf; Redis — bind 0.0.0.0 + пароль.[/faint]"
+                "[faint]Для PostgreSQL разрешите подключения из Docker-сети: listen_addresses='*' "
+                "и строка «host all all 172.16.0.0/12 scram-sha-256» в pg_hba.conf.[/faint]"
             )
         else:
             _write_config_value("PG_HOST", "postgres")
-            redis_external = False
         _write_config_value("BACK_DIR", "/app/backups")
         _write_config_value("API_HOST", "0.0.0.0")
         _write_config_value("WEBAPP_HOST", "0.0.0.0")
+
+        step_rule(5, total, "Redis")
+        console.print(
+            "[faint]Redis в Docker работает только во внутренней сети контейнеров: порт 6379 не публикуется на хост.[/faint]"
+        )
+        redis_external = external and safe_confirm("Использовать уже установленный Redis на хосте?", default=False)
+        if not redis_external and not safe_confirm("Установить и запустить Redis в Docker?", default=True):
+            step_warn("Установка остановлена: подтвердите установку Redis или выберите уже работающий Redis на хосте.")
+            return
+        if redis_external:
+            console.print(
+                "[faint]Для Redis на хосте разрешите подключения только из Docker-сети; "
+                "не открывайте порт 6379 во внешнюю сеть.[/faint]"
+            )
         if not _write_docker_env(creds, redis_external):
             return
-        _write_docker_state(external_data=external)
+        _write_docker_state(external_data=external, redis_external=redis_external)
         step_ok("Доступы записаны в config.py и .env.")
+        if not redis_external:
+            console.print(
+                "[faint]Поднимаю Redis отдельно до сборки бота; порт 6379 останется внутри Docker-сети.[/faint]"
+            )
+            if not _start_docker_redis_service():
+                return
+            step_ok("Redis установлен и запущен.")
 
-        step_rule(5, total, "HTTPS для бота")
+        step_rule(6, total, "HTTPS для бота")
         domain = _prompt_domain()
         setup_bot_https(domain)
 
-        step_rule(6, total, "Сборка и запуск")
+        step_rule(7, total, "Сборка и запуск")
         console.print("[faint]Первая сборка образа занимает 3–5 минут.[/faint]")
         result = _dc("build", "bot")
         if result.returncode != 0:
@@ -5251,19 +5375,22 @@ def install_bot_docker():
 
 
 def update_bot_docker():
-    branch = _read_docker_state().get("branch") or "main"
+    saved_branch = _read_docker_state().get("branch") or "main"
+    branch = _choose_docker_source_branch(default=saved_branch)
+    if not branch:
+        return
     if not safe_confirm(f"Обновить код из ветки {branch} и пересобрать образ?", default=True):
         return
-    major = _branch_bot_major(branch)
-    if major is not None and major < MIN_DOCKER_BOT_MAJOR:
-        step_warn(f"В ветке {branch} сейчас версия {major} — выберите другую.")
-        branch = _choose_docker_source_branch() or ""
-        if not branch:
+    if not _docker_redis_is_external() and not _docker_redis_is_running():
+        step_info("Отдельный шаг Redis: в версии 6 он запускается отдельным контейнером без опубликованного порта.")
+        if not safe_confirm("Установить и запустить Redis в Docker?", default=True):
+            step_warn("Обновление отменено: без Redis новая версия будет работать в резервном режиме.")
             return
-        _write_docker_state(branch=branch)
+        _write_docker_state(redis_external=False)
     if not bootstrap_project_files(branch=branch, force=True):
         step_fail("Не удалось обновить файлы проекта.")
         return
+    _write_docker_state(branch=branch)
     _write_config_value("API_HOST", "0.0.0.0")
     _write_config_value("WEBAPP_HOST", "0.0.0.0")
     result = _dc("build", "bot")
@@ -5272,6 +5399,9 @@ def update_bot_docker():
         return
     if not _migrate_docker_web_packs_to_volume():
         return
+    if not _docker_redis_is_external():
+        if not _start_docker_redis_service():
+            return
     result = _dc(*_compose_up_args())
     if result.returncode != 0:
         step_fail("Пересборка не удалась. Смотрите вывод выше.")
@@ -5323,6 +5453,9 @@ def manage_bot_docker():
         )
         choice = ask_choice(8)
         if choice == "1":
+            if _read_docker_state().get("external_data") and not _docker_redis_is_external():
+                if not _start_docker_redis_service():
+                    continue
             _dc(*_compose_up_args())
             if _wait_for_bot_container(timeout_sec=60):
                 step_ok("Контейнеры запущены.")
