@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.money_config import get_currency_mode
-from settings.buttons import ADMIN_ACCESS_SETTINGS, BACK, YOOKASSA_SETTINGS
+from settings.buttons import ADMIN_ACCESS_SETTINGS, BACK, PAYMENT_CASHBOX_ENABLED
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from .settings_config import (
@@ -14,6 +14,8 @@ from .settings_config import (
     MONEY_FIELDS,
     NOTIFICATION_TIME_FIELDS,
     NOTIFICATION_TITLES,
+    PAYMENT_CASHBOX_GROUPS,
+    PAYMENT_CASHBOX_TITLES,
     PAYMENT_PROVIDER_TITLES,
 )
 
@@ -127,18 +129,42 @@ def build_settings_buttons_kb(buttons_state: dict[str, bool]) -> InlineKeyboardM
 
 
 def build_settings_cashboxes_kb(providers_state: dict[str, bool]) -> InlineKeyboardMarkup:
+    """Собирает список касс с переходом к настройкам."""
+    builder = InlineKeyboardBuilder()
+    for index, (cashbox, providers) in enumerate(PAYMENT_CASHBOX_GROUPS.items(), start=1):
+        enabled = any(providers_state.get(provider, False) for provider in providers)
+        builder.button(
+            text=f"{'✅' if enabled else '❌'} {PAYMENT_CASHBOX_TITLES[cashbox]}",
+            callback_data=AdminPanelCallback(action="settings_cashbox", page=index).pack(),
+        )
+    builder.adjust(2)
     order_button = InlineKeyboardButton(
         text="📋 Порядок касс",
         callback_data=AdminPanelCallback(action="settings_providers_order").pack(),
     )
-    return build_toggle_section_keyboard(
-        titles=PAYMENT_PROVIDER_TITLES,
-        state=providers_state,
-        action="settings_cashbox_toggle",
-        columns=2,
-        back_action="settings",
-        extra_rows=[[order_button]],
-    )
+    builder.row(order_button)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings").pack()))
+    return builder.as_markup()
+
+
+def build_settings_cashbox_kb(cashbox: str, providers_state: dict[str, bool]) -> InlineKeyboardMarkup:
+    """Собирает способы оплаты выбранной кассы."""
+    providers = PAYMENT_CASHBOX_GROUPS[cashbox]
+    keys = list(PAYMENT_PROVIDER_TITLES)
+    builder = InlineKeyboardBuilder()
+    for provider in providers:
+        enabled = bool(providers_state.get(provider, False))
+        title = PAYMENT_PROVIDER_TITLES[provider] if len(providers) > 1 else PAYMENT_CASHBOX_ENABLED
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{'✅' if enabled else '❌'} {title}",
+                callback_data=AdminPanelCallback(
+                    action="settings_cashbox_toggle", page=keys.index(provider) + 1
+                ).pack(),
+            )
+        )
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings_cashboxes").pack()))
+    return builder.as_markup()
 
 
 def build_providers_order_kb(sorted_names: list[str]) -> InlineKeyboardMarkup:
@@ -304,13 +330,6 @@ def build_settings_money_kb(money_state: dict[str, object]) -> InlineKeyboardMar
     )
 
     builder.adjust(1)
-
-    builder.row(
-        InlineKeyboardButton(
-            text=YOOKASSA_SETTINGS,
-            callback_data=AdminPanelCallback(action="settings_yookassa").pack(),
-        )
-    )
 
     builder.row(
         InlineKeyboardButton(

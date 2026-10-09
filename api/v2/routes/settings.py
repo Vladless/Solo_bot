@@ -47,6 +47,8 @@ from handlers.admin.settings.settings_config import (
     MONEY_FIELDS,
     NOTIFICATION_TIME_FIELDS,
     NOTIFICATION_TITLES,
+    PAYMENT_CASHBOX_GROUPS,
+    PAYMENT_CASHBOX_TITLES,
     PAYMENT_PROVIDER_TITLES,
     REMNAWAVE_TITLES,
     TARIFFS_TITLES,
@@ -59,7 +61,6 @@ from handlers.admin.settings.settings_descriptions import SECTION_DESCRIPTIONS, 
 from settings.texts import (
     SETTING_INVALID_VALUE,
     TRAFFIC_SETTINGS_INVALID,
-    YOOKASSA_AUTOPAY_SETTINGS_TITLE,
     YOOKASSA_MARKUP_INVALID,
 )
 
@@ -102,7 +103,6 @@ async def get_configs(identity=Depends(verify_identity_admin)):
 _SCHEMA_SECTIONS: list[tuple[str, str, dict, dict]] = [
     ("payments", "Кассы", PAYMENTS_CONFIG, PAYMENT_PROVIDER_TITLES),
     ("money", "Деньги", MONEY_CONFIG, MONEY_FIELDS),
-    ("yookassa_autopay", YOOKASSA_AUTOPAY_SETTINGS_TITLE, YOOKASSA_AUTOPAY_CONFIG, YOOKASSA_AUTOPAY_TITLES),
     ("buttons", "Кнопки", BUTTONS_CONFIG, BUTTON_TITLES),
     (
         "notifications",
@@ -211,14 +211,35 @@ async def get_settings_schema(identity=Depends(verify_identity_admin)):
     sections = []
     for scope, title, config, titles in _SCHEMA_SECTIONS:
         fields = _schema_fields(config, titles)
-        if scope == "money":
-            fields.extend(_schema_fields(YOOKASSA_CONFIG, YOOKASSA_TITLES, "yookassa"))
-        sections.append({
+        section = {
             "scope": scope,
             "title": title,
             "description": SECTION_DESCRIPTIONS.get(scope) or _EXTRA_SECTION_DESCRIPTIONS.get(scope, ""),
             "fields": fields,
-        })
+        }
+        if scope == "payments":
+            children = []
+            for cashbox, providers in PAYMENT_CASHBOX_GROUPS.items():
+                cashbox_fields = _schema_fields(
+                    {key: PAYMENTS_CONFIG[key] for key in providers if key in PAYMENTS_CONFIG},
+                    PAYMENT_PROVIDER_TITLES,
+                    "payments",
+                )
+                description = ""
+                if cashbox == "YOOKASSA":
+                    cashbox_fields.extend(_schema_fields(YOOKASSA_CONFIG, YOOKASSA_TITLES, "yookassa"))
+                    cashbox_fields.extend(
+                        _schema_fields(YOOKASSA_AUTOPAY_CONFIG, YOOKASSA_AUTOPAY_TITLES, "yookassa_autopay")
+                    )
+                    description = SECTION_DESCRIPTIONS.get("yookassa", "")
+                children.append({
+                    "scope": f"payment_cashbox_{cashbox.lower()}",
+                    "title": PAYMENT_CASHBOX_TITLES[cashbox],
+                    "description": description,
+                    "fields": cashbox_fields,
+                })
+            section["children"] = children
+        sections.append(section)
     return {"sections": sections}
 
 

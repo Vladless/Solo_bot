@@ -16,6 +16,7 @@ from .settings_remnawave import router as settings_remnawave_router
 from .settings_tariffs import router as settings_tariffs_router
 from .settings_web import router as settings_web_router
 from .settings_yookassa import router as settings_yookassa_router
+from .settings_yookassa_autopay import router as settings_yookassa_autopay_router
 
 
 router = Router(name="admin_settings")
@@ -26,6 +27,7 @@ router.include_router(settings_buttons_router)
 router.include_router(settings_menu_layout_router)
 router.include_router(settings_cashboxes_router)
 router.include_router(settings_yookassa_router)
+router.include_router(settings_yookassa_autopay_router)
 router.include_router(settings_panels_router)
 router.include_router(settings_notifications_router)
 router.include_router(settings_modes_router)

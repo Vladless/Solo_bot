@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MONEY_CONFIG, update_money_config
 from filters.admin import IsAdminFilter
 from settings.buttons import BACK
-from settings.texts import MONEY_SETTINGS_DESCRIPTION, YOOKASSA_SETTINGS_HINT
+from settings.texts import MONEY_SETTINGS_DESCRIPTION
 
 from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
@@ -37,7 +37,6 @@ async def open_settings_money(callback: CallbackQuery, state: FSMContext) -> Non
             "Кэшбэк: процент выплаты",
         ),
         quote("Кэшбэк начисляется, пока процент больше нуля."),
-        quote(YOOKASSA_SETTINGS_HINT),
     )
     await callback.message.edit_text(
         text=text,

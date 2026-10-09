@@ -147,6 +147,24 @@ YOOKASSA_CARDS = "ЮКасса · карты"
 YOOKASSA_SETTINGS = "⚙️ ЮКасса: наценка"
 YOOKASSA_MARKUP_ENABLED = "Наценка ЮКассы"
 YOOKASSA_MARKUP_PERCENT = "Наценка ЮКассы (%)"
+YOOKASSA_AUTOPAY_SETTINGS = "⚙️ Параметры автоплатежей"
+PAYMENT_CASHBOX_ENABLED = "Приём платежей"
+PAYMENT_CASHBOX_TITLES = {
+    "YOOKASSA": "ЮКасса",
+    "YOOMONEY": "YooMoney",
+    "ROBOKASSA": "Robokassa",
+    "KASSAI": "KassaAI",
+    "WATA": "WATA",
+    "PARITYPAY": "ParityPay",
+    "PLATEGA": "Platega",
+    "OVERPAY": "Overpay",
+    "TRIBUTE": "Tribute",
+    "HELEKET": "Heleket",
+    "CRYPTOBOT": "CryptoBot",
+    "FREEKASSA": "FreeKassa",
+    "STARS": "Telegram Stars",
+    "KASSA2328": "2328 (криптовалюта)",
+}
 SETTING_SINGLE_SUBSCRIPTION_SCREEN = "После создания: кабинет"
 SETTING_EXPIRY_SKIP_TRIAL = "24ч: исключать пробные тарифы"
 SETTING_TRAFFIC_WARNING = "Уведомления о трафике"
