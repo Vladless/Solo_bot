@@ -14,9 +14,12 @@ from core.settings.notifications_config import NOTIFICATIONS_CONFIG, update_noti
 from core.settings.payments_config import PAYMENTS_CONFIG, update_payments_config
 from core.settings.providers_order_config import PROVIDERS_ORDER, update_providers_order
 from core.settings.tariffs_config import TARIFFS_CONFIG, update_tariffs_config
+from core.settings.yookassa_config import YOOKASSA_CONFIG, update_yookassa_config
 from database.models import Setting
 from database.settings import set_setting
 from database.settings_cache import settings_cache
+from handlers.admin.settings.settings_config import ADMIN_NOTIFICATION_TITLES, NOTIFICATION_TITLES
+from settings.texts import SETTING_INVALID_VALUE, TRAFFIC_SETTINGS_INVALID, YOOKASSA_MARKUP_INVALID
 
 
 router = APIRouter()
@@ -42,6 +45,7 @@ async def get_configs(admin=Depends(verify_admin_token)):
         "money": dict(MONEY_CONFIG),
         "providers_order": dict(PROVIDERS_ORDER),
         "tariffs": dict(TARIFFS_CONFIG),
+        "yookassa": dict(YOOKASSA_CONFIG),
     }
 
 
@@ -56,7 +60,7 @@ async def update_config_scope(
     normalized = scope.strip().lower().replace("-", "_")
 
     if normalized == "payments":
-        cleaned = {key: bool(value) for key, value in data.items()}
+        cleaned = {**PAYMENTS_CONFIG, **{key: bool(value) for key, value in data.items()}}
         await update_payments_config(session, cleaned)
         return {"payments": dict(PAYMENTS_CONFIG)}
 
@@ -66,13 +70,32 @@ async def update_config_scope(
         return {"buttons": dict(BUTTONS_CONFIG)}
 
     if normalized == "notifications":
-        await update_notifications_config(session, data)
+        boolean_keys = {*NOTIFICATION_TITLES, *ADMIN_NOTIFICATION_TITLES}
+        if any(key in boolean_keys and not isinstance(value, bool) for key, value in data.items()):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        try:
+            await update_notifications_config(session, data)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=TRAFFIC_SETTINGS_INVALID) from exc
         return {"notifications": dict(NOTIFICATIONS_CONFIG)}
 
     if normalized == "modes":
-        cleaned = {key: bool(value) for key, value in data.items()}
+        if "SINGLE_SUBSCRIPTION_OPEN_PROFILE" in data and not isinstance(
+            data["SINGLE_SUBSCRIPTION_OPEN_PROFILE"], bool
+        ):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        cleaned = {**MODES_CONFIG, **{key: bool(value) for key, value in data.items()}}
         await update_modes_config(session, cleaned)
         return {"modes": dict(MODES_CONFIG)}
+
+    if normalized == "yookassa":
+        if "MARKUP_ENABLED" in data and not isinstance(data["MARKUP_ENABLED"], bool):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        try:
+            await update_yookassa_config(session, data)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=YOOKASSA_MARKUP_INVALID) from exc
+        return {"yookassa": dict(YOOKASSA_CONFIG)}
 
     if normalized == "money":
         await update_money_config(session, data)

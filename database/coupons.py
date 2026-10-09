@@ -4,7 +4,7 @@ from sqlalchemy import and_, case, delete, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import UserId, resolve_user_optional
 from database.models import Coupon, CouponHold, CouponUsage
 from logger import logger
 
@@ -106,20 +106,24 @@ async def _coupon_usage_billing_match(session: AsyncSession, legacy_user_ref: in
     if u is not None:
         opts = [CouponUsage.user_id == u.id]
         if u.tg_id is not None:
-            opts.append(CouponUsage.tg_id == u.tg_id)
+            opts.append(and_(CouponUsage.user_id.is_(None), CouponUsage.tg_id == u.tg_id))
         return or_(*opts)
-    return or_(CouponUsage.user_id == legacy_user_ref, CouponUsage.tg_id == legacy_user_ref)
+    if isinstance(legacy_user_ref, UserId):
+        return CouponUsage.user_id == legacy_user_ref
+    return and_(CouponUsage.user_id.is_(None), CouponUsage.tg_id == legacy_user_ref)
 
 
 async def create_coupon_usage(session: AsyncSession, coupon_id: int, user_id: int) -> bool:
     u = await resolve_user_optional(session, user_id)
-    uid = u.id if u is not None else user_id
+    if u is None:
+        return False
+    uid = u.id
     stmt = (
         pg_insert(CouponUsage)
         .values(
             coupon_id=coupon_id,
             user_id=uid,
-            tg_id=u.tg_id if u is not None else None,
+            tg_id=u.tg_id,
             used_at=datetime.utcnow(),
         )
         .on_conflict_do_nothing(index_elements=["coupon_id", "user_id"])
@@ -133,17 +137,13 @@ async def create_coupon_usage(session: AsyncSession, coupon_id: int, user_id: in
 
 async def check_coupon_usage(session: AsyncSession, coupon_id: int, legacy_user_ref: int) -> bool:
     m = await _coupon_usage_billing_match(session, legacy_user_ref)
-    stmt = select(CouponUsage).where(CouponUsage.coupon_id == coupon_id).where(m)
+    stmt = select(CouponUsage).where(CouponUsage.coupon_id == coupon_id).where(m).limit(1)
     result = await session.execute(stmt)
     return result.scalar_one_or_none() is not None
 
 
 async def claim_coupon_slot(session: AsyncSession, coupon_id: int) -> bool:
-    """Занимает слот купона одним запросом. False — лимит уже исчерпан.
-
-    Проверять лимит отдельным select нельзя: два клиента одновременно пройдут
-    проверку последнего слота и оба получат бонус.
-    """
+    """Атомарно занимает доступный слот купона."""
     used = func.coalesce(Coupon.usage_count, 0)
     result = await session.execute(
         update(Coupon)
@@ -184,7 +184,7 @@ async def release_coupon_slot(session: AsyncSession, coupon_id: int) -> None:
 
 
 async def update_coupon_usage_count(session: AsyncSession, coupon_id: int) -> bool:
-    """Старое имя занятия слота: им пользуются внешние модули."""
+    """Занимает слот купона для совместимых вызовов."""
     return await claim_coupon_slot(session, coupon_id)
 
 
@@ -219,7 +219,9 @@ async def get_coupon_hold(session: AsyncSession, legacy_user_ref: int) -> Coupon
 async def clear_coupon_hold(session: AsyncSession, legacy_user_ref: int, coupon_id: int | None = None) -> None:
     """Снимает закрепление купона у клиента."""
     u = await resolve_user_optional(session, legacy_user_ref)
-    uid = u.id if u is not None else legacy_user_ref
+    if u is None:
+        return
+    uid = u.id
     stmt = delete(CouponHold).where(CouponHold.user_id == int(uid))
     if coupon_id is not None:
         stmt = stmt.where(CouponHold.coupon_id == int(coupon_id))
@@ -228,15 +230,17 @@ async def clear_coupon_hold(session: AsyncSession, legacy_user_ref: int, coupon_
 
 async def mark_coupon_used(session: AsyncSession, coupon_id: int, legacy_user_ref: int):
     u = await resolve_user_optional(session, legacy_user_ref)
-    uid = u.id if u is not None else legacy_user_ref
-    match = [CouponUsage.user_id == int(uid)]
-    if u is not None and u.tg_id is not None:
-        match.append(CouponUsage.tg_id == int(u.tg_id))
+    if u is None:
+        return
+    uid = u.id
+    match = await _coupon_usage_billing_match(session, UserId(uid))
     existing = await session.execute(
-        select(CouponUsage).where(
+        select(CouponUsage)
+        .where(
             CouponUsage.coupon_id == int(coupon_id),
-            or_(*match),
+            match,
         )
+        .limit(1)
     )
     if existing.scalar_one_or_none() is not None:
         return
@@ -244,7 +248,7 @@ async def mark_coupon_used(session: AsyncSession, coupon_id: int, legacy_user_re
         insert(CouponUsage).values(
             coupon_id=coupon_id,
             user_id=uid,
-            tg_id=u.tg_id if u is not None else None,
+            tg_id=u.tg_id,
             used_at=datetime.utcnow(),
         )
     )
@@ -253,7 +257,7 @@ async def mark_coupon_used(session: AsyncSession, coupon_id: int, legacy_user_re
             f"⚠️ Купон {coupon_id} исчерпан между оформлением и оплатой (клиент {legacy_user_ref}): "
             "скидка уже применена, счётчик не увеличен"
         )
-    await clear_coupon_hold(session, legacy_user_ref, coupon_id)
+    await clear_coupon_hold(session, UserId(uid), coupon_id)
 
 
 def apply_percent_coupon(price_rub: int, coupon: Coupon) -> tuple[int, int]:

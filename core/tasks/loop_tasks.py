@@ -9,6 +9,12 @@ async def notifications_loop(bot, sessionmaker) -> None:
     await periodic_notifications(bot, sessionmaker=sessionmaker)
 
 
+async def yookassa_autopay_loop(bot, sessionmaker) -> None:
+    from services.payments.yookassa_autopay.service import autopay_loop
+
+    await autopay_loop(bot, sessionmaker)
+
+
 async def scheduled_broadcasts_loop_task(bot, _sessionmaker) -> None:
     from handlers.admin.sender.scheduled_service import scheduled_broadcasts_loop
 

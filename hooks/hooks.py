@@ -10,6 +10,7 @@ from .constants import DEFAULT_HOOK_TIMEOUT
 
 
 _hooks: dict[str, list[tuple[Callable[..., Any], str | None]]] = {}
+_DATA_HOOK_LOAD_ERRORS: dict[str, Exception] = {}
 
 
 def owner(func: Callable[..., Any]) -> str | None:
@@ -24,17 +25,33 @@ def register_hook(name: str, func: Callable[..., Any] | None = None):
     if func is None:
 
         def deco(f: Callable[..., Any]):
-            _hooks.setdefault(name, []).append((f, owner(f)))
-            logger.info("[Hook] {} -> {}", name, f.__name__)
+            register_hook(name, f)
             return f
 
         return deco
+    if name == "user_data_transfer":
+        for registered, _module in _hooks.get(name, []):
+            if (
+                (registered.__module__, registered.__qualname__) == (func.__module__, func.__qualname__)
+                and getattr(registered, "__data_transfer_guard__", False)
+                and not getattr(func, "__data_transfer_guard__", False)
+            ):
+                registered.__wrapped__ = func
+                func = registered
+                break
+        _hooks[name] = [
+            (registered, module)
+            for registered, module in _hooks.get(name, [])
+            if (registered.__module__, registered.__qualname__) != (func.__module__, func.__qualname__)
+        ]
     _hooks.setdefault(name, []).append((func, owner(func)))
     logger.info("[Hook] {} -> {}", name, func.__name__)
 
 
 def unregister_module_hooks(module_name: str):
     for k, lst in list(_hooks.items()):
+        if k == "user_data_transfer":
+            continue
         filtered = [(f, owner) for (f, owner) in lst if owner != module_name]
         if filtered:
             _hooks[k] = filtered
@@ -42,8 +59,21 @@ def unregister_module_hooks(module_name: str):
             _hooks.pop(k, None)
 
 
-async def run_hooks(name: str, require_enabled: bool = True, **kwargs) -> list[Any]:
+def clear_missing_module_data_hooks(installed: set[str]) -> None:
+    """Удаляет переносы и ошибки отсутствующих дополнений."""
+    for module in set(_DATA_HOOK_LOAD_ERRORS) - installed:
+        _DATA_HOOK_LOAD_ERRORS.pop(module, None)
+    if "user_data_transfer" in _hooks:
+        _hooks["user_data_transfer"] = [
+            (func, module) for func, module in _hooks["user_data_transfer"] if module is None or module in installed
+        ]
+
+
+async def run_hooks(name: str, require_enabled: bool = True, *, raise_on_error: bool = False, **kwargs) -> list[Any]:
     """Вызывает зарегистрированные хуки и собирает результаты."""
+    if name == "user_data_transfer" and raise_on_error and _DATA_HOOK_LOAD_ERRORS:
+        module, error = next(iter(_DATA_HOOK_LOAD_ERRORS.items()))
+        raise RuntimeError(f"Не загружен перенос данных модуля {module}: {error}") from error
     results: list[Any] = []
     for func, owner in _hooks.get(name, []):
         if require_enabled and owner:
@@ -73,6 +103,8 @@ async def run_hooks(name: str, require_enabled: bool = True, **kwargs) -> list[A
                 getattr(func, "__name__", func),
                 exc_info=True,
             )
+            if raise_on_error:
+                raise
         except Exception as e:
             logger.error(
                 "[Hook:{}] Ошибка в {}: {}",
@@ -81,4 +113,6 @@ async def run_hooks(name: str, require_enabled: bool = True, **kwargs) -> list[A
                 e,
                 exc_info=True,
             )
+            if raise_on_error:
+                raise
     return results

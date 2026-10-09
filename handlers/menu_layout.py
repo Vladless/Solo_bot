@@ -40,10 +40,7 @@ BUTTON_TITLES: dict[str, dict[str, str]] = {
 
 
 def split_hook_buttons(items) -> tuple[list[InlineKeyboardButton], list]:
-    """Делит ответы хуков: простые кнопки идут в позицию раскладки, остальное — прежним механизмом.
-
-    Модуль, указавший «after», «insert_at» или удаление, сам знает, куда встать, — его не трогаем.
-    """
+    """Отделяет простые кнопки раскладки от кнопок с заданной позицией."""
     plain: list[InlineKeyboardButton] = []
     directives: list = []
 
@@ -79,10 +76,7 @@ def menu_rows(menu: str) -> list[list[str]]:
 
 
 def arrange_menu(menu: str, buttons: dict) -> list[list[InlineKeyboardButton]]:
-    """Раскладывает готовые кнопки по рядам из настроек; отсутствующие пропускает.
-
-    Значением может быть готовый блок рядов — он встаёт на место своей позиции целиком.
-    """
+    """Раскладывает доступные кнопки и готовые блоки по настроенным рядам."""
     rows: list[list[InlineKeyboardButton]] = []
     for row in menu_rows(menu):
         line: list[InlineKeyboardButton] = []

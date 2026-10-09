@@ -7,6 +7,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import add_user, check_user_exists, get_key_count, get_temporary_data
+from database.access.resolution import TelegramId
 from handlers.payments.keyboards import (
     back_keyboard,
     build_amounts_keyboard,
@@ -34,7 +35,7 @@ class ReplenishBalanceState(StatesGroup):
 
 @router.callback_query(F.data == "pay_robokassa")
 async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
-    tg_id = callback_query.message.chat.id
+    tg_id = TelegramId(callback_query.from_user.id)
     b = await get_key_count(session, tg_id)
     if b == 0 and not await check_user_exists(session, tg_id):
         u = callback_query.from_user
@@ -81,7 +82,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         )
         return
 
-    tg_id = callback_query.message.chat.id
+    tg_id = TelegramId(callback_query.from_user.id)
     url, _ = await create_and_store_robokassa_payment(session, tg_id, amount, "Пополнение баланса", inv_id=0)
 
     kb = build_pay_keyboard(
@@ -116,7 +117,7 @@ async def handle_custom_amount_input(
     if isinstance(event, types.CallbackQuery):
         message = event.message
         from_user = event.from_user
-        tg_id = from_user.id
+        tg_id = TelegramId(from_user.id)
         temp_data = await get_temporary_data(session, tg_id)
         if not temp_data or temp_data["state"] not in ALLOWED_TEMP_PAYMENT_STATES:
             await edit_or_send_message(target_message=message, text="❌ Не удалось получить данные для оплаты.")
@@ -128,7 +129,7 @@ async def handle_custom_amount_input(
     else:
         message = event
         from_user = message.from_user
-        tg_id = from_user.id
+        tg_id = TelegramId(from_user.id)
         text = message.text
         if not text or not text.isdigit():
             await message.answer("Введите корректную сумму числом.")

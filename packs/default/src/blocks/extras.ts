@@ -45,7 +45,7 @@ export const DEFAULT_EXTRA_BLOCKS: ElementDefinition[] = [
       hidePwLabel: "скрыть",
       rememberLabel: "Запомнить",
       forgotLabel: "Забыли пароль?",
-      forgotHref: "/reset-password",
+      forgotHref: "/forgot-password",
       submitLabel: "Войти",
       sendCodeLabel: "Получить код",
       requestNewCodeLabel: "Запросить новый код",

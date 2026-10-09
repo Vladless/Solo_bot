@@ -9,11 +9,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import register_pending_payment
-from database.models import User
+from database.access.resolution import TelegramId
+from database.payments import resolve_payment_creation_owner
+from services.payments.checkout_snapshot import capture_payment_checkout
+from database.users import get_user_language
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -28,6 +30,7 @@ from services.payments.currency_rates import (
     pick_currency,
     to_rub,
 )
+from services.payments.owner_refs import payment_owner_token
 from services.payments.payment_links import register_payment_creator
 from settings.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
 from settings.config import (
@@ -47,12 +50,6 @@ from settings.texts import (
 
 
 router = Router()
-
-
-async def get_user_language(session: AsyncSession, tg_id: int) -> str | None:
-    """Получает язык пользователя из базы данных."""
-    result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
-    return result.scalar_one_or_none()
 
 
 class ReplenishBalanceKassaiState(StatesGroup):
@@ -87,9 +84,9 @@ async def process_callback_pay_kassai(
     session: AsyncSession,
     method_name: str = None,
 ):
-    """Обработчик callback для инициализации платежа через KassaI."""
+    """Запускает оплату через KassaI."""
     try:
-        tg_id = callback_query.from_user.id
+        tg_id = TelegramId(callback_query.from_user.id)
         logger.info(f"User {tg_id} initiated KassaAI payment.")
         await state.clear()
 
@@ -170,7 +167,7 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(kassai_method=method_name)
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
 
     language_code = await get_user_language(session, tg_id)
     opts = await payment_options_for_user(session, tg_id, language_code, force_currency="RUB")
@@ -269,7 +266,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
             amount_rub = int(await to_rub(user_amount, "USD", session=session_http))
 
     await state.update_data(amount=amount_rub)
-    payment_url = await generate_kassai_payment_link(amount_rub, message.chat.id, method, session)
+    payment_url = await generate_kassai_payment_link(amount_rub, TelegramId(message.from_user.id), method, session)
 
     if not payment_url or payment_url == "https://fk.life/":
         await edit_or_send_message(
@@ -281,7 +278,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
 
-    tg_id = message.from_user.id
+    tg_id = TelegramId(message.from_user.id)
     amount_text = await format_for_user(session, tg_id, float(amount_rub), language_code, force_currency="RUB")
 
     await edit_or_send_message(
@@ -331,7 +328,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(amount=amount)
-    payment_url = await generate_kassai_payment_link(amount, callback_query.message.chat.id, method, session)
+    payment_url = await generate_kassai_payment_link(amount, TelegramId(callback_query.from_user.id), method, session)
 
     if not payment_url or payment_url == "https://fk.life/":
         await edit_or_send_message(
@@ -343,7 +340,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
 
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
     language_code = await get_user_language(session, tg_id)
     amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
 
@@ -367,12 +364,11 @@ async def generate_kassai_payment_link(
     failure_url: str | None = None,
     metadata: dict | None = None,
 ) -> str:
-    """
-    Создание заказа в KassaAI и получение ссылки на оплату.
-    session — сессия из хендлера; если не передана, создаётся своя (лишняя нагрузка на пул).
-    """
+    """Создаёт заказ KassaI и возвращает ссылку на оплату."""
+    tg_id = await resolve_payment_creation_owner(session, tg_id)
+    metadata = await capture_payment_checkout(session, tg_id, metadata)
     nonce = int(time.time())
-    unique_payment_id = payment_id or f"{nonce}_{tg_id}"
+    unique_payment_id = payment_id or f"{nonce}_{payment_owner_token(tg_id)}"
     url = "https://api.fk.life/v1/orders/create"
 
     headers = {"Content-Type": "application/json"}
@@ -450,13 +446,14 @@ def create_link_factory(method_name: str):
         failure_url: str | None,
         metadata: dict | None,
     ) -> tuple[str, str | None]:
+        tg_id = await resolve_payment_creation_owner(session, tg_id)
         if currency != "RUB":
             raise ValueError("KassaI поддерживает только RUB")
         method = KASSAI_METHODS.get(method_name)
         if not method or not method.get("enable"):
             raise ValueError("Способ оплаты KassaI недоступен")
         amount_int = int(amount)
-        payment_id = f"{int(time.time())}_{tg_id}"
+        payment_id = f"{int(time.time())}_{payment_owner_token(tg_id)}"
         if method_name == "cards" and amount_int < 50:
             raise ValueError("Минимальная сумма для карт — 50₽")
         if method_name == "sbp" and amount_int < 10:

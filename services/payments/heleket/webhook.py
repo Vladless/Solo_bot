@@ -10,6 +10,7 @@ from core.webhook_abuse import (
     record_webhook_signature_failure,
 )
 from logger import logger
+from services.payments.owner_refs import parse_payment_owner
 from services.payments.pipeline import (
     ParsedPayment,
     process_cancelled_payment,
@@ -22,7 +23,7 @@ _PROVIDER = "heleket"
 
 
 def verify_heleket_signature(data: dict) -> bool:
-    """Проверяет MD5-подпись webhook от Heleket."""
+    """Проверяет подпись уведомления Heleket."""
     try:
         if not HELEKET_API_KEY:
             logger.error("Heleket webhook: HELEKET_API_KEY не настроен, webhook отклонён")
@@ -56,21 +57,21 @@ def verify_heleket_signature(data: dict) -> bool:
 
 
 def _extract_tg_and_amount(order_id: str, additional_data, merchant_amount) -> tuple[int | None, float | None]:
-    """Извлекает tg_id и сумму для зачисления (rub_amount или merchant_amount)."""
+    """Извлекает владельца и сумму зачисления из вебхука."""
     tg_id = None
     rub_amount = None
     if additional_data:
         try:
             for part in str(additional_data).split(","):
                 if part.startswith("tg_id:"):
-                    tg_id = int(part.split(":")[1])
+                    tg_id = parse_payment_owner(part.split(":")[1])
                 elif part.startswith("rub_amount:"):
                     rub_amount = float(part.split(":")[1])
         except Exception as e:
             logger.error(f"Ошибка парсинга additional_data: {e}")
-    if not tg_id and order_id and "_" in order_id:
+    if order_id and "_" in order_id:
         try:
-            tg_id = int(order_id.split("_")[1])
+            tg_id = parse_payment_owner(order_id.split("_")[1])
         except Exception as e:
             logger.error(f"Ошибка извлечения tg_id из order_id: {e}")
     balance_amount = rub_amount if rub_amount else (float(merchant_amount) if merchant_amount else None)
@@ -78,7 +79,7 @@ def _extract_tg_and_amount(order_id: str, additional_data, merchant_amount) -> t
 
 
 async def process_heleket_webhook(data: dict) -> bool:
-    """Обрабатывает уже верифицированный webhook от Heleket."""
+    """Обрабатывает проверенное уведомление Heleket."""
     try:
         logger.info(f"Processing Heleket webhook: {data}")
 
@@ -131,7 +132,7 @@ async def process_heleket_webhook(data: dict) -> bool:
 
 
 async def heleket_webhook(request: web.Request):
-    """Обработчик webhook от Heleket для aiohttp."""
+    """Принимает уведомление об оплате Heleket."""
     try:
         ip = get_webhook_client_ip(request)
         if await is_webhook_ip_blocked(ip):
@@ -147,7 +148,7 @@ async def heleket_webhook(request: web.Request):
         success = await process_heleket_webhook(data)
         if success:
             return web.Response(status=200, text="OK")
-        return web.Response(status=400, text="Processing failed")
+        return web.Response(status=500, text="Processing failed")
     except Exception as e:
         logger.error(f"Ошибка обработки Heleket webhook: {e}")
         return web.Response(status=500, text="Internal server error")

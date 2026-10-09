@@ -15,6 +15,9 @@ from database import (
     update_key_expiry,
     update_key_link,
 )
+from database.access.resolution import UserId, panel_identity_fields, subscription_owner_ref
+from database.keys import resolve_key_operation_owner
+from database.traffic_notifications import reset_traffic_notification_state
 from hooks.processors import process_get_cryptolink_after_renewal
 from logger import (
     CLOGGER as logger,
@@ -24,7 +27,9 @@ from logger import (
 from panels._3xui import extend_client_key, get_xui_instance
 from panels.remnawave_runtime import invalidate_remnawave_profile, with_remnawave_api
 from services.clusters import ALLOWED_GROUP_CODES
-from settings.config import SUPERNODE
+from services.subscription_links import saved_public_subscription_tail
+from settings.config import PUBLIC_LINK, SUPERNODE
+from utils.traffic_resources import traffic_resource_id
 
 from .aggregated_links import make_aggregated_link
 
@@ -58,6 +63,7 @@ async def renew_on_remnawave(
     target_server_name: str | None = None,
     external_squad_uuid: str | None = None,
     old_device_limit: int | None = None,
+    billing_user_id: int | None = None,
 ) -> bool:
     remnawave_nodes = [
         s for s in cluster if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
@@ -88,9 +94,8 @@ async def renew_on_remnawave(
 
     if session is not None:
         try:
-            from database.access.resolution import panel_identity_fields
-
-            _panel_tg, _panel_email = await panel_identity_fields(session, tg_id)
+            owner = UserId(billing_user_id) if billing_user_id is not None else tg_id
+            _panel_tg, _panel_email = await panel_identity_fields(session, owner)
             if _panel_tg is not None:
                 update_kwargs["telegram_id"] = _panel_tg
             if _panel_email:
@@ -98,7 +103,10 @@ async def renew_on_remnawave(
         except Exception as e:
             logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
 
+    traffic_was_reset = False
+
     async def _renew(api):
+        nonlocal traffic_was_reset
         if old_device_limit is not None and hwid_device_limit < old_device_limit:
             try:
                 await api.clear_all_hwid_devices(client_id, username=email)
@@ -111,7 +119,7 @@ async def renew_on_remnawave(
         updated_local = await api.update_user(**update_kwargs)
         if updated_local and reset_traffic:
             try:
-                await api.reset_user_traffic(client_id, username=email)
+                traffic_was_reset = bool(await api.reset_user_traffic(client_id, username=email))
             except Exception as e:
                 logger.warning(f"{PANEL_REMNA} reset_user_traffic: {e}")
         if updated_local:
@@ -131,6 +139,11 @@ async def renew_on_remnawave(
         timeout_sec=12.0,
     )
     if updated:
+        if traffic_was_reset and session is not None and billing_user_id is not None:
+            current_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+            if current_owner is not None:
+                resource_id = traffic_resource_id("remnawave", remnawave_nodes[0].get("api_url") or "")
+                await reset_traffic_notification_state(session, current_owner, client_id, {resource_id})
         logger.info(f"{PANEL_REMNA} Подписка {client_id} успешно продлена")
         return True
     logger.debug(f"{PANEL_REMNA} Не удалось продлить {client_id}. Автосоздание отключено.")
@@ -147,8 +160,14 @@ async def renew_on_3xui(
     tg_id: int,
     update_links: bool = False,
     target_server_name: str | None = None,
+    session: AsyncSession | None = None,
+    billing_user_id: int | None = None,
 ):
     """Продлевает подписку на 3x-ui серверах кластера."""
+    panel_tg = tg_id
+    if session is not None:
+        owner = UserId(billing_user_id) if billing_user_id is not None else tg_id
+        panel_tg, _ = await panel_identity_fields(session, owner)
     tasks = []
     for server_info in cluster:
         if target_server_name and server_info.get("server_name") != target_server_name:
@@ -168,7 +187,7 @@ async def renew_on_3xui(
             sub_id_val = unique_email
         traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
 
-        async def process_server(si, inbound, uniq, sub, name):
+        async def process_server(si, inbound, uniq, sub, name, traffic_limit_bytes=traffic_bytes):
             try:
                 xui = await get_xui_instance(si["api_url"])
             except Exception as e:
@@ -181,9 +200,9 @@ async def renew_on_3xui(
                     email=uniq,
                     new_expiry_time=new_expiry_time,
                     client_id=client_id,
-                    total_gb=traffic_bytes,
+                    total_gb=traffic_limit_bytes,
                     sub_id=sub,
-                    tg_id=tg_id,
+                    tg_id=panel_tg if panel_tg and int(panel_tg) > 0 else "",
                     limit_ip=hwid_device_limit,
                 )
             except Exception as e:
@@ -209,6 +228,20 @@ async def renew_on_3xui(
         else:
             failed.append((name, err or "unknown_error"))
     if succeeded:
+        if session is not None and billing_user_id is not None:
+            current_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+            if current_owner is not None:
+                resource_ids = {
+                    traffic_resource_id(
+                        "3x-ui",
+                        server.get("api_url") or "",
+                        server.get("inbound_id"),
+                        f"{email}_{str(server.get('server_name') or '').lower()}" if SUPERNODE else email,
+                    )
+                    for server in cluster
+                    if server.get("server_name") in succeeded
+                }
+                await reset_traffic_notification_state(session, current_owner, client_id, resource_ids)
         logger.info(f"{PANEL_XUI} продлено на: {', '.join(succeeded)}")
     if failed:
         logger.debug(f"{PANEL_XUI} не продлено на: " + ", ".join([f"{n} ({e})" for n, e in failed]))
@@ -237,7 +270,10 @@ async def renew_key_in_cluster(
             logger.error(f"Не найден ключ по email={email} и client_id={client_id}")
             return False
 
-        tg_id = int(kd["tg_id"])
+        billing_user_id = UserId(kd["user_id"])
+        tg_id = saved_public_subscription_tail(kd.get("key"), email, PUBLIC_LINK)
+        if tg_id is None:
+            tg_id = await subscription_owner_ref(session, billing_user_id)
         server_id = kd["server_id"]
 
         old_device_limit = kd.get("current_device_limit") or kd.get("selected_device_limit")
@@ -300,11 +336,17 @@ async def renew_key_in_cluster(
                 target_subgroup=target_subgroup,
                 external_squad_uuid=external_squad_uuid,
                 tariff_id=plan,
+                billing_user_id=billing_user_id,
             )
 
-            await update_key_expiry(session, new_client_id or client_id, new_expiry_time)
+            billing_user_id = await resolve_key_operation_owner(
+                session, billing_user_id, new_client_id or client_id, email
+            )
+            if billing_user_id is None:
+                return False
+            await update_key_expiry(session, new_client_id or client_id, new_expiry_time, user_id=billing_user_id)
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
-                await delete_notification(session, tg_id, f"{email}_{prefix}")
+                await delete_notification(session, billing_user_id, f"{email}_{prefix}")
 
             try:
                 key_link = await make_aggregated_link(
@@ -372,6 +414,7 @@ async def renew_key_in_cluster(
             target_server_name=server_id if single_server else None,
             external_squad_uuid=external_squad_uuid,
             old_device_limit=old_device_limit,
+            billing_user_id=billing_user_id,
         )
 
         succeeded, _ = await renew_on_3xui(
@@ -384,12 +427,17 @@ async def renew_key_in_cluster(
             tg_id=tg_id,
             update_links=False,
             target_server_name=server_id if single_server else None,
+            session=session,
+            billing_user_id=billing_user_id,
         )
 
         if remna_ok or succeeded:
-            await update_key_expiry(session, client_id, new_expiry_time)
+            billing_user_id = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+            if billing_user_id is None:
+                return False
+            await update_key_expiry(session, client_id, new_expiry_time, user_id=billing_user_id)
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
-                await delete_notification(session, tg_id, f"{email}_{prefix}")
+                await delete_notification(session, billing_user_id, f"{email}_{prefix}")
 
             try:
                 remna_link_override = None
@@ -405,7 +453,7 @@ async def renew_key_in_cluster(
                             cluster_id=cluster_id,
                             plan=plan,
                             session=session,
-                            tg_id=tg_id,
+                            tg_id=kd.get("tg_id"),
                             remnawave_nodes=remnawave_nodes,
                         )
 

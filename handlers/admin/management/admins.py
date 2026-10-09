@@ -11,17 +11,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Admin
 from filters.admin import HasPermission, invalidate_admin_cache
+from filters.admin_actions import granular_permissions_enabled
 from filters.permissions import (
-    ALL_PERMISSIONS,
+    ACTION_PERMISSION_LABELS,
+    GRANULAR_ACTIONS_CONFIGURED,
     PERMISSION_LABELS,
     PERM_ADMINS,
+    STORED_PERMISSIONS,
+    action_permissions,
     normalize_permissions,
+)
+from settings.texts import (
+    ADMIN_ACTION_PERMISSIONS_HINT,
+    ADMIN_ACTION_PERMISSIONS_SAVED,
+    ADMIN_ACTION_PERMISSIONS_STALE,
+    ADMIN_ACTION_PERMISSIONS_TITLE,
+    ADMIN_ACTION_PERMISSION_DENIED,
 )
 
 from ..panel.headers import menu_text, quote, section
 from . import router
 from .keyboard import (
     AdminPanelCallback,
+    build_admin_action_permissions_kb,
     build_admin_back_kb_to_admins,
     build_admin_permissions_kb,
     build_admins_kb,
@@ -102,6 +114,7 @@ async def create_admin_with_role(callback: CallbackQuery, callback_data: AdminPa
         return
 
     session.add(Admin(tg_id=tg_id, role=role, description="Добавлен вручную", permissions=[]))
+    await session.commit()
     invalidate_admin_cache(tg_id)
     await callback.message.edit_text(
         menu_text("Админы", f"✅ Админ <code>{tg_id}</code> добавлен с ролью <b>{role}</b>."),
@@ -188,6 +201,7 @@ async def set_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallb
         return
 
     admin.role = role
+    await session.commit()
     invalidate_admin_cache(tg_id)
 
     await callback.message.edit_text(
@@ -247,7 +261,8 @@ async def toggle_admin_permission(callback: CallbackQuery, callback_data: AdminP
         current.discard(perm_id)
     else:
         current.add(perm_id)
-    admin.permissions = [p for p in ALL_PERMISSIONS if p in current]
+    admin.permissions = [p for p in STORED_PERMISSIONS if p in current]
+    await session.commit()
     invalidate_admin_cache(tg_id)
 
     await callback.message.edit_reply_markup(reply_markup=build_admin_permissions_kb(tg_id, current))
@@ -259,9 +274,80 @@ async def delete_admin(callback: CallbackQuery, callback_data: AdminPanelCallbac
     tg_id = int(callback_data.action.split("|")[1])
 
     await session.execute(delete(Admin).where(Admin.tg_id == tg_id))
+    await session.commit()
     invalidate_admin_cache(tg_id)
 
     await callback.message.edit_text(
         menu_text("Админы", f"🗑 Админ <code>{tg_id}</code> удалён."),
         reply_markup=build_admin_back_kb_to_admins(),
     )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("action_perms|")), HasPermission(PERM_ADMINS))
+async def edit_admin_action_permissions(
+    callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession, state: FSMContext
+):
+    """Открывает отдельные права без изменения сохранённого доступа."""
+    if not granular_permissions_enabled():
+        await callback.answer(ADMIN_ACTION_PERMISSION_DENIED, show_alert=True)
+        return
+    tg_id = int(callback_data.action.split("|")[1])
+    admin = (await session.execute(select(Admin).where(Admin.tg_id == tg_id))).scalar_one_or_none()
+    if admin is None:
+        await callback.answer(ADMIN_ACTION_PERMISSIONS_STALE, show_alert=True)
+        return
+    current = set(action_permissions(admin.permissions))
+    await state.update_data(admin_action_target=tg_id, admin_action_selected=sorted(current))
+    await callback.message.edit_text(
+        menu_text(ADMIN_ACTION_PERMISSIONS_TITLE, f"<code>{tg_id}</code>", quote(ADMIN_ACTION_PERMISSIONS_HINT)),
+        reply_markup=build_admin_action_permissions_kb(tg_id, current),
+    )
+
+
+@router.callback_query(
+    AdminPanelCallback.filter(F.action.startswith("action_toggle|")), HasPermission(PERM_ADMINS), flags={"popup": True}
+)
+async def toggle_admin_action_permission(callback: CallbackQuery, callback_data: AdminPanelCallback, state: FSMContext):
+    """Меняет черновик детальных прав."""
+    _, target, permission = callback_data.action.split("|", 2)
+    tg_id = int(target)
+    data = await state.get_data()
+    if (
+        not granular_permissions_enabled()
+        or data.get("admin_action_target") != tg_id
+        or permission not in ACTION_PERMISSION_LABELS
+    ):
+        await callback.answer(ADMIN_ACTION_PERMISSIONS_STALE, show_alert=True)
+        return
+    current = set(data.get("admin_action_selected") or ())
+    current.symmetric_difference_update((permission,))
+    await state.update_data(admin_action_selected=sorted(current))
+    await callback.message.edit_reply_markup(reply_markup=build_admin_action_permissions_kb(tg_id, current))
+    await callback.answer()
+
+
+@router.callback_query(
+    AdminPanelCallback.filter(F.action.startswith("action_save|")), HasPermission(PERM_ADMINS), flags={"popup": True}
+)
+async def save_admin_action_permissions(
+    callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession, state: FSMContext
+):
+    """Сохраняет права перед сбросом кеша модератора."""
+    tg_id = int(callback_data.action.split("|")[1])
+    data = await state.get_data()
+    if not granular_permissions_enabled() or data.get("admin_action_target") != tg_id:
+        await callback.answer(ADMIN_ACTION_PERMISSIONS_STALE, show_alert=True)
+        return
+    admin = (await session.execute(select(Admin).where(Admin.tg_id == tg_id).with_for_update())).scalar_one_or_none()
+    if admin is None:
+        await callback.answer(ADMIN_ACTION_PERMISSIONS_STALE, show_alert=True)
+        return
+    current = set(normalize_permissions(admin.permissions)).difference(ACTION_PERMISSION_LABELS)
+    current.update(set(data.get("admin_action_selected") or ()).intersection(ACTION_PERMISSION_LABELS))
+    current.add(GRANULAR_ACTIONS_CONFIGURED)
+    admin.permissions = [permission for permission in STORED_PERMISSIONS if permission in current]
+    await session.commit()
+    invalidate_admin_cache(tg_id)
+    await state.update_data(admin_action_target=None, admin_action_selected=[])
+    await callback.message.edit_reply_markup(reply_markup=build_admin_permissions_kb(tg_id, current))
+    await callback.answer(ADMIN_ACTION_PERMISSIONS_SAVED)

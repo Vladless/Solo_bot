@@ -1,9 +1,11 @@
 import pytz
 
 from aiogram import F, Router, types
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.access.resolution import resolve_user_optional
+from database.gifts import delete_gift_for_user
 from database.models import Gift, GiftUsage, Tariff
 from filters.admin import IsAdminFilter
 from services.formatting import get_site_gift_link
@@ -23,8 +25,6 @@ router = Router()
 
 
 async def get_user_gifts(session: AsyncSession, user_id: int) -> list:
-    from database.access.resolution import resolve_user_optional
-
     u = await resolve_user_optional(session, user_id)
     if u is None:
         return []
@@ -132,9 +132,10 @@ async def handle_users_gifts(
 async def handle_gifts_page(
     callback: types.CallbackQuery,
     session: AsyncSession,
+    admin_user_ref: int,
 ):
-    _, user_id, page = callback.data.split("|")
-    await show_gifts_list(callback.message, session, int(user_id), page=int(page))
+    _, _, page = callback.data.split("|")
+    await show_gifts_list(callback.message, session, admin_user_ref, page=int(page))
 
 
 @router.callback_query(
@@ -145,11 +146,12 @@ async def handle_gifts_page(
 async def handle_gift_delete(
     callback: types.CallbackQuery,
     session: AsyncSession,
+    admin_user_ref: int,
 ):
-    _, user_id, gift_id, page = callback.data.split("|")
-    user_id, page = int(user_id), int(page)
+    _, _, gift_id, page = callback.data.split("|")
+    user_id, page = admin_user_ref, int(page)
 
-    stmt = select(Gift).where(Gift.gift_id == gift_id)
+    stmt = select(Gift).where(Gift.gift_id == gift_id, Gift.sender_user_id == user_id)
     result = await session.execute(stmt)
     gift = result.scalar_one_or_none()
 
@@ -181,12 +183,14 @@ async def handle_gift_delete(
 async def handle_gift_delete_confirm(
     callback: types.CallbackQuery,
     session: AsyncSession,
+    admin_user_ref: int,
 ):
-    _, user_id, gift_id = callback.data.split("|")
-    user_id = int(user_id)
+    _, _, gift_id = callback.data.split("|")
+    user_id = admin_user_ref
 
-    await session.execute(delete(GiftUsage).where(GiftUsage.gift_id == gift_id))
-    await session.execute(delete(Gift).where(Gift.gift_id == gift_id))
+    if not await delete_gift_for_user(session, gift_id, user_id):
+        await callback.answer("Подарок не найден", show_alert=True)
+        return
 
     await callback.answer("Подарок удалён", show_alert=True)
     await show_gifts_list(callback.message, session, user_id, page=0)

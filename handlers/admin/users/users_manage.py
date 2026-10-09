@@ -24,7 +24,13 @@ from database import (
     async_session_maker,
     update_trial,
 )
-from database.access.resolution import chat_id_for_user, resolve_user_optional, user_id_from_legacy_ref
+from database.access.resolution import (
+    TelegramId,
+    UserId,
+    chat_id_for_user,
+    resolve_user_optional,
+    user_id_from_legacy_ref,
+)
 from database.models import Admin, Identity, Key, ManualBan, Payment, Referral, Tariff, User
 from database.subscription_events import get_user_subscription_history, resolve_user_ref_by_client_id
 from database.web_notifications import notify_web
@@ -92,7 +98,7 @@ async def _fetch_search_candidates(session: AsyncSession, uid_reasons: dict[int,
 
 
 async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
-    """Ярусный поиск клиента по любым данным."""
+    """Ищет клиента по идентификаторам и контактным данным."""
     raw = (raw or "").strip()
     if not raw:
         return []
@@ -174,7 +180,7 @@ async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
 
 
 async def search_from_forward(session: AsyncSession, fwd) -> list[dict]:
-    """Поиск по пересланному сообщению: tg_id (приоритет) + username + имя/фамилия."""
+    """Ищет клиента по пересланному сообщению."""
     uid_reasons: dict[int, set[str]] = {}
 
     def note(uid, reason: str) -> None:
@@ -413,7 +419,7 @@ async def handle_message_text_input(message: Message, state: FSMContext):
 )
 async def handle_send_user_message(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
     text_message = data.get("text")
     photo = data.get("photo")
     chat_id = await chat_id_for_user(session, user_id)
@@ -583,9 +589,8 @@ async def process_user_search(
     *,
     tg_id: int | None = None,
 ) -> None:
-    """Показывает карточку клиента по users.id или tg_id."""
-    if user_id is None:
-        user_id = tg_id
+    """Показывает клиента по внутреннему или Telegram ID."""
+    user_id = UserId(user_id) if user_id is not None else TelegramId(tg_id)
     await state.clear()
 
     resolved_id = await user_id_from_legacy_ref(session, user_id)
@@ -596,7 +601,7 @@ async def process_user_search(
             reply_markup=build_admin_back_kb(),
         )
         return
-    uid = u.id
+    uid = UserId(u.id)
     real_tg_id = u.tg_id
     identity_email = None
     if u.identity_id:
@@ -711,7 +716,7 @@ async def process_user_search(
     has_email = identity_email is not None and str(identity_email).strip() != ""
     has_tg = real_tg_id is not None
     kb = await build_user_edit_kb(
-        int(real_tg_id) if real_tg_id is not None else uid,
+        uid,
         key_records,
         is_banned=is_banned,
         admin_role=admin_role,
@@ -806,7 +811,11 @@ async def handle_users_site_tab(callback: CallbackQuery, callback_data: AdminUse
     IsAdminFilter(),
     flags={"popup": True},
 )
-async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUserEditorCallback):
+async def handle_users_site_send(
+    callback: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
     tab = str(callback_data.data or "")
     label = SITE_TAB_LABELS.get(tab)
     if not label:
@@ -823,6 +832,11 @@ async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUs
         await callback.answer("Не задан адрес сайта", show_alert=True)
         return
 
+    chat_id = await chat_id_for_user(session, callback_data.user_id)
+    if chat_id is None:
+        await callback.answer("У клиента нет Telegram", show_alert=True)
+        return
+
     builder = InlineKeyboardBuilder()
     if is_web_open_in_browser():
         button = InlineKeyboardButton(text=f"🌐 {label}", url=f"{site_url}/dashboard?tab={tab}")
@@ -833,11 +847,9 @@ async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUs
         )
     builder.row(button)
 
-    from bot import bot
-
     try:
-        await bot.send_message(
-            callback_data.user_id,
+        await callback.bot.send_message(
+            chat_id,
             "Откройте раздел в личном кабинете 👇",
             reply_markup=builder.as_markup(),
         )

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import and_, exists, func, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,7 @@ async def count_total_users(session: AsyncSession) -> int:
 
 async def count_users_with_tg_id(session: AsyncSession) -> int:
     return await session.scalar(
-        select(func.count()).select_from(User).where(User.tg_id.isnot(None), exclude_shadow_placeholders())
+        select(func.count()).select_from(User).where(User.tg_id > 0, exclude_shadow_placeholders())
     )
 
 
@@ -59,7 +59,7 @@ async def count_keys_created_between(session: AsyncSession, start_ms: int, end_m
 
 
 async def count_keys_expiring_between(session: AsyncSession, start_ms: int, end_ms: int) -> int:
-    """Число активных подписок, у которых срок истекает в интервале (риск невозобновления)."""
+    """Считает подписки с истечением срока в заданном интервале."""
     stmt = select(func.count()).select_from(Key).where(Key.expiry_time >= start_ms).where(Key.expiry_time < end_ms)
     return await session.scalar(stmt) or 0
 
@@ -76,12 +76,12 @@ async def count_paying_users(session: AsyncSession) -> int:
 
 
 async def count_active_keys(session: AsyncSession) -> int:
-    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
+    current_time_ms = int(datetime.now(UTC).timestamp() * 1000)
     return await session.scalar(select(func.count()).select_from(Key).where(Key.expiry_time > current_time_ms))
 
 
 async def count_active_paid_keys(session: AsyncSession) -> int:
-    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
+    current_time_ms = int(datetime.now(UTC).timestamp() * 1000)
     trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
 
     return await session.scalar(
@@ -93,7 +93,7 @@ async def count_active_paid_keys(session: AsyncSession) -> int:
 
 
 async def count_active_trial_keys(session: AsyncSession) -> int:
-    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
+    current_time_ms = int(datetime.now(UTC).timestamp() * 1000)
     trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
 
     return await session.scalar(
@@ -190,7 +190,7 @@ async def sum_total_payments(session: AsyncSession) -> float:
 
 async def count_hot_leads(session: AsyncSession) -> int:
     subquery_active_keys = (
-        select(Key.user_id).where(Key.expiry_time > int(datetime.utcnow().timestamp() * 1000)).distinct()
+        select(Key.user_id).where(Key.expiry_time > int(datetime.now(UTC).timestamp() * 1000)).distinct()
     )
 
     stmt = (

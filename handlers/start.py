@@ -18,6 +18,14 @@ from database import (
     check_user_exists,
     get_user_snapshot,
 )
+from database.access.resolution import (
+    AmbiguousUserRef,
+    TelegramId,
+    UserId,
+    parse_user_ref,
+    resolve_admin_user_ref,
+    resolve_user_optional,
+)
 from database.tracking_sources import attribute_source_if_known, is_known_tracking_source
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
@@ -61,6 +69,7 @@ from settings.texts import (
     SUBSCRIPTION_REQUIRED_MSG,
     WELCOME_TEXT,
 )
+from utils.referral_codes import decode_referral_code, encode_referral_code
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link
@@ -76,10 +85,10 @@ async def get_or_load_user_snapshot(
     cached_snapshot: tuple[int, int] | None,
     tg_id: int,
 ) -> tuple[int, int] | None:
-    """Возвращает снапшот пользователя, используя кеш если есть."""
+    """Возвращает данные клиента из кеша или базы."""
     if cached_snapshot is not None:
         return cached_snapshot
-    return await get_user_snapshot(session, tg_id)
+    return await get_user_snapshot(session, TelegramId(tg_id) if tg_id is not None else None)
 
 
 @router.message(Command("start"))
@@ -101,7 +110,7 @@ async def start_entry(
 
     captcha_enabled = bool(MODES_CONFIG.get("CAPTCHA_ENABLED", CAPTCHA_ENABLE))
     if captcha_enabled and captcha:
-        user_snapshot = await get_user_snapshot(session, message.chat.id)
+        user_snapshot = await get_user_snapshot(session, TelegramId(message.chat.id))
         if user_snapshot is None:
             captcha_data = await generate_captcha(message, state)
             await edit_or_send_message(message, captcha_data["text"], reply_markup=captcha_data["markup"])
@@ -159,6 +168,14 @@ async def process_start_logic(
         if user_ref is not None:
             from handlers.admin.users.users_manage import process_user_search
 
+            try:
+                user_ref = await resolve_admin_user_ref(session, user_ref)
+            except AmbiguousUserRef:
+                await message.answer("Ссылка неоднозначна. Найдите клиента через поиск в админке.")
+                return
+            if user_ref is None:
+                await message.answer("Клиент не найден.")
+                return
             await state.clear()
             await process_user_search(
                 message,
@@ -310,17 +327,17 @@ _START_DIRECTIVE_RE = re.compile(r"^(?:coupons|gift|referral|utm|partner)[_a-z]*
 
 
 def parse_admin_user_ref(payload: str) -> int | None:
-    """Разбирает payload /start suser_<ref>."""
+    """Извлекает ссылку на клиента из команды запуска."""
     if not payload.startswith("suser_"):
         return None
-    ref = payload[6:]
-    return int(ref) if ref.removeprefix("-").isdigit() else None
+    try:
+        return parse_user_ref(payload[6:])
+    except ValueError:
+        return None
 
 
 def _split_start_payload(text: str | None) -> list[str]:
-    """Делит склеенный payload по дефису, но только там, где начинается новая директива.
-    Коды партнёров и рефералов пишутся алфавитом base64url, где дефис легален,
-    и резать по нему вслепую значит терять часть кода."""
+    """Разделяет команды запуска, сохраняя коды партнёров и рефералов."""
     if not text:
         return []
     chunks = text.split("-")
@@ -335,19 +352,25 @@ def _split_start_payload(text: str | None) -> list[str]:
 
 async def handle_referral_link_safe(part, message, state, session, user_data):
     try:
-        referrer_id = int(part.split("referral")[1].strip("_"))
-        set_client_invite(INVITE_REFERRAL, referrer_id)
-        results = await run_hooks(
-            "referral_link",
-            referrer_id=referrer_id,
-            message=message,
-            state=state,
-            session=session,
-            user_data=user_data,
-        )
-        if results and "HANDLED" in results:
+        referrer_ref = decode_referral_code(part.removeprefix("referral").lstrip("_"))
+        referrer = await resolve_user_optional(session, referrer_ref) if referrer_ref is not None else None
+        if referrer is None:
+            await message.answer("❌ Код приглашения недействителен.")
             return
-        await handle_referral_link(referrer_id, message, state, session, user_data)
+        invite_ref = encode_referral_code(referrer.id) if isinstance(referrer_ref, UserId) else referrer.tg_id
+        set_client_invite(INVITE_REFERRAL, invite_ref)
+        if referrer.tg_id is not None:
+            results = await run_hooks(
+                "referral_link",
+                referrer_id=int(referrer.tg_id),
+                message=message,
+                state=state,
+                session=session,
+                user_data=user_data,
+            )
+            if results and "HANDLED" in results:
+                return
+        await handle_referral_link(referrer_ref, message, state, session, user_data)
     except Exception as e:
         logger.warning("[Referral] Ошибка обработки реферальной ссылки '{}': {}", part, e)
 
@@ -369,7 +392,7 @@ async def handle_utm_link(utm_code: str, message: Message, state: FSMContext, se
 
 
 async def show_webapp_only_start(message: Message, image_path: str) -> bool:
-    """Стартовый экран веб-режима: медиа и одна кнопка открытия приложения."""
+    """Показывает стартовый экран со ссылкой на приложение."""
     from handlers.notifications.webapp_only import webapp_only_markup
 
     markup = webapp_only_markup()
@@ -395,7 +418,7 @@ async def show_start_menu(
             return
 
     if trial is None or key_count is None:
-        snap = await get_user_snapshot(session, message.chat.id)
+        snap = await get_user_snapshot(session, TelegramId(message.chat.id))
         if snap is None:
             trial_status = 0
             key_cnt = 0
@@ -451,7 +474,7 @@ async def show_start_menu(
 @router.callback_query(F.data == "about_vpn")
 async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
     user_id = callback.from_user.id
-    snap = await get_user_snapshot(session, user_id)
+    snap = await get_user_snapshot(session, TelegramId(user_id))
     trial = 0 if snap is None else snap[0]
     show_start_menu_once = bool(MODES_CONFIG.get("SHOW_START_MENU_ONLY_ONCE", SHOW_START_MENU_ONCE))
     back_target = "profile" if show_start_menu_once and trial > 0 else "start"

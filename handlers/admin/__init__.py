@@ -2,6 +2,8 @@ __all__ = ("router",)
 
 from aiogram import Router
 
+from middlewares.admin_permissions import AdminActionPermissionsMiddleware
+
 from .ads import router as ads_router
 from .backups import router as backups_router
 from .bans import router as bans_router
@@ -23,6 +25,8 @@ from .users import router as users_router
 
 
 router = Router(name="admins_main_router")
+router.callback_query.middleware(AdminActionPermissionsMiddleware())
+router.message.middleware(AdminActionPermissionsMiddleware())
 
 router.include_routers(
     modules_router,

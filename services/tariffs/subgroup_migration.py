@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MODES_CONFIG
 from database import filter_cluster_by_subgroup, update_key_client_id
+from database.access.resolution import UserId, panel_identity_fields
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -27,6 +28,7 @@ async def ensure_on_remnawave(
     attempt_update_first: bool,
     external_squad_uuid: str | None = None,
     session=None,
+    billing_user_id: int | None = None,
 ) -> tuple[str | None, str | None]:
     from panels.remnawave_runtime import remnawave_api
     from services.operations.utils import bytes_from_gb
@@ -38,9 +40,8 @@ async def ensure_on_remnawave(
     panel_email = None
     if session is not None:
         try:
-            from database.access.resolution import panel_identity_fields
-
-            panel_tg, panel_email = await panel_identity_fields(session, tg_id)
+            owner = UserId(billing_user_id) if billing_user_id is not None else tg_id
+            panel_tg, panel_email = await panel_identity_fields(session, owner)
         except Exception as e:
             logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
 
@@ -136,10 +137,12 @@ async def ensure_on_remnawave(
                 if not created:
                     return None, None
 
-                user = created.get("user") or {}
-                new_uuid = user.get("vlessUuid") or user.get("uuid") or client_id
+                user = created.get("user") or created
+                new_uuid = user.get("vlessUuid") or user.get("uuid")
+                if str(new_uuid or "") != client_id or str(user.get("username") or "") != email:
+                    return None, None
 
-                sub_url = created.get("subscriptionUrl")
+                sub_url = created.get("subscriptionUrl") or user.get("subscriptionUrl")
                 remna_link = await _build_link_from_subscription(sub_url)
 
                 return new_uuid, remna_link
@@ -168,9 +171,15 @@ async def ensure_on_3xui(
     total_gb: int,
     hwid_device_limit: int,
     attempt_update_first: bool,
-):
+    session: AsyncSession | None = None,
+    billing_user_id: int | None = None,
+) -> bool:
     from services.operations.utils import bytes_from_gb
 
+    panel_tg = tg_id
+    if session is not None:
+        owner = UserId(billing_user_id) if billing_user_id is not None else tg_id
+        panel_tg, _ = await panel_identity_fields(session, owner)
     tasks = []
     traffic = bytes_from_gb(total_gb)
     for s in servers:
@@ -188,7 +197,7 @@ async def ensure_on_3xui(
                 xui = await get_xui_instance(si["api_url"])
             except Exception as e:
                 logger.error(f"{PANEL_XUI} [{nm}] API недоступен: {e}")
-                return
+                return False
 
             async def do_update():
                 try:
@@ -200,7 +209,7 @@ async def ensure_on_3xui(
                         client_id=client_id,
                         total_gb=traffic,
                         sub_id=sub,
-                        tg_id=tg_id,
+                        tg_id=panel_tg if panel_tg and int(panel_tg) > 0 else "",
                         limit_ip=hwid_device_limit,
                     )
                     return bool(updated)
@@ -213,7 +222,7 @@ async def ensure_on_3xui(
                     cfg = ClientConfig(
                         client_id=client_id,
                         email=login,
-                        tg_id=tg_id,
+                        tg_id=panel_tg if panel_tg and int(panel_tg) > 0 else "",
                         limit_ip=hwid_device_limit,
                         total_gb=traffic,
                         expiry_time=new_expiry_time,
@@ -222,25 +231,32 @@ async def ensure_on_3xui(
                         sub_id=sub,
                     )
                     created = await add_client(xui, cfg)
-                    if not created:
+                    confirmed = bool(
+                        isinstance(created, dict)
+                        and created.get("status") == "success"
+                        and str(created.get("client_id") or "") == client_id
+                    )
+                    if not confirmed:
                         logger.error(f"{PANEL_XUI} [{nm}] add_client вернул False")
-                    return bool(created)
+                    return confirmed
                 except Exception as e:
                     logger.error(f"{PANEL_XUI} [{nm}] ошибка add_client: {e}")
                     return False
 
             if attempt_update_first:
                 if await do_update():
-                    return
-                await do_create()
+                    return True
+                return await do_create()
             else:
                 if await do_create():
-                    return
-                await do_update()
+                    return True
+                return await do_update()
 
         tasks.append(one(s, name, inbound_id, login_email, sub_id))
     if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return any(result is True for result in results)
+    return False
 
 
 async def migrate_between_subgroups(
@@ -258,6 +274,7 @@ async def migrate_between_subgroups(
     target_subgroup: str,
     external_squad_uuid: str | None = None,
     tariff_id: int | None = None,
+    billing_user_id: int | None = None,
 ) -> tuple[str, str | None]:
     from services.operations.deletion import delete_on_3xui, delete_on_remnawave
     from services.operations.utils import norm_name, split_by_panel
@@ -281,14 +298,10 @@ async def migrate_between_subgroups(
     remna_old_non = [s for s in remna_old if (s.get("api_url") or "").rstrip("/") not in remna_target_urls]
 
     if not target:
-        if xui_old:
-            await delete_on_3xui(xui_old, email, client_id)
-        if remna_old:
-            await delete_on_remnawave(remna_old, client_id)
-        return client_id, None
+        raise ValueError("Нет серверов в целевой подгруппе")
 
     if xui_tgt and not remna_tgt:
-        await ensure_on_3xui(
+        xui_confirmed = await ensure_on_3xui(
             servers=xui_tgt,
             email=email,
             client_id=client_id,
@@ -297,7 +310,11 @@ async def migrate_between_subgroups(
             total_gb=total_gb,
             hwid_device_limit=hwid_device_limit,
             attempt_update_first=was_on_xui_before,
+            session=session,
+            billing_user_id=billing_user_id,
         )
+        if not xui_confirmed:
+            raise ValueError("Перенос подписки не подтверждён на серверах целевой подгруппы")
         if xui_old_non:
             await delete_on_3xui(xui_old_non, email, client_id)
         if remna_old_non:
@@ -305,8 +322,6 @@ async def migrate_between_subgroups(
         return client_id, None
 
     if remna_tgt and not xui_tgt:
-        if xui_old_non:
-            await delete_on_3xui(xui_old_non, email, client_id)
         new_remna_id, remna_link = await ensure_on_remnawave(
             servers=remna_tgt,
             email=email,
@@ -319,16 +334,18 @@ async def migrate_between_subgroups(
             attempt_update_first=was_on_remna_before,
             external_squad_uuid=external_squad_uuid,
             session=session,
+            billing_user_id=billing_user_id,
         )
+        if not new_remna_id:
+            raise ValueError("Перенос подписки не подтверждён на серверах целевой подгруппы")
+        if xui_old_non:
+            await delete_on_3xui(xui_old_non, email, client_id)
         if remna_old_non:
             await delete_on_remnawave(remna_old_non, client_id)
         if new_remna_id and new_remna_id != client_id:
             await update_key_client_id(session, email, new_remna_id)
             client_id = new_remna_id
         return client_id, remna_link
-
-    if xui_old_non:
-        await delete_on_3xui(xui_old_non, email, client_id)
 
     old_id = client_id
     new_remna_id, remna_link = await ensure_on_remnawave(
@@ -343,13 +360,10 @@ async def migrate_between_subgroups(
         attempt_update_first=was_on_remna_before,
         external_squad_uuid=external_squad_uuid,
         session=session,
+        billing_user_id=billing_user_id,
     )
 
-    if remna_old_non:
-        await delete_on_remnawave(remna_old_non, old_id)
-
     if new_remna_id and new_remna_id != old_id:
-        await update_key_client_id(session, email, new_remna_id)
         client_id = new_remna_id
         await delete_on_3xui(xui_tgt, email, old_id)
         await ensure_on_3xui(
@@ -361,10 +375,17 @@ async def migrate_between_subgroups(
             total_gb=total_gb,
             hwid_device_limit=hwid_device_limit,
             attempt_update_first=False,
+            session=session,
+            billing_user_id=billing_user_id,
         )
+        await update_key_client_id(session, email, new_remna_id)
+        if xui_old_non:
+            await delete_on_3xui(xui_old_non, email, old_id)
+        if remna_old_non:
+            await delete_on_remnawave(remna_old_non, old_id)
         return client_id, remna_link
 
-    await ensure_on_3xui(
+    xui_confirmed = await ensure_on_3xui(
         servers=xui_tgt,
         email=email,
         client_id=client_id,
@@ -373,5 +394,13 @@ async def migrate_between_subgroups(
         total_gb=total_gb,
         hwid_device_limit=hwid_device_limit,
         attempt_update_first=was_on_xui_before,
+        session=session,
+        billing_user_id=billing_user_id,
     )
+    if not (new_remna_id or xui_confirmed):
+        raise ValueError("Перенос подписки не подтверждён на серверах целевой подгруппы")
+    if xui_old_non:
+        await delete_on_3xui(xui_old_non, email, old_id)
+    if remna_old_non:
+        await delete_on_remnawave(remna_old_non, old_id)
     return client_id, remna_link

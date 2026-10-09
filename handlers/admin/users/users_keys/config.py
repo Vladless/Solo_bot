@@ -1,5 +1,7 @@
+from database.access.resolution import UserId
+
 from ...panel.headers import card, menu_text, quote, section
-from ._common import *  # noqa: F401,F403
+from ._common import *
 from .edit import handle_key_edit
 
 
@@ -60,6 +62,7 @@ async def handle_edit_config_start(
         cfg_extra_devices=extra_devices,
         cfg_base_traffic=base_traffic,
         cfg_extra_traffic=extra_traffic,
+        admin_config_permissions=[],
     )
 
     await render_config_menu(callback_query, state, session)
@@ -69,7 +72,7 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
     data = await state.get_data()
     email = data.get("email")
     key_ref = data.get("key_ref")
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
     tariff_id = data.get("tariff_id")
 
     tariff = await get_tariff_by_id(session, tariff_id)
@@ -84,8 +87,8 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
     extra_traffic = data.get("cfg_extra_traffic") or 0
 
     traffic_to_show = base_traffic
-    if traffic_to_show is None and email:
-        key_obj = await get_key_by_email(session, email)
+    if traffic_to_show is None and email and user_id is not None:
+        key_obj = await get_key_by_email(session, email, user_id)
         if key_obj:
             traffic_to_show = key_obj.selected_traffic_limit or key_obj.current_traffic_limit
     if traffic_to_show is None and tariff:
@@ -286,7 +289,7 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
     param = data.get("cfg_param")
     email = data.get("email")
     key_ref = data.get("key_ref")
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
     tariff_id = data.get("tariff_id")
 
     if not message.text or not message.text.isdigit():
@@ -348,7 +351,7 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
 async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     email = data.get("email")
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
     tariff_id = data.get("tariff_id")
 
     base_devices = data.get("cfg_base_devices") or 1
@@ -376,7 +379,7 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
 
         selected_price = base_price + devices_extra_price + traffic_extra_price
 
-    key_obj = await get_key_by_email(session, email)
+    key_obj = await get_key_by_email(session, email, user_id) if user_id is not None else None
 
     if not key_obj:
         await callback_query.message.edit_text(
@@ -388,7 +391,7 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
 
     try:
         await release_session_early(session)
-        await renew_key_in_cluster(
+        renewed = await renew_key_in_cluster(
             cluster_id=key_obj.server_id,
             email=email,
             client_id=key_obj.client_id,
@@ -399,6 +402,8 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
             reset_traffic=False,
             plan=tariff_id,
         )
+        if not renewed:
+            raise RuntimeError("Изменение подписки на панели не подтверждено")
 
         await save_admin_key_config(
             session,

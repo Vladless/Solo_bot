@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from database.access.resolution import public_tg_id
 
 
 class KeyBase(BaseModel):
@@ -26,18 +28,21 @@ class KeyBase(BaseModel):
 
 
 class KeyResponse(KeyBase):
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
+
     class Config:
         from_attributes = True
 
 
 class KeyDetailsResponse(BaseModel):
+    user_id: int
     key: str | None
     remnawave_link: str | None
     server_id: str | None
     created_at: int | None
     expiry_time: int | None
     client_id: str
-    tg_id: int
+    tg_id: int | None
     email: str | None
     is_frozen: bool
     balance: float
@@ -55,6 +60,8 @@ class KeyDetailsResponse(BaseModel):
 
     current_device_limit: int | None = None
     current_traffic_limit: int | None = None
+
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
 
     class Config:
         from_attributes = True

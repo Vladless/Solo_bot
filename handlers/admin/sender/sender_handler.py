@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.executor import run_io, should_run_heavy_tasks_separately, spawn
 from database import async_session_maker, save_blocked_user_ids
+from database.bans import save_blocked_user_pairs
+from database.broadcasts import get_broadcast_addresses
 from database.models import Server
 from database.scheduled_broadcasts import (
     cancel_scheduled_broadcast,
@@ -381,7 +383,7 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
     send_to = data.get("type", "all")
     cluster_name = data.get("cluster_name")
     channel = data.get("channel", "both")
-    _, user_count = await get_recipients(session, send_to, cluster_name, channel=channel)
+    _, user_count = await get_recipients(session, send_to, cluster_name, channel=channel, canonical=True)
 
     if keyboard:
         try:
@@ -451,6 +453,7 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
         send_to,
         cluster_name,
         channel=channel,
+        canonical=True,
     )
 
     if not tg_ids:
@@ -463,7 +466,8 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
 
     status_message = callback_query.message
     if "bot" in parse_channels(channel):
-        total_users_for_bar = sum(1 for tid in tg_ids if is_telegram_chat_id(tid))
+        addresses = await get_broadcast_addresses(session, tg_ids)
+        total_users_for_bar = sum(1 for address in addresses.values() if is_telegram_chat_id(address["tg_id"]))
     else:
         total_users_for_bar = 0
     await status_message.edit_text(
@@ -508,7 +512,7 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
     else:
         messages = []
         for tg_id in tg_ids:
-            message_data = {"tg_id": tg_id, "text": text_message, "photo": photo, "keyboard": keyboard}
+            message_data = {"user_id": int(tg_id), "text": text_message, "photo": photo, "keyboard": keyboard}
             messages.append(message_data)
 
         async def on_progress(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
@@ -533,11 +537,14 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
             channel=channel,
         )
 
-    blocked_ids = stats.get("blocked_user_ids")
-    if blocked_ids:
+    blocked_pairs = stats.get("blocked_user_pairs") or []
+    paired_chats = {tg for _, tg in blocked_pairs}
+    blocked_ids = [tg for tg in stats.get("blocked_user_ids", []) if tg not in paired_chats]
+    if blocked_ids or blocked_pairs:
         try:
             async with async_session_maker() as db_session:
                 await save_blocked_user_ids(db_session, blocked_ids)
+                await save_blocked_user_pairs(db_session, blocked_pairs)
                 await db_session.commit()
         except Exception as e:
             logger.error(f"❌ Ошибка при сохранении заблокированных пользователей: {e}")

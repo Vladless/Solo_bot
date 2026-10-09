@@ -13,12 +13,20 @@ from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, MONEY_CONFIG, PAYMENTS_
 from core.defaults import DEFAULT_WEB_CONFIG
 from core.settings.bonus_config import is_daily_bonus_enabled
 from core.settings.money_config import get_currency_mode
-from core.settings.web_config import WEB_CONFIG, get_site_mode, is_webapp_only
+from core.settings.web_config import (
+    WEB_CONFIG,
+    get_email_binding_reminder_interval_days,
+    get_site_mode,
+    is_email_binding_reminder_enabled,
+    is_webapp_only,
+)
+from mail import smtp_configured
 from services.payments.providers import (
     TELEGRAM_ONLY_PROVIDER_IDS,
     get_providers_with_hooks,
     get_web_link_provider_ids,
 )
+from settings import buttons as payment_buttons
 from settings.config import (
     BALANCE_BUTTON,
     CAPTCHA_ENABLE,
@@ -38,6 +46,7 @@ from settings.config import (
     HWID_RESET_BUTTON,
     INSTRUCTIONS_BUTTON,
     PROJECT_NAME,
+    REDIS_URL,
     REFERRAL_BUTTON,
     REFERRAL_QR,
     REMNAWAVE_WEBAPP,
@@ -120,7 +129,7 @@ async def telegram_widget_bot():
 
 @router.get("/api/site/init-state", include_in_schema=True)
 async def site_init_state(session: AsyncSession = Depends(get_session)):
-    """Прошёл ли сайт первую настройку админом. Используется middleware веб-клиента."""
+    """Возвращает признак завершённой первоначальной настройки сайта."""
     from database.site_state import is_site_initialized
 
     initialized = await is_site_initialized(session)
@@ -129,8 +138,7 @@ async def site_init_state(session: AsyncSession = Depends(get_session)):
 
 @router.get("/api/site/revision", include_in_schema=True)
 async def site_revision(session: AsyncSession = Depends(get_session)):
-    """Глобальный счётчик ревизии контента. Фронт опрашивает его в фоне и при
-    изменении инвалидирует свои SWR-кэши, подтягивая свежие правки админа."""
+    """Возвращает текущую ревизию контента для обновления кэша сайта."""
     from database.site_revision import get_site_revision
 
     revision = await get_site_revision(session)
@@ -207,6 +215,12 @@ async def site_config(session: AsyncSession = Depends(get_session)):
             ),
             "google_login_enabled": False if is_webapp_only() else google_configured(),
             "yandex_login_enabled": False if is_webapp_only() else yandex_configured(),
+            "email_binding_reminder": {
+                "enabled": (
+                    is_email_binding_reminder_enabled() and smtp_configured() and bool(str(REDIS_URL or "").strip())
+                ),
+                "interval_days": get_email_binding_reminder_interval_days(),
+            },
         },
         "webapp_only": {
             "title": str(WEB_CONFIG.get("WEBAPP_ONLY_TITLE") or DEFAULT_WEB_CONFIG["WEBAPP_ONLY_TITLE"]),
@@ -248,6 +262,7 @@ async def site_config(session: AsyncSession = Depends(get_session)):
             "any_web_link_enabled": bool(web_link_provider_ids),
             "any_telegram_only_enabled": bool(telegram_only_provider_ids),
             "web_link_provider_ids": web_link_provider_ids,
+            "provider_labels": {name: getattr(payment_buttons, name, name) for name in web_link_provider_ids},
             "telegram_only_provider_ids": telegram_only_provider_ids,
             "yookassa_enabled": pay_flags.get("YOOKASSA", False),
             "yoomoney_enabled": pay_flags.get("YOOMONEY", False),
@@ -288,12 +303,7 @@ _SEMVER_RE = re.compile(
 
 
 def _parse_semver(tag: str) -> tuple[int, int, int, int, tuple[tuple[int, int | str], ...]] | None:
-    """Returns a tuple comparable per semver spec.
-
-    Release > prerelease (second-to-last slot: 1 for release, 0 for prerelease).
-    Last slot — tuple of prerelease identifiers; numeric ids compare numerically,
-    alphanumeric ids compare lexically, numeric < alphanumeric.
-    """
+    """Разбирает тег версии в кортеж для сравнения по правилам SemVer."""
     match = _SEMVER_RE.match(tag.strip())
     if not match:
         return None
@@ -313,7 +323,7 @@ def _parse_semver(tag: str) -> tuple[int, int, int, int, tuple[tuple[int, int | 
 
 
 async def _fetch_ghcr_tags(image: str) -> list[str]:
-    """Возвращает все теги образа в GHCR. Поддерживает paginate через Link header."""
+    """Собирает теги образа из всех страниц GHCR."""
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
         token_url = f"https://ghcr.io/token?scope=repository:{image}:pull"
         async with session.get(token_url) as token_resp:
@@ -374,7 +384,7 @@ def _latest_for_channel(tags: list[str], dev: bool) -> str | None:
 
 @router.get("/api/meta/update-check", include_in_schema=True)
 async def update_check(current: str | None = Query(default=None)):
-    """Сравнивает переданную версию с последним тегом в GHCR. Канал (dev/release) определяется по current."""
+    """Проверяет обновления образа в канале текущей версии."""
     current_v = (current or "").strip()
     image = (os.environ.get("GHCR_IMAGE") or "vladless/solo-brick").strip()
     if not image:

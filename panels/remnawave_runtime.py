@@ -168,7 +168,7 @@ def _run_with_api_in_thread(
 
 
 async def invalidate_remnawave_profile_cache(*, api_url: str | None = None, client_id: str | None = None) -> None:
-    """Invalidate cached Remnawave profiles by api_url/client_id (or both). Await to avoid pending task on shutdown."""
+    """Сбрасывает кэш профилей Remnawave по адресу API, клиенту или обоим параметрам."""
     if api_url is None and client_id is None:
         await cache_delete_pattern("remna_profile:*")
         return

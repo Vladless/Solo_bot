@@ -23,6 +23,7 @@ const PAYMENT_METHOD_SCHEMA = {
 
 const PROVIDER_LABEL: Record<string, string> = {
   yookassa: "ЮKassa",
+  yookassa_sbp: "ЮKassa · СБП",
   cryptobot: "CryptoBot",
   cryptocloud: "CryptoCloud",
   freekassa: "Free-Kassa",

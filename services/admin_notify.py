@@ -18,10 +18,12 @@ from core.client_origin import (
     client_origin,
 )
 from core.executor import spawn
+from database.access.resolution import TelegramId, public_tg_id, resolve_user_optional
 from database.models import Identity, Referral, User
 from handlers.admin.panel.headers import menu_text, note, section
 from handlers.admin.users.keyboard import AdminUserEditorCallback
 from logger import logger
+from utils.referral_codes import decode_referral_code
 
 
 MOSCOW_TZ = timezone("Europe/Moscow")
@@ -60,8 +62,9 @@ def _who(username: object, tg_id: object, user_id: object) -> str:
     nick = str(username or "").strip().lstrip("@")
     if nick:
         return f"@{nick}"
-    if tg_id:
-        return f"tg {tg_id}"
+    telegram_id = public_tg_id(tg_id)
+    if telegram_id:
+        return f"tg {telegram_id}"
     return f"id {user_id}"
 
 
@@ -74,11 +77,7 @@ async def _partner_referrer(session: AsyncSession, tg_id: int) -> object | None:
 
 
 async def resolve_attribution(session: AsyncSession, card: dict[str, object]) -> dict[str, object]:
-    """Откуда клиент: реферал, партнёр, рекламная метка или прямой запуск.
-
-    Сначала смотрим записи в базе, а если их ещё нет — метку приглашения текущего запроса:
-    реферал и партнёр записываются уже после создания клиента.
-    """
+    """Определяет источник привлечения клиента."""
     user_id = int(card["id"])
     tg_id = card.get("tg_id")
 
@@ -109,6 +108,17 @@ async def resolve_attribution(session: AsyncSession, card: dict[str, object]) ->
         kind, ref = invite
         if kind == INVITE_UTM:
             return {"kind": INVITE_UTM, "who": None}
+        if kind == INVITE_REFERRAL:
+            referrer_ref = decode_referral_code(ref)
+            inviter = await resolve_user_optional(session, referrer_ref) if referrer_ref is not None else None
+            if inviter is not None:
+                who = _who(inviter.username, inviter.tg_id, inviter.id)
+            elif referrer_ref is not None:
+                fallback_tg = referrer_ref if isinstance(referrer_ref, TelegramId) else None
+                who = _who(None, fallback_tg, referrer_ref)
+            else:
+                who = None
+            return {"kind": kind, "who": who}
         inviter = (
             (
                 await session.execute(select(User.id, User.tg_id, User.username).where(User.tg_id == int(ref)).limit(1))
@@ -140,10 +150,7 @@ def _site() -> tuple[bool, str]:
 
 
 def build_client_keyboard(user_id: int, client_ref: int | None) -> InlineKeyboardMarkup:
-    """Переходы к клиенту: карточка в боте и та же карточка на сайте.
-
-    Кнопка сайта появляется, только когда сайт включён и его адрес задан: иначе она ведёт в пустоту.
-    """
+    """Создаёт кнопки перехода к карточке клиента."""
     rows = [
         [
             InlineKeyboardButton(
@@ -154,8 +161,7 @@ def build_client_keyboard(user_id: int, client_ref: int | None) -> InlineKeyboar
     ]
     site_enabled, site_url = _site()
     if site_enabled:
-        ref = client_ref if client_ref is not None else user_id
-        rows.append([InlineKeyboardButton(text="Открыть на сайте", url=f"{site_url}/admin/users?ref={ref}")])
+        rows.append([InlineKeyboardButton(text="Открыть на сайте", url=f"{site_url}/admin/users?ref={user_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -195,7 +201,7 @@ def _money(amount: float) -> str:
 
 
 def _contact(card: dict[str, object], *, site_enabled: bool) -> str:
-    """Лид экрана: одно нажатие, чтобы связаться. Ник ведёт в переписку, иначе почта."""
+    """Форматирует ссылку на контакт клиента."""
     username = str(card.get("username") or "").strip().lstrip("@")
     if username:
         return f'<a href="https://t.me/{username}">@{username}</a>'
@@ -207,7 +213,7 @@ def _contact(card: dict[str, object], *, site_enabled: bool) -> str:
 
 
 def _client_lines(card: dict[str, object], *, site_enabled: bool) -> list[str]:
-    """Строки секции «Клиент»: наш номер, telegram и почта. Ник уже стоит в лиде."""
+    """Формирует строки с номером и контактами клиента."""
     lines = [f"номер: {card.get('id')}"]
     tg_id = card.get("tg_id")
     lines.append(f"telegram: {tg_id if tg_id else '—'}")
@@ -236,7 +242,7 @@ async def _send_to_admins(text: str, markup: InlineKeyboardMarkup) -> None:
 
 
 def _origin_lines(card: dict[str, object], *, origin: object, attribution: dict[str, object] | None) -> list[str]:
-    """Строки секции «Откуда»: привлечение, кто пригласил, канал входа и рекламная метка."""
+    """Формирует строки об источнике привлечения клиента."""
     kind = str((attribution or {}).get("kind") or "")
     who = str((attribution or {}).get("who") or "")
     lines = [f"привлечение: {INVITE_LABELS.get(kind, INVITE_DIRECT)}"]
@@ -274,7 +280,7 @@ def build_payment_text(
     payment_id: str | None = None,
     internal_id: int | None = None,
 ) -> str:
-    """Экран уведомления об оплате: сумма и касса первой секцией, ниже клиент и счёт."""
+    """Формирует уведомление об оплате."""
     return menu_text(
         "Успешная оплата",
         _contact(card, site_enabled=site_enabled),

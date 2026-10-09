@@ -4,11 +4,12 @@ import inspect
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
+from database.access.resolution import TelegramId, UserId, get_user_by_tg_id
 from database.models import (
     DailySubscriptionMetric,
     Key,
@@ -72,8 +73,7 @@ async def record_subscription_event(
     source: str | None = None,
     metadata: dict | None = None,
 ) -> None:
-    """Добавляет событие в журнал. Никогда не бросает исключение — логирование
-    подписок не должно ломать операции с ключами. Коммит — за вызывающим (контракт транзакций)."""
+    """Сохраняет событие подписки без прерывания основной операции."""
     try:
         if await _already_recorded(session, event_type, client_id, expiry_time):
             return
@@ -100,9 +100,7 @@ async def record_subscription_event(
 
 
 async def resolve_user_ref_by_client_id(session: AsyncSession, client_id: str) -> tuple[int | None, str | None]:
-    """По client_id подписки находит ссылку на пользователя (tg_id или user_id — обе годятся
-    для resolve_user_optional). Сначала активный ключ, затем журнал событий.
-    Возвращает (ref, source), source ∈ {"active", "history", None}."""
+    """Находит владельца подписки по ключу или журналу."""
     needle = (client_id or "").strip().lower()
     if not needle:
         return None, None
@@ -111,7 +109,7 @@ async def resolve_user_ref_by_client_id(session: AsyncSession, client_id: str) -
         await session.execute(select(Key.tg_id, Key.user_id).where(func.lower(Key.client_id) == needle).limit(1))
     ).first()
     if row and (row.tg_id is not None or row.user_id is not None):
-        return (row.tg_id if row.tg_id is not None else row.user_id), "active"
+        return (UserId(row.user_id) if row.user_id is not None else TelegramId(row.tg_id)), "active"
 
     ev = (
         await session.execute(
@@ -122,7 +120,7 @@ async def resolve_user_ref_by_client_id(session: AsyncSession, client_id: str) -
         )
     ).first()
     if ev and (ev.tg_id is not None or ev.user_id is not None):
-        return (ev.tg_id if ev.tg_id is not None else ev.user_id), "history"
+        return (UserId(ev.user_id) if ev.user_id is not None else TelegramId(ev.tg_id)), "history"
 
     return None, None
 
@@ -130,14 +128,15 @@ async def resolve_user_ref_by_client_id(session: AsyncSession, client_id: str) -
 async def get_user_subscription_history(
     session: AsyncSession, *, user_id: int | None = None, tg_id: int | None = None
 ) -> list[dict]:
-    """Группирует журнал событий по client_id в «жизни» подписок пользователя:
-    когда появилась, сколько продлений, до какого срока, чем закончилась.
-    Самые свежие — первыми."""
+    """Группирует историю клиента по подпискам."""
+    if user_id is None and tg_id is not None:
+        user = await get_user_by_tg_id(session, tg_id)
+        user_id = user.id if user is not None else None
     refs = []
     if user_id is not None:
         refs.append(SubscriptionEvent.user_id == user_id)
     if tg_id is not None:
-        refs.append(SubscriptionEvent.tg_id == tg_id)
+        refs.append(and_(SubscriptionEvent.user_id.is_(None), SubscriptionEvent.tg_id == tg_id))
     if not refs:
         return []
 
@@ -224,8 +223,7 @@ async def get_recent_renewals(session: AsyncSession, client_id: str, limit: int 
 
 
 async def backfill_from_payments(session: AsyncSession) -> int:
-    """Ретроспективно засеивает журнал из истории платежей: первый успешный платёж
-    юзера → created, последующие → renewed. Идемпотентно (пропускает, если уже сеяли)."""
+    """Однократно восстанавливает события подписок из платежей."""
     already = await session.scalar(
         select(func.count()).select_from(SubscriptionEvent).where(SubscriptionEvent.source == "backfill")
     )
@@ -263,8 +261,7 @@ async def backfill_from_payments(session: AsyncSession) -> int:
 
 
 async def snapshot_daily_metrics(session: AsyncSession) -> None:
-    """Дневной снапшот: активные подписки сейчас + события за прошедшие сутки (UTC).
-    Пишет/обновляет строку за вчерашний день."""
+    """Сохраняет суточную статистику подписок."""
     now = datetime.utcnow()
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     target_date = (now - timedelta(days=1)).date()
@@ -326,8 +323,7 @@ async def snapshot_daily_metrics(session: AsyncSession) -> None:
 
 
 async def get_subscription_dynamics(session: AsyncSession, days: int) -> dict:
-    """Данные для аналитики: события подписок по дням (из журнала, есть backfill-история)
-    + тренд активных подписок по дням (из снапшотов, накапливается с момента деплоя)."""
+    """Возвращает динамику событий и активных подписок."""
     since = datetime.utcnow() - timedelta(days=days)
 
     day = func.date_trunc("day", SubscriptionEvent.created_at).label("day")
@@ -370,7 +366,7 @@ async def get_subscription_dynamics(session: AsyncSession, days: int) -> dict:
 
 
 async def get_retention_metrics(session: AsyncSession, days: int) -> dict:
-    """Удержание: churn rate, LTV, trial→paid конверсия и когортная удержанность по месяцам."""
+    """Рассчитывает удержание, отток и доходность клиентов."""
     from collections import defaultdict
 
     now = datetime.utcnow()

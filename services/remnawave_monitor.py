@@ -27,17 +27,7 @@ TICK_SLEEP_SEC = 30
 
 
 async def get_client_node_statuses(session, allowed_squad_uuids: set[str] | None = None) -> list[dict]:
-    """Реальные точки подключения клиента для показа в кабинете.
-
-    Источник — хосты Remnawave (host.address:host.port), из которых собирается
-    подписка, т.е. ровно тот endpoint, к которому коннектится устройство клиента.
-    Снапшот строится в _node_health_tick и кэшируется в CLIENT_CONNECTION_TARGETS,
-    чтобы публичный запрос не дёргал панель.
-
-    Скрыты выключенные вручную (host.isDisabled в панели и servers.enabled=false в боте).
-    Если задан allowed_squad_uuids — оставляем только хосты, чей inbound входит в эти сквады
-    (т.е. серверы из тарифа конкретного юзера). None — без фильтра по сквадам (для админа).
-    """
+    """Возвращает доступные точки подключения клиента с учётом разрешённых групп."""
     targets = list(REMNAWAVE_CONFIG.get("CLIENT_CONNECTION_TARGETS") or [])
     if not targets:
         return []
@@ -263,8 +253,7 @@ def _build_inbound_load_map(nodes: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def _normalize_hosts(raw: Any) -> list[dict[str, Any]]:
-    """Приводит ответ get_hosts() к списку dict — разные версии Remnawave
-    отдают либо список, либо обёртку {hosts/response/items/data: [...]}."""
+    """Извлекает список хостов из разных форматов ответа панели."""
     if isinstance(raw, list):
         return [h for h in raw if isinstance(h, dict)]
     if isinstance(raw, dict):
@@ -278,11 +267,7 @@ def _normalize_hosts(raw: Any) -> list[dict[str, Any]]:
 def _build_connection_targets(
     api_url: str, nodes: list[dict[str, Any]], hosts: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Реальные клиентские endpoint'ы из хостов панели: host.address:host.port.
-
-    online/load берутся по inbound хоста (жива ли обслуживающая нода и её нагрузка).
-    Выключенные вручную хосты (isDisabled) пропускаются.
-    """
+    """Собирает адреса включённых хостов с доступностью и нагрузкой обслуживающих нод."""
     alive = _build_inbound_alive_map(nodes)
     load = _build_inbound_load_map(nodes)
     node_dicts = [n for n in nodes if isinstance(n, dict)]
@@ -342,17 +327,7 @@ def _host_inbound_uuid(host: dict[str, Any]) -> str | None:
 
 
 async def run_host_rotation() -> dict[str, Any]:
-    """Запускает один проход ротации. Возвращает summary для UI/логов.
-
-    Структура:
-      {
-        "allowed_count": int,
-        "panels": int,
-        "moved_total": int,
-        "details": [str, ...],
-        "errors": [str, ...],
-      }
-    """
+    """Выполняет один проход ротации хостов и возвращает результаты."""
     result: dict[str, Any] = {
         "allowed_count": 0,
         "panels": 0,
@@ -504,11 +479,7 @@ def _build_inbound_alive_map(nodes: list[dict[str, Any]]) -> dict[str, bool]:
 
 
 async def sync_hosts_with_node_state(bot=None) -> dict[str, Any]:
-    """Выключает хосты упавших нод и включает обратно те, что мы сами выключали.
-
-    При восстановлении хотя бы одного хоста — запускает ротацию (если она включена).
-    Возвращает summary для UI/логов.
-    """
+    """Отключает хосты упавших нод и восстанавливает автоматически отключённые хосты."""
     result: dict[str, Any] = {"disabled": [], "enabled": [], "errors": []}
 
     panels = await _collect_remnawave_panels()

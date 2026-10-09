@@ -79,7 +79,7 @@ export function DefaultCheckoutProviderBlockView({ block, context, editMode }: T
   function label(id: string): string {
     const custom = customLabels[id];
     if (custom && custom.trim()) return custom.trim();
-    return DEFAULT_PROVIDER_LABELS[id] ?? id;
+    return appInfo.payments.providerLabels?.[id] ?? DEFAULT_PROVIDER_LABELS[id] ?? id;
   }
 
   const showSelector = providers.length > 1 || editMode || previewMode;

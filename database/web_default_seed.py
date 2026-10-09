@@ -167,9 +167,7 @@ def _apply_support_links_to_pages(pages: dict) -> None:
 
 
 async def seed_default_site(session: AsyncSession, force: bool = False) -> bool:
-    """Засевает дефолтный сайт. По умолчанию (force=False) — только в пустую БД
-    (идемпотентно). При force=True перезаписывает страницы дефолта (кнопка
-    «Установить дефолтный дизайн»). Возвращает True, если что-то записано."""
+    """Устанавливает стандартный сайт в пустую базу или принудительно обновляет его."""
     if not force:
         existing = await session.execute(select(func.count(WebPageVariantBlock.id)))
         if (existing.scalar() or 0) > 0:
@@ -194,11 +192,7 @@ async def _apply_site(
     page_themes: dict | None = None,
     global_theme: dict | None = None,
 ) -> bool:
-    """Применяет распакованный сайт (тема, страницы, flow) к БД.
-    page_themes[slug] (если задан) переопределяет тему конкретной страницы — нужно
-    для захваченных наборов, где у кабинета свои page-scoped токены.
-    global_theme — палитра, которую набор доносит до остальных страниц сайта
-    (лендинг и т.д.), не трогая их блоки."""
+    """Сохраняет страницы, темы и сценарии распакованного сайта."""
     page_themes = page_themes or {}
     _apply_support_links_to_pages(pages)
     seeded = False
@@ -299,19 +293,14 @@ async def _apply_site(
 
 
 def seed_worthy_slug(slug: str, has_blocks: bool) -> bool:
-    """Идёт ли страница в сид: свои блоки или известный маршрут сайта.
-
-    Сайт заводит запись для любого запрошенного пути, поэтому в базе оседают следы
-    сканеров вроде `phpinfo` или `wordpress` — в поставку дизайна они попадать не должны.
-    """
+    """Проверяет, подходит ли страница для включения в шаблон сайта."""
     if has_blocks:
         return True
     return slug in set(KNOWN_PAGE_SLUGS)
 
 
 async def capture_current_site(session: AsyncSession) -> dict:
-    """Снимок текущего сайта в формате seed: {_theme, _flows, _page_themes, <slug>: [{type,data}]}.
-    Тему берём по каждой странице отдельно (_page_themes), глобальную (_theme) — со страницы landing."""
+    """Создаёт снимок блоков, тем и сценариев текущего сайта."""
     out: dict = {}
     page_themes: dict = {}
     global_theme: dict | None = None
@@ -503,8 +492,7 @@ async def _apply_captured_site(session: AsyncSession, site: dict) -> bool:
 
 
 async def install_pack_design(session: AsyncSession, pack_id: str) -> bool:
-    """Устанавливает дизайн набора (страницы + темы + flow). force=True.
-    Приоритет: сохранённый в БД дизайн → сид набора, при нужде скачанный с сайта."""
+    """Устанавливает дизайн набора из сохранённого снимка или шаблона набора."""
     site = await load_pack_design(session, pack_id)
     if not site:
         site = await _ensure_pack_seed(pack_id)

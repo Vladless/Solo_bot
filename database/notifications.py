@@ -1,12 +1,11 @@
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, delete, func, select, tuple_
+from sqlalchemy import and_, delete, func, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.bootstrap import NOTIFICATIONS_CONFIG
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, UserId, resolve_user_optional
 from database.models import BlockedUser, Key, Notification, User
 from logger import logger
 from settings.config import DISCOUNT_ACTIVE_HOURS
@@ -15,6 +14,13 @@ from settings.config import DISCOUNT_ACTIVE_HOURS
 _NOTIFICATION_TIME_BATCH_SIZE = 300
 _BULK_ADD_NOTIFICATIONS_BATCH_SIZE = 1000
 _LEGACY_REF_MAP_BATCH_SIZE = 5000
+
+
+def _discount_active_hours() -> int:
+    """Возвращает срок скидки из актуальных настроек."""
+    from core.settings.notifications_config import NOTIFICATIONS_CONFIG
+
+    return int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
 
 
 def _utc_now() -> datetime:
@@ -29,21 +35,57 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(UTC)
 
 
-async def _map_legacy_refs_to_user_ids(session: AsyncSession, refs: list[int]) -> dict[int, int]:
+def _notification_ref_key(ref: int) -> tuple[str, int]:
+    kind = "id" if isinstance(ref, UserId) else "tg" if isinstance(ref, TelegramId) else "legacy"
+    return kind, int(ref)
+
+
+def _validate_result_refs(id_map: dict[tuple[str, int], int]) -> None:
+    """Публичный числовой ключ не может представить разных владельцев одного числа."""
+    owners_by_number: dict[int, int] = {}
+    for (_kind, number), user_id in id_map.items():
+        if number in owners_by_number and owners_by_number[number] != user_id:
+            raise ValueError(f"Ambiguous notification result reference: {number}")
+        owners_by_number[number] = user_id
+
+
+async def mark_zero_traffic_notified(
+    session: AsyncSession,
+    key_refs: list[tuple[UserId, str]],
+) -> int:
+    """Отмечает подготовленные уведомления по точной паре users.id и client_id."""
+    owned_keys = list(dict.fromkeys((int(user_id), client_id) for user_id, client_id in key_refs))
+    if not owned_keys:
+        return 0
+    result = await session.execute(
+        update(Key).where(tuple_(Key.user_id, Key.client_id).in_(owned_keys)).values(notified=True)
+    )
+    return result.rowcount or 0
+
+
+async def _map_legacy_refs_to_user_ids(session: AsyncSession, refs: list[int]) -> dict[tuple[str, int], int]:
     if not refs:
         return {}
-    from sqlalchemy import or_
-
-    uniq = list(dict.fromkeys(refs))
-    m: dict[int, int] = {}
+    uniq = list(dict.fromkeys(_notification_ref_key(ref) for ref in refs))
+    m: dict[tuple[str, int], int] = {}
     for i in range(0, len(uniq), _LEGACY_REF_MAP_BATCH_SIZE):
         chunk = uniq[i : i + _LEGACY_REF_MAP_BATCH_SIZE]
-        r = await session.execute(select(User.id, User.tg_id).where(or_(User.tg_id.in_(chunk), User.id.in_(chunk))))
+        ids = [number for kind, number in chunk if kind != "tg"]
+        tg_ids = [number for kind, number in chunk if kind != "id"]
+        r = await session.execute(select(User.id, User.tg_id).where(or_(User.tg_id.in_(tg_ids), User.id.in_(ids))))
+        by_id: dict[int, int] = {}
+        by_tg: dict[int, int] = {}
         for uid, tgid in r.all():
-            m[int(uid)] = int(uid)
+            by_id[int(uid)] = int(uid)
             if tgid is not None:
-                m[int(tgid)] = int(uid)
-    return {ref: m[ref] for ref in uniq if ref in m}
+                by_tg[int(tgid)] = int(uid)
+        for kind, number in chunk:
+            uid = by_id.get(number) if kind == "id" else by_tg.get(number)
+            if uid is None and kind == "legacy":
+                uid = by_id.get(number)
+            if uid is not None:
+                m[kind, number] = uid
+    return m
 
 
 async def add_notification(
@@ -113,11 +155,13 @@ async def bulk_add_notifications(
     *,
     commit: bool = False,
 ) -> None:
-    """Вставка/обновление многих (legacy_user_ref, notification_type) батчами (лимит параметров PostgreSQL)."""
+    """Пакетно создаёт или обновляет отметки уведомлений."""
     if not items:
         return
     id_map = await _map_legacy_refs_to_user_ids(session, [p[0] for p in items])
-    mapped = [(id_map[r], n) for r, n in items if r in id_map]
+    mapped = list(
+        dict.fromkeys((id_map[_notification_ref_key(r)], n) for r, n in items if _notification_ref_key(r) in id_map)
+    )
     if not mapped:
         return
     uids = list({uid for uid, _ in mapped})
@@ -168,11 +212,13 @@ async def bulk_delete_notifications(
     *,
     commit: bool = False,
 ) -> None:
-    """Удаление многих (legacy_user_ref, notification_type) батчами (лимит параметров PostgreSQL)."""
+    """Пакетно удаляет отметки уведомлений."""
     if not items:
         return
     id_map = await _map_legacy_refs_to_user_ids(session, [p[0] for p in items])
-    mapped = [(id_map[r], n) for r, n in items if r in id_map]
+    mapped = list(
+        dict.fromkeys((id_map[_notification_ref_key(r)], n) for r, n in items if _notification_ref_key(r) in id_map)
+    )
     if not mapped:
         return
     total = 0
@@ -212,23 +258,19 @@ async def check_notification_time_bulk(
     items: list[tuple[int, str]],
     hours: int,
 ) -> set[tuple[int, str]]:
-    """
-    Определяет, кому из (tg_id, notification_type) можно слать уведомление
-    (прошло больше hours с последней отправки или не слали никогда).
-    Обрабатывает items батчами, чтобы не превышать лимит параметров в одном запросе.
-    Возвращает множество пар (tg_id, notification_type), которым можно слать.
-    """
+    """Возвращает получателей, которым разрешена повторная отправка."""
     if not items:
         return set()
     now = _utc_now()
     threshold = now - timedelta(hours=hours)
     can_notify = set()
     found = set()
+    id_map = await _map_legacy_refs_to_user_ids(session, [p[0] for p in items])
+    _validate_result_refs(id_map)
     for batch in (
         items[i : i + _NOTIFICATION_TIME_BATCH_SIZE] for i in range(0, len(items), _NOTIFICATION_TIME_BATCH_SIZE)
     ):
-        id_map = await _map_legacy_refs_to_user_ids(session, [p[0] for p in batch])
-        mapped_batch = [(id_map[r], n) for r, n in batch if r in id_map]
+        mapped_batch = [(id_map[_notification_ref_key(r)], n) for r, n in batch if _notification_ref_key(r) in id_map]
         if not mapped_batch:
             continue
         stmt = select(
@@ -237,37 +279,33 @@ async def check_notification_time_bulk(
             Notification.last_notification_time,
         ).where(tuple_(Notification.user_id, Notification.notification_type).in_(mapped_batch))
         result = await session.execute(stmt)
-        uid_to_ref: dict[int, int] = {}
-        for r, _n in batch:
-            if r in id_map:
-                uid_to_ref[id_map[r]] = r
-        for row in result:
-            ref = uid_to_ref.get(row.user_id, row.user_id)
-            found.add((ref, row.notification_type))
-            row_time = _as_utc(row.last_notification_time)
+        times = {(row.user_id, row.notification_type): _as_utc(row.last_notification_time) for row in result}
+        for ref, ntype in batch:
+            key = _notification_ref_key(ref)
+            owner_pair = (id_map.get(key), ntype)
+            if owner_pair not in times:
+                continue
+            found.add((key, ntype))
+            row_time = times[owner_pair]
             if row_time is None or row_time < threshold:
-                can_notify.add((ref, row.notification_type))
-    for pair in items:
-        if pair not in found:
-            can_notify.add(pair)
+                can_notify.add((ref, ntype))
+    for ref, ntype in items:
+        if (_notification_ref_key(ref), ntype) not in found:
+            can_notify.add((ref, ntype))
     return can_notify
 
 
 async def get_last_notification_times_bulk(
     session: AsyncSession, pairs: list[tuple[int, str]]
 ) -> dict[tuple[int, str], int]:
-    """
-    Один запрос: последние времена уведомлений для списка (tg_id, notification_type).
-    Возвращает dict[(tg_id, notification_type)] -> timestamp_ms.
-    """
+    """Возвращает время последних уведомлений в миллисекундах."""
     if not pairs:
         return {}
-    from sqlalchemy import tuple_
-
     out = {}
+    id_map = await _map_legacy_refs_to_user_ids(session, [p[0] for p in pairs])
+    _validate_result_refs(id_map)
     for chunk in _batched_list(pairs, _BULK_NOTIFICATION_BATCH_SIZE):
-        id_map = await _map_legacy_refs_to_user_ids(session, [p[0] for p in chunk])
-        mapped = [(id_map[r], n) for r, n in chunk if r in id_map]
+        mapped = [(id_map[_notification_ref_key(r)], n) for r, n in chunk if _notification_ref_key(r) in id_map]
         if not mapped:
             continue
         stmt = select(
@@ -276,13 +314,10 @@ async def get_last_notification_times_bulk(
             Notification.last_notification_time,
         ).where(tuple_(Notification.user_id, Notification.notification_type).in_(mapped))
         result = await session.execute(stmt)
-        uid_to_ref: dict[int, int] = {}
-        for r, _n in chunk:
-            if r in id_map:
-                uid_to_ref[id_map[r]] = r
-        for uid, ntype, last_time in result.all():
+        times = {(uid, ntype): last_time for uid, ntype, last_time in result.all()}
+        for ref, ntype in chunk:
+            last_time = times.get((id_map.get(_notification_ref_key(ref)), ntype))
             if last_time:
-                ref = uid_to_ref.get(uid, uid)
                 out[(ref, ntype)] = int(last_time.timestamp() * 1000)
     return out
 
@@ -310,8 +345,13 @@ async def get_hot_lead_notification_times(
     id_map = await _map_legacy_refs_to_user_ids(session, legacy_user_refs)
     if not id_map:
         return {}
+    _validate_result_refs(id_map)
     uids = list(set(id_map.values()))
-    uid_to_ref = {id_map[ref]: ref for ref in legacy_user_refs if ref in id_map}
+    uid_to_refs = defaultdict(list)
+    for ref in legacy_user_refs:
+        key = _notification_ref_key(ref)
+        if key in id_map:
+            uid_to_refs[id_map[key]].append(ref)
     out: dict[int, dict[str, datetime]] = defaultdict(dict)
     for chunk in _batched_list(uids, _LEGACY_REF_MAP_BATCH_SIZE):
         stmt = select(
@@ -324,7 +364,8 @@ async def get_hot_lead_notification_times(
         )
         result = await session.execute(stmt)
         for uid, ntype, last_time in result.all():
-            out[uid_to_ref.get(uid, uid)][ntype] = _as_utc(last_time)
+            for ref in uid_to_refs.get(uid, []):
+                out[ref][ntype] = _as_utc(last_time)
     return dict(out)
 
 
@@ -334,8 +375,13 @@ async def get_cold_lead_notification_flags(session: AsyncSession, legacy_user_re
     id_map = await _map_legacy_refs_to_user_ids(session, legacy_user_refs)
     if not id_map:
         return {}
+    _validate_result_refs(id_map)
     uids = list(set(id_map.values()))
-    uid_to_ref = {id_map[ref]: ref for ref in legacy_user_refs if ref in id_map}
+    uid_to_refs = defaultdict(list)
+    for ref in legacy_user_refs:
+        key = _notification_ref_key(ref)
+        if key in id_map:
+            uid_to_refs[id_map[key]].append(ref)
     out = defaultdict(set)
     for chunk in _batched_list(uids, _LEGACY_REF_MAP_BATCH_SIZE):
         stmt = select(Notification.user_id, Notification.notification_type).where(
@@ -344,7 +390,8 @@ async def get_cold_lead_notification_flags(session: AsyncSession, legacy_user_re
         )
         result = await session.execute(stmt)
         for uid, ntype in result.all():
-            out[uid_to_ref.get(uid, uid)].add(ntype)
+            for ref in uid_to_refs.get(uid, []):
+                out[ref].add(ntype)
     return dict(out)
 
 
@@ -366,7 +413,7 @@ async def check_hot_lead_discount(session: AsyncSession, legacy_user_ref: int) -
 
     notification_type, last_time = row
 
-    hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
+    hours = _discount_active_hours()
 
     expires_at = last_time + timedelta(hours=hours)
     current_time = _utc_now()
@@ -402,7 +449,7 @@ async def check_cold_lead_discount(session: AsyncSession, legacy_user_ref: int) 
 
     notification_type, last_time = row
 
-    hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
+    hours = _discount_active_hours()
 
     expires_at = last_time + timedelta(hours=hours)
     current_time = _utc_now()
@@ -424,13 +471,13 @@ _BULK_NOTIFICATION_BATCH_SIZE = 250
 
 
 def _batched_pairs(tg_ids: list[int], emails: list[str], batch_size: int):
-    """Yield (tg_ids_chunk, emails_chunk) of length <= batch_size. Lists must have same length."""
+    """Разбивает пары Telegram ID и email на пакеты."""
     for i in range(0, len(tg_ids), batch_size):
         yield tg_ids[i : i + batch_size], emails[i : i + batch_size]
 
 
 def _batched_list(items: list, batch_size: int):
-    """Yield chunks of items of length <= batch_size."""
+    """Разбивает список на пакеты."""
     for i in range(0, len(items), batch_size):
         yield items[i : i + batch_size]
 
@@ -441,6 +488,7 @@ async def check_notifications_bulk(
     hours: int,
     tg_ids: list[int] = None,
     emails: list[str] = None,
+    user_ids: list[int] | None = None,
 ) -> list[dict]:
     now = _utc_now()
 
@@ -448,7 +496,7 @@ async def check_notifications_bulk(
         stmt_inactive = select(User.id).where(
             and_(
                 User.trial.in_([0, -1]),
-                User.tg_id.isnot(None),
+                User.tg_id > 0,
                 ~User.id.in_(select(BlockedUser.user_id)),
                 ~User.id.in_(select(Key.user_id.distinct())),
             )
@@ -470,7 +518,7 @@ async def check_notifications_bulk(
                 for batch in _batched_list(to_register, _BULK_ADD_NOTIFICATIONS_BATCH_SIZE):
                     await bulk_add_notifications(
                         session,
-                        [(uid, INACTIVE_TRIAL_REGISTERED_TYPE) for uid in batch],
+                        [(UserId(uid), INACTIVE_TRIAL_REGISTERED_TYPE) for uid in batch],
                         commit=True,
                     )
                 logger.info(f"Зарегистрировано как неактивные (шаг 1): {len(to_register)} пользователей.")
@@ -495,6 +543,7 @@ async def check_notifications_bulk(
         )
         stmt = (
             select(
+                User.id.label("user_id"),
                 User.tg_id,
                 Key.email,
                 User.username,
@@ -511,7 +560,7 @@ async def check_notifications_bulk(
             .where(
                 and_(
                     User.trial.in_([0, -1]),
-                    User.tg_id.isnot(None),
+                    User.tg_id > 0,
                     ~User.id.in_(select(BlockedUser.user_id)),
                     ~User.id.in_(select(Key.user_id.distinct())),
                 )
@@ -530,6 +579,7 @@ async def check_notifications_bulk(
             second_ok = last_sent_time is not None and (now - _as_utc(last_sent_time)) > timedelta(hours=hours)
             if first_ok or second_ok:
                 users.append({
+                    "user_id": UserId(row.user_id),
                     "tg_id": row.tg_id,
                     "email": row.email,
                     "username": row.username,
@@ -541,6 +591,10 @@ async def check_notifications_bulk(
         logger.info(f"Найдено {len(users)} пользователей, готовых к уведомлению типа {notification_type}")
         return users
 
+    filter_by_user_id = user_ids is not None
+    if filter_by_user_id:
+        tg_ids = user_ids
+
     subq_last_notification = (
         select(Notification.user_id, func.max(Notification.last_notification_time).label("last_notification_time"))
         .where(Notification.notification_type == notification_type)
@@ -551,6 +605,7 @@ async def check_notifications_bulk(
     def make_stmt(tg_ids_batch: list[int] | None, emails_batch: list[str] | None):
         stmt = (
             select(
+                User.id.label("user_id"),
                 User.tg_id,
                 Key.email,
                 User.username,
@@ -563,7 +618,8 @@ async def check_notifications_bulk(
             .outerjoin(subq_last_notification, subq_last_notification.c.user_id == User.id)
         )
         if tg_ids_batch:
-            stmt = stmt.where(User.tg_id.in_(tg_ids_batch))
+            owner_column = User.id if filter_by_user_id else User.tg_id
+            stmt = stmt.where(owner_column.in_(tg_ids_batch))
         if emails_batch:
             stmt = stmt.where(Key.email.in_(emails_batch))
         return stmt
@@ -579,13 +635,14 @@ async def check_notifications_bulk(
             stmt = make_stmt(tg_ids_chunk, emails_chunk)
             result = await session.execute(stmt)
             for row in result:
-                key = (row.tg_id, row.email)
+                key = (row.user_id, row.email)
                 if key in seen:
                     continue
                 seen.add(key)
                 last_time = row.last_notification_time
                 if _can_notify(last_time):
                     users.append({
+                        "user_id": UserId(row.user_id),
                         "tg_id": row.tg_id,
                         "email": row.email,
                         "username": row.username,
@@ -599,13 +656,14 @@ async def check_notifications_bulk(
                 stmt = make_stmt(tg_ids_chunk, emails_chunk)
                 result = await session.execute(stmt)
                 for row in result:
-                    key = (row.tg_id, row.email)
+                    key = (row.user_id, row.email)
                     if key in seen:
                         continue
                     seen.add(key)
                     last_time = row.last_notification_time
                     if _can_notify(last_time):
                         users.append({
+                            "user_id": UserId(row.user_id),
                             "tg_id": row.tg_id,
                             "email": row.email,
                             "username": row.username,
@@ -618,13 +676,14 @@ async def check_notifications_bulk(
             stmt = make_stmt(tg_ids_chunk, None)
             result = await session.execute(stmt)
             for row in result:
-                key = (row.tg_id, row.email)
+                key = (row.user_id, row.email)
                 if key in seen:
                     continue
                 seen.add(key)
                 last_time = row.last_notification_time
                 if _can_notify(last_time):
                     users.append({
+                        "user_id": UserId(row.user_id),
                         "tg_id": row.tg_id,
                         "email": row.email,
                         "username": row.username,
@@ -637,13 +696,14 @@ async def check_notifications_bulk(
             stmt = make_stmt(None, emails_chunk)
             result = await session.execute(stmt)
             for row in result:
-                key = (row.tg_id, row.email)
+                key = (row.user_id, row.email)
                 if key in seen:
                     continue
                 seen.add(key)
                 last_time = row.last_notification_time
                 if _can_notify(last_time):
                     users.append({
+                        "user_id": UserId(row.user_id),
                         "tg_id": row.tg_id,
                         "email": row.email,
                         "username": row.username,
@@ -658,6 +718,7 @@ async def check_notifications_bulk(
             last_time = row.last_notification_time
             if _can_notify(last_time):
                 users.append({
+                    "user_id": UserId(row.user_id),
                     "tg_id": row.tg_id,
                     "email": row.email,
                     "username": row.username,

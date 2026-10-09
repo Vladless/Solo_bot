@@ -71,6 +71,20 @@ storage/
 static/
 packs/*
 !packs/default/
+!packs/_shared/
+packs/_shared/**
+!packs/_shared/**/
+!packs/_shared/**/*.ts
+!packs/_shared/**/*.tsx
+!packs/_shared/build.mjs
+!packs/_shared/defaults.mjs
+!packs/_shared/measure.mjs
+!packs/_shared/pack.mjs
+!packs/_shared/scaffold.mjs
+!packs/_shared/seed.mjs
+packs/_shared/**/node_modules/
+packs/_shared/**/dist/
+packs/_shared/**/build/
 packs/default/dist/
 packs/default/node_modules/
 reference/
@@ -85,6 +99,14 @@ node_modules/
 .next/
 .vite/
 .claude/
+.codex/
+.agents/
+AGENTS.md
+AGENTS.override.md
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+.github/copilot-instructions.md
 
 .cursor/hooks.json
 .cursor/hooks/after-agent-response.cjs

@@ -29,8 +29,7 @@ async def send_push_notification(
     url: str = "/dashboard",
     tag: str = "solo-notification",
 ) -> str:
-    """Отправить push одному подписчику. Возвращает 'ok' | 'dead' | 'error'.
-    'dead' — эндпоинт удалён сервисом (404/410), подписку нужно удалить."""
+    """Отправляет браузерное уведомление и возвращает результат доставки."""
     if not push_enabled():
         logger.debug("[WebPush] push отключён (нет VAPID ключей или pywebpush)")
         return "error"
@@ -70,8 +69,7 @@ async def send_push_to_many(
     url: str = "/dashboard",
     tag: str = "solo-notification",
 ) -> tuple[int, list[str]]:
-    """Отправить push нескольким подписчикам.
-    Возвращает (кол-во успешных, список endpoint'ов недействительных подписок)."""
+    """Отправляет уведомления и возвращает число доставок и адреса недействительных подписок."""
     sent = 0
     dead: list[str] = []
     for sub in subscriptions:

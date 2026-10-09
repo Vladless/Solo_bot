@@ -1,4 +1,4 @@
-from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
+from .._common import *
 from .._common import (
     _key_actions_config,
     user_router,

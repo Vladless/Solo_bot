@@ -16,7 +16,7 @@ from database.servers import (
 )
 from hooks.processors import process_cluster_balancer, process_cluster_override
 from logger import logger
-from settings.config import ADMIN_PASSWORD, ADMIN_USERNAME, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
 from .errors import NotFoundError, ValidationError
 
@@ -50,11 +50,7 @@ async def check_server_key_limit(
     session: AsyncSession,
     on_capacity_warning: Callable[..., Coroutine] | None = None,
 ) -> bool:
-    """Проверяет, не превышен ли лимит ключей на сервере.
-
-    on_capacity_warning — опциональный callback при >=90% заполненности
-    (бот передаёт функцию уведомления админа, API может логировать).
-    """
+    """Проверяет лимит ключей сервера."""
     server_name = server_info.get("server_name")
     cluster_name = server_info.get("cluster_name")
     max_keys = server_info.get("max_keys")
@@ -80,7 +76,7 @@ async def check_server_key_limit(
 
 
 async def check_server_availability(server_info: dict[str, Any], session: AsyncSession) -> ServerAvailability:
-    """Проверяет доступность сервера (enabled + лимит + API ping)."""
+    """Проверяет включение, доступность и лимит ключей сервера."""
     from panels.remnawave_runtime import remnawave_api
 
     server_name = server_info.get("server_name", "unknown")
@@ -106,15 +102,9 @@ async def check_server_availability(server_info: dict[str, Any], session: AsyncS
             async with remnawave_api(server_info["api_url"]) as remna:
                 await asyncio.wait_for(remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD), timeout=5.0)
         else:
-            from panels._3xui import AsyncApi
+            from panels._3xui import check_xui_connection
 
-            xui = AsyncApi(
-                server_info["api_url"],
-                username=ADMIN_USERNAME,
-                password=ADMIN_PASSWORD,
-                logger=logger,
-            )
-            await asyncio.wait_for(xui.login(), timeout=5.0)
+            await asyncio.wait_for(check_xui_connection(server_info["api_url"]), timeout=5.0)
         return ServerAvailability(server_name=server_name, available=True, panel_type=panel_type)
     except Exception:
         logger.warning(f"[Ping] Сервер {server_name} недоступен")
@@ -125,10 +115,7 @@ async def select_cluster(
     session: AsyncSession,
     on_capacity_warning: Callable[..., Coroutine] | None = None,
 ) -> ClusterSelection:
-    """Выбирает наименее нагруженный кластер.
-
-    Raises: ValidationError если нет доступных кластеров.
-    """
+    """Выбирает наименее нагруженный доступный кластер."""
     forced = await process_cluster_override(session=session)
     if isinstance(forced, str) and forced.strip():
         servers = await get_servers(session)

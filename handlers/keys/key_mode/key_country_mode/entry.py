@@ -1,5 +1,5 @@
-from ._common import *  # noqa: F401,F403
-from ._common import router  # noqa: F401
+from ._common import *
+from ._common import router
 from .finalize import check_server_availability, finalize_key_creation
 
 
@@ -49,7 +49,7 @@ async def key_country_mode(
     data = await state.get_data() if state else {}
 
     forced_cluster = await process_cluster_override(
-        tg_id=tg_id,
+        tg_id=tg_notify,
         state_data=data,
         session=session,
         plan=plan,
@@ -197,7 +197,7 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
     except (ValueError, IndexError):
         tariff_id = None
 
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
 
     fsm_data = await state.get_data()
     if fsm_data.get("creating_key"):

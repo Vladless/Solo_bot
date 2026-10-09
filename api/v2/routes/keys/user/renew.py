@@ -1,12 +1,15 @@
+from datetime import UTC
+
 from sqlalchemy import or_
 
 from api.shared.billing_actor import resolve_billing_user_id
 from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
-from services.keys import normalize_expiry_ms
+from services.keys import normalize_expiry_ms, renewal_key_snapshot
+from services.payments.checkout_intent import autopay_terms_for_tariff
 from services.tariffs import ConfigOptionRejected, ensure_allowed_config
 from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS, resolve_renewal_tariff_group
 
-from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
+from .._common import *
 from .._common import (
     _is_renew_available,
     _key_actions_config,
@@ -62,6 +65,7 @@ async def user_key_renew(
         raise HTTPException(status_code=400, detail="Для подписки не назначен тариф")
     key_email = str(getattr(db_key, "email", "") or "")
     key_server_id = str(getattr(db_key, "server_id", "") or "").strip()
+    quoted_key_snapshot = renewal_key_snapshot(db_key)
 
     server_conditions = [Server.server_name == key_server_id, Server.cluster_name == key_server_id]
     try:
@@ -115,7 +119,7 @@ async def user_key_renew(
     try:
         pricing = await calculate_renewal_pricing(
             session=session,
-            billing_user_id=int(billing_user_id),
+            billing_user_id=billing_user_id,
             key_email=key_email,
             tariff_id=effective_tariff_id,
             coupon_code=body.coupon_code,
@@ -129,13 +133,13 @@ async def user_key_renew(
 
     quote = await compute_renewal_quote(
         session,
-        billing_user_id=int(billing_user_id),
+        billing_user_id=billing_user_id,
         key_email=key_email,
         current_tariff_id=getattr(db_key, "tariff_id", None),
         current_selected_device=getattr(db_key, "selected_device_limit", None),
         current_selected_traffic=getattr(db_key, "selected_traffic_limit", None),
         current_expiry_ms=normalize_expiry_ms(getattr(db_key, "expiry_time", None)),
-        now_ms=int(datetime.utcnow().timestamp() * 1000),
+        now_ms=int(datetime.now(UTC).timestamp() * 1000),
         new_tariff_id=effective_tariff_id,
         new_selected_device=body.selected_device_limit,
         new_selected_traffic=body.selected_traffic_limit,
@@ -146,6 +150,9 @@ async def user_key_renew(
     payment_required = required_amount > 0
 
     if preview:
+        autopay_terms = autopay_terms_for_tariff(
+            renew_tariff, quote.selected_device_limit, quote.selected_traffic_limit
+        )
         return AccountKeyRenewResponse(
             ok=True,
             message="Расчет обновлен",
@@ -154,6 +161,8 @@ async def user_key_renew(
             charged_rub=0,
             balance_rub=pricing.balance,
             base_price_rub=pricing.base_price_rub,
+            autopay_price_rub=autopay_terms["amount"] if autopay_terms else None,
+            autopay_period_days=autopay_terms["period_days"] if autopay_terms else None,
             discount_rub=pricing.discount_rub,
             final_price_rub=net_cost,
             applied_coupon_code=pricing.applied_coupon_code,
@@ -182,14 +191,19 @@ async def user_key_renew(
         success_url = validate_redirect_url(str(body.success_url or ""), f"{base_url}/payment-success")
         failure_url = validate_redirect_url(str(body.failure_url or ""), f"{base_url}/payment-failure")
         payment_request = PaymentLinkRequest(
-            legacy_user_ref=int(billing_user_id),
+            legacy_user_ref=billing_user_id,
             amount=required_amount,
             currency="RUB",
             provider_id=provider_id,
             success_url=success_url,
             failure_url=failure_url,
+            accepted_gross_amount=body.accepted_gross_amount,
             metadata={
                 "payment_flow": "key_renewal",
+                "autopay_consent": body.autopay_consent,
+                "autopay_accepted_amount": body.autopay_accepted_amount,
+                "autopay_accepted_gross_amount": body.autopay_accepted_gross_amount,
+                "autopay_accepted_period_days": body.autopay_accepted_period_days,
                 "tariff_id": effective_tariff_id,
                 "client_id": str(client_id),
                 "email": key_email,
@@ -205,12 +219,9 @@ async def user_key_renew(
                 "coupon_id": quote.coupon_id,
             },
         )
-        payment_result = await create_payment_link(session, payment_request)
-        if not payment_result.success or not payment_result.payment_url or not payment_result.payment_id:
-            raise HTTPException(status_code=400, detail=payment_result.error or "Не удалось создать ссылку оплаты")
-        await create_temporary_data(
+        await store_provider_checkout(
             session,
-            int(billing_user_id),
+            billing_user_id,
             "waiting_for_renewal_payment",
             {
                 "tariff_id": effective_tariff_id,
@@ -229,7 +240,11 @@ async def user_key_renew(
                 "applied_coupon_code": quote.applied_coupon_code,
                 "coupon_id": quote.coupon_id,
             },
+            provider_id=provider_id,
         )
+        payment_result = await create_payment_link(session, payment_request)
+        if not payment_result.success or not payment_result.payment_url or not payment_result.payment_id:
+            raise HTTPException(status_code=400, detail=payment_result.error or "Не удалось создать ссылку оплаты")
         logger.info(
             "[Site:Subs] Клиенту {} выставлен счёт на продление подписки {}: к оплате {} ₽ из {} ₽ (тариф {})",
             billing_user_id,
@@ -267,7 +282,7 @@ async def user_key_renew(
     try:
         result = await execute_renewal(
             session=session,
-            billing_user_id=int(billing_user_id),
+            billing_user_id=billing_user_id,
             client_id=str(client_id),
             key_email=key_email,
             key_server_id=key_server_id,
@@ -279,6 +294,8 @@ async def user_key_renew(
             selected_traffic_limit=quote.selected_traffic_limit,
             selected_price_rub=quote.new_full_price_rub,
             coupon_id=quote.coupon_id,
+            expected_expiry_time=key_expiry_ms,
+            expected_key_snapshot=quoted_key_snapshot,
         )
     except ServiceError as e:
         logger.warning(

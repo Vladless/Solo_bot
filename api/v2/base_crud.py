@@ -2,9 +2,11 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy import select
+from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 
+from api.admin_permissions import require_admin_crud_permissions
 from api.depends import get_session, verify_identity_admin
 from api.v1.routes.base_crud import (
     _apply_user_relationship_loader,
@@ -12,7 +14,8 @@ from api.v1.routes.base_crud import (
     normalize_outgoing_object,
     to_schema,
 )
-from database.access.resolution import resolve_user_optional, user_id_from_legacy_ref
+from database.access.identity_cache import invalidate_identity_cache
+from database.access.resolution import TelegramId, resolve_user_optional
 
 
 def generate_crud_router(
@@ -25,20 +28,16 @@ def generate_crud_router(
     parameter_name: str = "tg_id",
     extra_get_by_email: bool = False,
     telegram_path_to_user_id: bool = False,
-    legacy_user_ref: bool = False,
     enabled_methods: list[str] = ("get_all", "get_one", "get_by_email", "create", "update", "delete"),
 ) -> APIRouter:
     router = APIRouter()
 
     async def _path_filter(session: AsyncSession, value: int | str):
         if telegram_path_to_user_id:
-            u = await resolve_user_optional(session, int(value))
+            u = await resolve_user_optional(session, TelegramId(value))
             if u is None:
                 return None
-            return model.user_id, u.id
-        if legacy_user_ref:
-            uid = await user_id_from_legacy_ref(session, int(value))
-            return (model.id, uid) if uid is not None else None
+            return getattr(model, identifier_field), u.id
         field = getattr(model, identifier_field)
         return field, cast_identifier_type(field, value)
 
@@ -51,6 +50,7 @@ def generate_crud_router(
             identity=Depends(verify_identity_admin),
             session: AsyncSession = Depends(get_session),
         ):
+            await require_admin_crud_permissions(session, identity, model, "read")
             stmt = _apply_user_relationship_loader(model, select(model))
             if limit is not None:
                 pk = model.__mapper__.primary_key[0]
@@ -69,6 +69,7 @@ def generate_crud_router(
             identity=Depends(verify_identity_admin),
             session: AsyncSession = Depends(get_session),
         ):
+            await require_admin_crud_permissions(session, identity, model, "read")
             result = await session.execute(select(model).where(model.email == email))
             obj = result.scalar_one_or_none()
             if not obj:
@@ -83,12 +84,19 @@ def generate_crud_router(
             identity=Depends(verify_identity_admin),
             session: AsyncSession = Depends(get_session),
         ):
+            await require_admin_crud_permissions(session, identity, model, "read")
             resolved = await _path_filter(session, value)
             if resolved is None:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
             field, casted = resolved
             result = await session.execute(_apply_user_relationship_loader(model, select(model).where(field == casted)))
-            obj = result.scalar_one_or_none()
+            try:
+                obj = result.scalar_one_or_none()
+            except MultipleResultsFound as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Найдено несколько записей. Укажите полный ключ записи или воспользуйтесь списком.",
+                ) from exc
             if not obj:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
             return to_schema(schema_response, obj)
@@ -101,6 +109,7 @@ def generate_crud_router(
             identity=Depends(verify_identity_admin),
             session: AsyncSession = Depends(get_session),
         ):
+            await require_admin_crud_permissions(session, identity, model, "read")
             resolved = await _path_filter(session, value)
             if resolved is None:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
@@ -121,12 +130,18 @@ def generate_crud_router(
             identity=Depends(verify_identity_admin),
             session: AsyncSession = Depends(get_session),
         ):
+            await require_admin_crud_permissions(
+                session, identity, model, "create", schema_create.model_validate(payload).model_dump(exclude_unset=True)
+            )
             validated = schema_create.model_validate(payload)
             data = validated.model_dump(exclude_unset=True)
             if "days" in data and data["days"] == 0:
                 data["days"] = None
             obj = model(**data)
             session.add(obj)
+            await session.flush()
+            if model.__name__ == "User":
+                await invalidate_identity_cache(session, user_ids=(obj.id,))
             await session.commit()
             await session.refresh(obj)
             return to_schema(schema_response, obj)
@@ -140,17 +155,29 @@ def generate_crud_router(
             identity=Depends(verify_identity_admin),
             session: AsyncSession = Depends(get_session),
         ):
+            await require_admin_crud_permissions(
+                session, identity, model, "update", schema_update.model_validate(payload).model_dump(exclude_unset=True)
+            )
             resolved = await _path_filter(session, value)
             if resolved is None:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
             field, casted = resolved
             result = await session.execute(select(model).where(field == casted))
-            obj = result.scalar_one_or_none()
+            try:
+                obj = result.scalar_one_or_none()
+            except MultipleResultsFound as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Найдено несколько записей. Укажите полный ключ записи или воспользуйтесь списком.",
+                ) from exc
             if not obj:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
             validated = schema_update.model_validate(payload)
             for k, v in validated.model_dump(exclude_unset=True).items():
                 setattr(obj, k, v)
+            await session.flush()
+            if model.__name__ == "User":
+                await invalidate_identity_cache(session, user_ids=(obj.id,))
             await session.commit()
             await session.refresh(obj)
             return to_schema(schema_response, obj)
@@ -163,14 +190,23 @@ def generate_crud_router(
             identity=Depends(verify_identity_admin),
             session: AsyncSession = Depends(get_session),
         ):
+            await require_admin_crud_permissions(session, identity, model, "delete")
             resolved = await _path_filter(session, value)
             if resolved is None:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
             field, casted = resolved
             result = await session.execute(select(model).where(field == casted))
-            obj = result.scalar_one_or_none()
+            try:
+                obj = result.scalar_one_or_none()
+            except MultipleResultsFound as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Найдено несколько записей. Укажите полный ключ записи или воспользуйтесь списком.",
+                ) from exc
             if not obj:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
+            if model.__name__ == "ManualBan":
+                await invalidate_identity_cache(session, user_ids=(obj.user_id,))
             await session.delete(obj)
             await session.commit()
             return {"detail": f"{model.__name__} deleted"}

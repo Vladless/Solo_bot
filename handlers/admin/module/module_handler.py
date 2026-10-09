@@ -11,6 +11,7 @@ from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_MODULES
 from handlers.admin.panel.headers import menu_text, quote, section
 from handlers.admin.panel.keyboard import AdminPanelCallback
+from utils.core_features import is_core_replaced_module
 from utils.modules_manager import manager
 
 from .keyboard import build_module_menu_kb, build_modules_kb
@@ -31,6 +32,8 @@ def list_installed_modules() -> list[tuple[str, str | None]]:
         if os.path.isdir(path) and not raw_name.startswith("."):
             name = (raw_name or "").strip()
             if not name:
+                continue
+            if is_core_replaced_module(name):
                 continue
             ver = None
             vp = os.path.join(path, "VERSION")

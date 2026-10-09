@@ -2,6 +2,7 @@ import pkgutil
 
 from pathlib import Path
 
+from utils.core_features import is_core_replaced_module
 from utils.modules_loader import _is_safe_module_name
 from utils.modules_manager import manager
 
@@ -10,12 +11,12 @@ MODULES_DIR = Path(__file__).resolve().parents[2] / "modules"
 
 
 def available_module_names() -> list[str]:
-    """Имена модулей из папки modules, прошедшие проверку безопасности."""
+    """Возвращает имена модулей, прошедших проверку безопасности."""
     candidates: set[str] = set()
     if MODULES_DIR.is_dir():
         for _finder, name, _ispkg in pkgutil.iter_modules([str(MODULES_DIR)]):
             name = (name or "").strip()
-            if name and _is_safe_module_name(name):
+            if name and _is_safe_module_name(name) and not is_core_replaced_module(name):
                 candidates.add(name)
     return sorted(candidates)
 
@@ -40,7 +41,7 @@ def prune_missing_state(installed: set[str]) -> None:
 
 
 def module_state(name: str) -> dict:
-    """Состояние модуля: enabled, loaded, autostart."""
+    """Возвращает состояние загрузки, включения и автозапуска модуля."""
     normalized = name.strip()
     record = manager.registry.get(normalized)
     return {
@@ -68,7 +69,7 @@ def read_local_module_version(name: str) -> str | None:
 
 
 def sync_list_modules() -> list:
-    """Вся синхронная работа со списком модулей (файлы, состояние). Вызывать через run_io()."""
+    """Собирает список модулей и их состояние для запуска через run_io."""
     refresh = getattr(manager, "refresh_state", None) or getattr(manager, "_load_state", None)
     if callable(refresh):
         refresh()

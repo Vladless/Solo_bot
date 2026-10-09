@@ -45,6 +45,7 @@ from core.tasks.loop_tasks import (
     remnawave_monitor_loop,
     scheduled_broadcasts_loop_task,
     server_checks_loop,
+    yookassa_autopay_loop,
 )
 from core.tasks.periodic_manager import periodic_task_manager
 
@@ -87,6 +88,7 @@ def register_periodic_tasks() -> None:
         periodic_task_manager.register_loop_task("server_checks", server_checks_loop)
 
     periodic_task_manager.register_loop_task("remnawave_monitor", remnawave_monitor_loop)
+    periodic_task_manager.register_loop_task("yookassa_autopay", yookassa_autopay_loop)
 
     periodic_task_manager.set_scheduler_process_workers(process_budget)
 

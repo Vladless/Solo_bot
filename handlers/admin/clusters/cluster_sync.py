@@ -5,27 +5,28 @@ from typing import Any
 
 from aiogram import F, types
 from aiogram.types import CallbackQuery
-from py3xui import AsyncApi
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MODES_CONFIG
 from database import get_servers
+from database.access.resolution import UserId, panel_identity_fields
+from database.keys import get_key_by_server, update_key_link
 from database.models import Key, Server, Tariff, User
 from filters.admin import IsAdminFilter
 from handlers.utils import ALLOWED_GROUP_CODES
 from logger import logger
 from panels import remnawave as remnawave_panel
-from panels._3xui import get_inbound_node
+from panels._3xui import get_inbound_node, get_xui_instance
 from services.operations import (
     create_client_on_server,
     create_key_on_cluster,
     delete_key_from_cluster,
 )
 from services.operations.aggregated_links import make_aggregated_link
+from services.subscription_links import preserve_saved_public_link
 from settings.config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
+    PUBLIC_LINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     USE_COUNTRY_SELECTION,
@@ -39,6 +40,15 @@ from .keyboard import AdminClusterCallback, build_availability_kb, build_sync_cl
 
 
 SYNC_CONCURRENCY = 200
+
+
+async def _preserve_synced_public_link(session: AsyncSession, key: dict) -> None:
+    recreated = await get_key_by_server(session, UserId(key["user_id"]), key["client_id"])
+    if recreated is None:
+        return
+    link = preserve_saved_public_link(recreated.key, key.get("key"), key["email"], PUBLIC_LINK)
+    if link != recreated.key:
+        await update_key_link(session, recreated.email, link)
 
 
 async def _fetch_all_panel_uuids(remna: "remnawave_panel.RemnawaveAPI") -> set[str]:
@@ -186,21 +196,12 @@ async def handle_cluster_availability(
 
         try:
             if panel_type == "3x-ui":
-                xui = AsyncApi(
-                    server["api_url"],
-                    username=ADMIN_USERNAME,
-                    password=ADMIN_PASSWORD,
-                    logger=None,
-                )
-                await xui.login()
+                xui = await get_xui_instance(server["api_url"])
                 inbound_id = int(server["inbound_id"])
                 online_clients = await xui.client.online()
-                online_inbound_users = 0
-
-                for client_email in online_clients:
-                    client = await xui.client.get_by_email(client_email)
-                    if client and client.inbound_id == inbound_id:
-                        online_inbound_users += 1
+                inbound = await xui.inbound.get_by_id(inbound_id)
+                inbound_emails = {client.email for client in inbound.settings.clients}
+                online_inbound_users = len(set(online_clients) & inbound_emails)
 
                 total_online_users += online_inbound_users
                 lines.append(f"🌍 <b>{prefix} {server_name}</b> — {online_inbound_users} онлайн")
@@ -288,12 +289,7 @@ async def handle_clusters_backup(
         if server.get("panel_type") == "remnawave":
             continue
 
-        xui = AsyncApi(
-            server["api_url"],
-            username=ADMIN_USERNAME,
-            password=ADMIN_PASSWORD,
-            logger=logger,
-        )
+        xui = await get_xui_instance(server["api_url"])
         await create_backup_and_send_to_admins(xui)
 
     text = menu_text(
@@ -361,6 +357,7 @@ async def handle_sync_server(
                     User.tg_id.label("owner_tg_id"),
                     Key.client_id,
                     Key.email,
+                    Key.key,
                     Key.expiry_time,
                     Key.tariff_id,
                     Key.remnawave_link,
@@ -384,6 +381,7 @@ async def handle_sync_server(
                     User.tg_id.label("owner_tg_id"),
                     Key.client_id,
                     Key.email,
+                    Key.key,
                     Key.expiry_time,
                     Key.tariff_id,
                     Key.remnawave_link,
@@ -483,11 +481,7 @@ async def handle_sync_server(
                             else:
                                 hwid_limit = tariff.get("device_limit")
 
-                        from database.access.resolution import panel_identity_fields
-
-                        _ptg, _pemail = await panel_identity_fields(
-                            session, int(key.get("owner_tg_id") or 0) or key["user_id"]
-                        )
+                        _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
                         success = await remna.update_user(
                             uuid=key["client_id"],
                             lookup_username=key.get("email"),
@@ -512,7 +506,7 @@ async def handle_sync_server(
                                             cluster_id=cluster_name,
                                             email=key["email"],
                                             client_id=key["client_id"],
-                                            tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
+                                            tg_id=UserId(key["user_id"]),
                                             remna_link_override=None,
                                             plan=tariff,
                                         )
@@ -533,7 +527,7 @@ async def handle_sync_server(
 
                             await create_key_on_cluster(
                                 cluster_id=server_name,
-                                tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
+                                tg_id=UserId(key["user_id"]),
                                 client_id=key["client_id"],
                                 email=key["email"],
                                 expiry_timestamp=key["expiry_time"],
@@ -548,21 +542,25 @@ async def handle_sync_server(
                                 current_traffic_limit_gb=key.get("current_traffic_limit"),
                                 selected_price_rub=key.get("selected_price_rub"),
                             )
+                            await _preserve_synced_public_link(session, key)
                 else:
-                    await create_client_on_server(
+                    confirmed = await create_client_on_server(
                         {
                             "api_url": key["api_url"],
                             "inbound_id": key["inbound_id"],
                             "server_name": key["server_name"],
                         },
-                        int(key.get("owner_tg_id") or 0) or key["user_id"],
+                        UserId(key["user_id"]),
                         key["client_id"],
                         key["email"],
                         key["expiry_time"],
                         semaphore,
                         plan=key["tariff_id"],
                         session=session,
+                        reuse_existing=True,
                     )
+                    if confirmed is not True:
+                        raise ValueError(f"Синхронизация ключа {key['client_id']} не подтверждена")
                     await asyncio.sleep(0.6)
             except Exception as e:
                 logger.error(f"Ошибка при синхронизации ключа {key['client_id']} в сервер {server_name}: {e}")
@@ -607,6 +605,7 @@ async def handle_sync_cluster(
                     User.tg_id.label("owner_tg_id"),
                     Key.client_id,
                     Key.email,
+                    Key.key,
                     Key.expiry_time,
                     Key.remnawave_link,
                     Key.tariff_id,
@@ -626,6 +625,7 @@ async def handle_sync_cluster(
                     User.tg_id.label("owner_tg_id"),
                     Key.client_id,
                     Key.email,
+                    Key.key,
                     Key.expiry_time,
                     Key.remnawave_link,
                     Key.tariff_id,
@@ -721,11 +721,7 @@ async def handle_sync_cluster(
                                 logger.warning(f"[Sync] update {key.get('email')}: server not found")
                                 return
 
-                            from database.access.resolution import panel_identity_fields
-
-                            _ptg, _pemail = await panel_identity_fields(
-                                session, int(key.get("owner_tg_id") or 0) or key["user_id"]
-                            )
+                            _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
                             success = await remna.update_user(
                                 uuid=key["client_id"],
                                 lookup_username=key.get("email"),
@@ -781,11 +777,7 @@ async def handle_sync_cluster(
                                 "trafficLimitBytes": traffic_limit_bytes,
                                 "hwidDeviceLimit": hwid_limit,
                             }
-                            from database.access.resolution import panel_identity_fields
-
-                            _ptg, _pemail = await panel_identity_fields(
-                                session, int(key.get("owner_tg_id") or 0) or key["user_id"]
-                            )
+                            _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
                             if _ptg is not None:
                                 payload["telegramId"] = _ptg
                             if _pemail:
@@ -883,7 +875,7 @@ async def handle_sync_cluster(
                             cluster_id=cluster_name,
                             email=key["email"],
                             client_id=key["client_id"],
-                            tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
+                            tg_id=UserId(key["user_id"]),
                             remna_link_override=None,
                             plan=item["tariff"],
                         )
@@ -967,7 +959,7 @@ async def handle_sync_cluster(
                     cluster_id_for_recreate = key["server_id"] if use_country_selection else cluster_name
                     await create_key_on_cluster(
                         cluster_id_for_recreate,
-                        int(key.get("owner_tg_id") or 0) or key["user_id"],
+                        UserId(key["user_id"]),
                         key["client_id"],
                         key["email"],
                         key["expiry_time"],
@@ -982,6 +974,7 @@ async def handle_sync_cluster(
                         current_traffic_limit_gb=key.get("current_traffic_limit"),
                         selected_price_rub=key.get("selected_price_rub"),
                     )
+                    await _preserve_synced_public_link(session, key)
 
                     await asyncio.sleep(0.5)
 

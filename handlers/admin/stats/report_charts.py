@@ -62,11 +62,7 @@ def chart_legend(panels: list[dict]) -> str:
 
 
 def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | None:
-    """Рисует вертикальные бар-чарты (по панели на метрику) и возвращает PNG в BytesIO.
-
-    panels: [{"name": str, "color": (r,g,b), "values": [float, ...]}]
-    Названия панелей рисуются на картинке системным шрифтом (DejaVu/Liberation/Arial).
-    """
+    """Рисует столбчатые диаграммы показателей и возвращает изображение PNG."""
     try:
         from PIL import Image, ImageDraw
 

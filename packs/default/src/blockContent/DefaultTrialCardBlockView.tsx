@@ -8,6 +8,7 @@ import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor"
 import { useDefaultTheme, panelStyle, btnSolid, f, parseBlockData } from ".";
 import { apiFetchPublic } from "@/lib/api";
 import { activateTrial } from "@/lib/trial-activation";
+import { useTrialAvailability } from "../../../_shared/trialAvailability";
 import { hasAuth } from "@/lib/auth";
 import { slugToPath } from "@/lib/web-page-registry";
 import { formatPeriod, pickLatestTariff } from "@/components/constructor/blockContent/tariffUtils";
@@ -44,17 +45,18 @@ const SCHEMA = {
   unlimitedText: f.str("Безлимит"),
 };
 
-export function DefaultTrialCardBlockView({ block, context }: TypedBlockViewProps<"defaultTrialCard">) {
+export function DefaultTrialCardBlockView({ block, context, editMode }: TypedBlockViewProps<"defaultTrialCard">) {
   const navigate = useBlockNavigate();
   const { wrap, previewMode } = context;
   const d = block.data as Record<string, unknown>;
   const t = useDefaultTheme(d);
   const decor = usePanelDecor(t.panel);
   const cfg = parseBlockData(d, SCHEMA);
-  const isPreview = previewMode === true;
+  const isPreview = previewMode === true || editMode === true;
+  const trial = useTrialAvailability(isPreview);
 
   const { data: trialList, isLoading } = useSWR<WebTariffPublic[]>(
-    `/api/tariffs/public?group_code=${encodeURIComponent(TRIAL_GROUP_CODE)}`,
+    isPreview || !trial.enabled ? null : `/api/tariffs/public?group_code=${encodeURIComponent(TRIAL_GROUP_CODE)}`,
     (url: string) => apiFetchPublic<WebTariffPublic[]>(url, { cache: "no-store" }),
     { revalidateOnFocus: false, dedupingInterval: 300_000, errorRetryCount: 1 },
   );
@@ -63,22 +65,26 @@ export function DefaultTrialCardBlockView({ block, context }: TypedBlockViewProp
   const loading = !isPreview && !realTariff && isLoading;
 
   const [busy, setBusy] = useState(false);
-  const [used, setUsed] = useState(false);
 
   const onActivate = async () => {
-    if (isPreview || busy || used) return;
+    if (isPreview || busy || !trial.available) return;
     if (!hasAuth()) {
       navigate(`${slugToPath("login")}?from=${encodeURIComponent(slugToPath("dashboard"))}`);
       return;
     }
     setBusy(true);
     const result = await activateTrial();
-    if (result.ok && !result.alreadyUsed) {
-      navigate(slugToPath("dashboard-keys"));
+    if (result.paymentRequired && result.paymentUrl) {
+      setBusy(false);
+      navigate(result.paymentUrl);
       return;
     }
-    if (result.alreadyUsed) setUsed(true);
-    else alert(result.error || cfg.trialErrorText);
+    if (result.ok) {
+      trial.markUsed();
+      if (!result.alreadyUsed) navigate(slugToPath("dashboard-keys"));
+    } else {
+      alert(result.error || cfg.trialErrorText);
+    }
     setBusy(false);
   };
 
@@ -93,6 +99,7 @@ export function DefaultTrialCardBlockView({ block, context }: TypedBlockViewProp
     true,
   );
 
+  if (!trial.enabled) return null;
   if (loading) return emptyShell(cfg.loadingText);
   if (!tariff) return emptyShell(cfg.noTrialText);
 
@@ -104,7 +111,8 @@ export function DefaultTrialCardBlockView({ block, context }: TypedBlockViewProp
     ? `${tariff.traffic_limit} ${cfg.trafficUnit}`
     : cfg.unlimitedText;
   const metaText = `${devicesText} · ${trafficText}${tariff.duration_days > 0 ? ` · ${formatPeriod(tariff.duration_days)}` : ""}`;
-  const ctaLabel = used ? cfg.usedLabel : (busy ? cfg.loadingText : cfg.ctaLabel);
+  const ctaDisabled = busy || !trial.available;
+  const ctaLabel = trial.used ? cfg.usedLabel : (busy || trial.pending ? cfg.loadingText : cfg.ctaLabel);
 
   return wrap(
     <div
@@ -127,8 +135,8 @@ export function DefaultTrialCardBlockView({ block, context }: TypedBlockViewProp
         <button
           type="button"
           onClick={onActivate}
-          disabled={busy || used}
-          style={{ ...btnSolid(t), width: "100%", cursor: busy || used ? "default" : "pointer", opacity: used ? 0.6 : 1 }}
+          disabled={ctaDisabled}
+          style={{ ...btnSolid(t), width: "100%", cursor: ctaDisabled ? "default" : "pointer", opacity: ctaDisabled ? 0.6 : 1 }}
         >
           {ctaLabel}
         </button>

@@ -11,6 +11,7 @@ from api.v2.routes import (
     keys,
     management,
     misc,
+    moderator_permissions,
     modules,
     notifications,
     partners,
@@ -23,6 +24,7 @@ from api.v2.routes import (
     tickets,
     users,
     web,
+    yookassa_autopay,
 )
 
 
@@ -68,10 +70,12 @@ router.include_router(partners.stats_router, prefix="/api/partners", tags=["Part
 router.include_router(partners.router, prefix="/api/partners", tags=["Partners"])
 router.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 router.include_router(payment_links.router, prefix="/api/payment-links", tags=["PaymentLinks"])
+router.include_router(yookassa_autopay.router, prefix="/api")
 router.include_router(identities.router, prefix="/api/identities", tags=["Identities"])
 router.include_router(misc.router, prefix="/api")
 router.include_router(modules.router, prefix="/api")
 router.include_router(management.router, prefix="/api/management", tags=["Management"])
+router.include_router(moderator_permissions.router, prefix="/api/management", tags=["Management"])
 router.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 router.include_router(web.router, prefix="", tags=["Web"])
 router.include_router(flows.router, prefix="/api", tags=["Flows"])

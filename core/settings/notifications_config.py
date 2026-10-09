@@ -8,6 +8,7 @@ from database.settings_cache import settings_cache
 
 from ..defaults import DEFAULT_NOTIFICATIONS_CONFIG
 from .runtime_sync import publish_runtime_config, register_runtime_config
+from .traffic_notifications import validate_traffic_notification_settings
 
 
 NOTIFICATIONS_CONFIG: dict[str, Any] = DEFAULT_NOTIFICATIONS_CONFIG.copy()
@@ -39,6 +40,8 @@ async def load_notifications_config(session: AsyncSession) -> None:
 
 
 async def update_notifications_config(session: AsyncSession, new_values: dict[str, Any]) -> None:
+    notifications_config = {**DEFAULT_NOTIFICATIONS_CONFIG, **NOTIFICATIONS_CONFIG, **new_values}
+    validate_traffic_notification_settings(notifications_config)
     stmt = select(Setting).where(Setting.key == "NOTIFICATIONS_CONFIG")
     result = await session.execute(stmt)
     setting = result.scalar_one_or_none()
@@ -46,17 +49,14 @@ async def update_notifications_config(session: AsyncSession, new_values: dict[st
     if setting is None:
         setting = Setting(
             key="NOTIFICATIONS_CONFIG",
-            value=new_values,
+            value=notifications_config,
             description="Конфигурация уведомлений",
         )
         session.add(setting)
     else:
-        setting.value = new_values
+        setting.value = notifications_config
 
     await session.commit()
-
-    notifications_config = DEFAULT_NOTIFICATIONS_CONFIG.copy()
-    notifications_config.update(new_values)
 
     NOTIFICATIONS_CONFIG.clear()
     NOTIFICATIONS_CONFIG.update(notifications_config)

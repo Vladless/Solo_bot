@@ -121,7 +121,7 @@ export function DefaultSecurityPanelBlockView({ block, context }: TypedBlockView
       key: "password",
       name: cfg.passwordLabel,
       desc: passwordSet ? cfg.passwordSetDesc : cfg.passwordEmptyDesc,
-      right: linkButton(cfg.passwordHref, passwordSet ? cfg.changePasswordLabel : cfg.setPasswordLabel),
+      right: linkButton(cfg.passwordHref === "/forgot-password" ? "/forgot-password?force=1" : cfg.passwordHref, passwordSet ? cfg.changePasswordLabel : cfg.setPasswordLabel),
     },
     {
       key: "bindings",

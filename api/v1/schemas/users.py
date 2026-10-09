@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from database.access.resolution import public_tg_id
 
 
 class UserBase(BaseModel):
@@ -16,8 +18,12 @@ class UserBase(BaseModel):
 
 
 class UserResponse(UserBase):
+    id: int
+    tg_id: int | None
     created_at: datetime | None
     updated_at: datetime | None
+
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
 
     class Config:
         from_attributes = True

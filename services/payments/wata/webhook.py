@@ -16,6 +16,7 @@ from core.webhook_abuse import (
 )
 from database import async_session_maker, get_payment_by_payment_id
 from logger import logger
+from services.payments.owner_refs import parse_payment_owner
 from services.payments.pipeline import (
     ParsedPayment,
     process_cancelled_payment,
@@ -69,12 +70,12 @@ def _parse_wata_order_id(order_id: str) -> tuple[int | None, float | None]:
     parts = order_id.split("_")
     if len(parts) >= 3:
         try:
-            return int(parts[1]), float(parts[2])
+            return parse_payment_owner(parts[1]), float(parts[2])
         except (ValueError, TypeError):
             return None, None
     if len(parts) == 2:
         try:
-            return int(parts[1]), None
+            return parse_payment_owner(parts[1]), None
         except (ValueError, TypeError):
             return None, None
     return None, None
@@ -181,7 +182,7 @@ async def wata_webhook(request: web.Request):
 
             parsed = ParsedPayment(
                 payment_id=order_id,
-                tg_id=int(tg_id),
+                tg_id=tg_id,
                 amount=float(rub_amount),
                 currency="RUB",
                 metadata=metadata_patch,
@@ -214,11 +215,13 @@ async def wata_webhook(request: web.Request):
 
             parsed = ParsedPayment(
                 payment_id=order_id,
-                tg_id=int(tg_id) if tg_id is not None else None,
+                tg_id=tg_id,
                 amount=parsed_amount,
                 currency=webhook_currency,
             )
-            await process_cancelled_payment(_PROVIDER, parsed, new_status="failed")
+            result = await process_cancelled_payment(_PROVIDER, parsed, new_status="failed")
+            if not result.ok:
+                return web.Response(status=500, text="pipeline error")
 
             logger.warning(f"[WATA] Транзакция отклонена: orderId={order_id}")
             return web.Response(status=200, text="OK")

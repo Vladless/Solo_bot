@@ -322,7 +322,7 @@ async def link_telegram(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
-    """Привязывает Telegram к текущей идентичности. Требуется подпись от Telegram Login Widget (доказательство владения аккаунтом)."""
+    """Привязывает Telegram к текущему аккаунту после проверки подписи виджета входа."""
     if identity.tg_id is not None:
         raise HTTPException(status_code=409, detail="Telegram уже привязан к этому аккаунту")
     payload = body.model_dump(mode="json")

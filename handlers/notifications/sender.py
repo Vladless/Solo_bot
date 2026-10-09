@@ -16,7 +16,8 @@ from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 
 from core.executor import spawn
 from database import async_session_maker
-from database.bans import save_blocked_user_ids
+from database.access.resolution import UserId, chat_id_for_user
+from database.bans import save_blocked_user_ids, save_blocked_user_pairs
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
 from handlers.notifications.webapp_only import webapp_only_markup
 from logger import logger
@@ -87,6 +88,9 @@ def rate_limited_send(func):
     async def wrapper(*args, **kwargs):
         while True:
             try:
+                tg_id = kwargs.get("tg_id") or (args[1] if len(args) > 1 else None)
+                if not await _delivery_owner_matches(kwargs.get("user_id"), tg_id):
+                    return False
                 return await func(*args, **kwargs)
             except TelegramRetryAfter as e:
                 await asyncio.sleep(int(e.retry_after) + 1)
@@ -102,28 +106,39 @@ def rate_limited_send(func):
     return wrapper
 
 
+async def _delivery_owner_matches(user_id: int | None, tg_id: int | None) -> bool:
+    if user_id is None:
+        return True
+    async with async_session_maker() as session:
+        return await chat_id_for_user(session, UserId(user_id)) == tg_id
+
+
 async def send_notification(
     bot: Bot,
     tg_id: int,
     image_filename: str | None,
     caption: str,
     keyboard: InlineKeyboardMarkup | None = None,
+    *,
+    user_id: int | None = None,
 ) -> bool:
+    if not is_telegram_chat_id(tg_id):
+        return False
     keyboard = webapp_only_markup() or keyboard
     if image_filename is None:
-        return await _send_text(bot, tg_id, caption, keyboard)
+        return await _send_text(bot, tg_id, caption, keyboard, user_id=user_id)
 
     photo_path = os.path.join("img", image_filename)
     cached_id = await _get_cached_file_id(photo_path)
     if cached_id:
-        return await _send_photo(bot, tg_id, photo_path, image_filename, caption, keyboard, cached_id)
+        return await _send_photo(bot, tg_id, photo_path, image_filename, caption, keyboard, cached_id, user_id=user_id)
 
     actual_path = _find_photo_file(photo_path)
     if actual_path:
-        return await _send_photo(bot, tg_id, actual_path, image_filename, caption, keyboard)
+        return await _send_photo(bot, tg_id, actual_path, image_filename, caption, keyboard, user_id=user_id)
     else:
         logger.warning(f"Файл изображения не найден: {photo_path}")
-        return await _send_text(bot, tg_id, caption, keyboard)
+        return await _send_text(bot, tg_id, caption, keyboard, user_id=user_id)
 
 
 @rate_limited_send
@@ -135,6 +150,8 @@ async def _send_photo(
     caption: str,
     keyboard: InlineKeyboardMarkup | None = None,
     cached_file_id: str | None = None,
+    *,
+    user_id: int | None = None,
 ) -> bool:
     try:
         if cached_file_id:
@@ -151,7 +168,7 @@ async def _send_photo(
         return False
     except Exception as e:
         logger.error(f"Ошибка отправки фото пользователю {tg_id}: {e}")
-        return await _send_text(bot, tg_id, caption, keyboard)
+        return await _send_text(bot, tg_id, caption, keyboard, user_id=user_id)
 
 
 @rate_limited_send
@@ -160,6 +177,8 @@ async def _send_text(
     tg_id: int,
     caption: str,
     keyboard: InlineKeyboardMarkup | None = None,
+    *,
+    user_id: int | None = None,
 ) -> bool:
     try:
         processed, entities = await _process_text(caption)
@@ -186,6 +205,7 @@ class FastNotificationSender:
         self.rate_limiter = NotificationRateLimiter(max_rate=messages_per_second)
         self.max_attempts = max_attempts
         self.blocked_users: set[int] = set()
+        self.blocked_user_pairs: set[tuple[UserId, int]] = set()
         self.queue: asyncio.Queue = asyncio.Queue()
         self.results: list[bool] = []
         self.total_sent = 0
@@ -201,6 +221,8 @@ class FastNotificationSender:
             msg = {**msg, "keyboard": webapp_markup}
         try:
             await self.rate_limiter.acquire()
+            if not await _delivery_owner_matches(msg.get("user_id"), tg_id):
+                return "fail"
 
             processed_text, entities = await _process_text(msg["text"])
             emoji_kwargs = {}
@@ -265,14 +287,21 @@ class FastNotificationSender:
             return "retry"
         except TelegramForbiddenError:
             if is_telegram_chat_id(tg_id):
-                self.blocked_users.add(tg_id)
+                self._record_blocked(msg, tg_id)
             return "fail"
         except TelegramBadRequest as e:
             if "chat not found" in str(e).lower() and is_telegram_chat_id(tg_id):
-                self.blocked_users.add(tg_id)
+                self._record_blocked(msg, tg_id)
             return "fail"
         except Exception:
             return "fail"
+
+    def _record_blocked(self, msg: dict, tg_id: int) -> None:
+        user_id = msg.get("user_id")
+        if user_id is not None:
+            self.blocked_user_pairs.add((UserId(user_id), tg_id))
+        else:
+            self.blocked_users.add(tg_id)
 
     async def _schedule_retry(self, msg: dict) -> None:
         try:
@@ -313,13 +342,16 @@ class FastNotificationSender:
                 self.queue.task_done()
 
     async def _save_blocked_users(self):
-        if not self.blocked_users:
+        if not self.blocked_users and not self.blocked_user_pairs:
             return
         try:
             async with async_session_maker() as session:
                 await save_blocked_user_ids(session, list(self.blocked_users))
+                await save_blocked_user_pairs(session, list(self.blocked_user_pairs))
                 await session.commit()
-            logger.info(f"Добавлено до {len(self.blocked_users)} пользователей в blocked_users")
+            logger.info(
+                f"Добавлено до {len(self.blocked_users) + len(self.blocked_user_pairs)} пользователей в blocked_users"
+            )
         except Exception as e:
             logger.error(f"Ошибка сохранения заблокированных: {e}")
 
@@ -332,6 +364,7 @@ class FastNotificationSender:
         self.results = [False] * len(messages)
         self.total_sent = 0
         self.blocked_users = set()
+        self.blocked_user_pairs = set()
         self.pending_retries = 0
         start = time.time()
 
@@ -442,7 +475,7 @@ async def prepare_key_expiry_data(key, session, current_time: int) -> dict:
 
 
 async def chat_ids_for_user_ids(session, user_ids: list[int], batch_size: int = 5000) -> dict[int, int]:
-    """Telegram-чаты клиентов по их номерам: без чата клиент в выборку не попадает."""
+    """Возвращает Telegram-чаты клиентов с привязанным Telegram."""
     from sqlalchemy import select
 
     from database.models import User

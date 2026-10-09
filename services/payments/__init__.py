@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from core.bootstrap import MONEY_CONFIG
 from database import add_payment
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import UserId, resolve_user_optional
 from database.referrals import get_referral_by_referred_id, mark_referral_reward_issued
 from database.users import update_balance
 from logger import logger
@@ -20,15 +20,12 @@ if TYPE_CHECKING:
 
 
 async def process_referrals(session: AsyncSession, user_id: int, amount: float) -> dict[int, float]:
-    """Начисляет реферальные бонусы по цепочке.
-
-    Returns: dict {referrer_id: bonus_amount} — для логирования/уведомлений.
-    """
+    """Начисляет реферальные бонусы по цепочке."""
     u = await resolve_user_optional(session, user_id)
     if u is None:
         return {}
 
-    first_level_referral = await get_referral_by_referred_id(session, u.id)
+    first_level_referral = await get_referral_by_referred_id(session, UserId(u.id))
 
     if (
         CHECK_REFERRAL_REWARD_ISSUED
@@ -38,14 +35,14 @@ async def process_referrals(session: AsyncSession, user_id: int, amount: float) 
         return {}
 
     max_levels = len(REFERRAL_BONUS_PERCENTAGES)
-    current_id = u.id
+    current_id = UserId(u.id)
     bonus_by_chain: dict[int, tuple[float, int]] = {}
 
     for level in range(1, max_levels + 1):
         referral = first_level_referral if level == 1 else await get_referral_by_referred_id(session, current_id)
         if not referral:
             break
-        referrer_id = int(referral["referrer_user_id"])
+        referrer_id = UserId(referral["referrer_user_id"])
         if referrer_id == current_id:
             logger.warning(f"⚠️ Самореферал в цепочке пользователя {u.id}, бонус не начислен")
             break
@@ -65,16 +62,13 @@ async def process_referrals(session: AsyncSession, user_id: int, amount: float) 
         result_map[referrer_id] = bonus
 
     if CHECK_REFERRAL_REWARD_ISSUED and result_map and first_level_referral is not None:
-        await mark_referral_reward_issued(session, u.id)
+        await mark_referral_reward_issued(session, UserId(u.id))
 
     return result_map
 
 
 async def process_cashback(session: AsyncSession, user_id: int, amount: float) -> float:
-    """Начисляет кэшбэк на баланс пользователя.
-
-    Returns: сумма кэшбэка (0 если отключён).
-    """
+    """Начисляет кэшбэк на баланс пользователя."""
     cashback_config = MONEY_CONFIG.get("CASHBACK", DEFAULT_CASHBACK)
     try:
         cashback_percent = float(cashback_config) if cashback_config not in (None, False) else 0.0
@@ -83,6 +77,11 @@ async def process_cashback(session: AsyncSession, user_id: int, amount: float) -
 
     if cashback_percent <= 0:
         return 0.0
+
+    u = await resolve_user_optional(session, user_id)
+    if u is None:
+        return 0.0
+    user_id = UserId(u.id)
 
     cashback_amount = round(amount * (cashback_percent / 100))
     if cashback_amount > 0:

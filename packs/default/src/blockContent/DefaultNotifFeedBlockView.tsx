@@ -51,6 +51,8 @@ const NOTIF_CLS: Record<string, "ok" | "warn" | "err" | "info"> = {
   subscription_expiring: "warn",
   key_expiry: "warn",
   key_expired: "err",
+  traffic_warning: "warn",
+  traffic_exhausted: "err",
   payment_pending: "warn",
   ticket: "info",
   referral_joined: "info",

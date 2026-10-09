@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_temporary_data
+from database.access.resolution import TelegramId
 from database.models import User
 from handlers.payments.keyboards import balance_fallback_kb
 from handlers.utils import edit_or_send_message
@@ -53,22 +54,10 @@ async def _handle_custom_amount_input_kassai(
     pay_button_text: str = PAY_2,
     main_menu_text: str = MAIN_MENU,
 ):
-    """Универсальная функция быстрого потока для KassaI.
-
-    Принимает недостающую сумму и формирует платеж.
-    Работает с временными данными из fast_payment_flow для
-    создания/продления/подарка.
-
-    Args:
-        event: Событие от aiogram
-        session: Сессия БД
-        method_name: "cards" или "sbp"
-        pay_button_text: Текст кнопки оплаты
-        main_menu_text: Текст кнопки главного меню
-    """
+    """Создаёт платёж KassaI для быстрого потока."""
     message = event.message
     from_user = event.from_user
-    tg_id = from_user.id
+    tg_id = TelegramId(from_user.id)
 
     temp_data = await get_temporary_data(session, tg_id)
     if not temp_data or temp_data["state"] not in ALLOWED_TEMP_PAYMENT_STATES:
@@ -154,7 +143,7 @@ async def handle_custom_amount_input_kassai_cards(
     pay_button_text: str = PAY_2,
     main_menu_text: str = MAIN_MENU,
 ):
-    """Функция быстрого потока для KassaI Cards."""
+    """Запускает быструю оплату картой через KassaI."""
     await _handle_custom_amount_input_kassai(event, session, "cards", pay_button_text, main_menu_text)
 
 
@@ -164,5 +153,5 @@ async def handle_custom_amount_input_kassai_sbp(
     pay_button_text: str = PAY_2,
     main_menu_text: str = MAIN_MENU,
 ):
-    """Функция быстрого потока для KassaI SBP."""
+    """Запускает быструю оплату через KassaI СБП."""
     await _handle_custom_amount_input_kassai(event, session, "sbp", pay_button_text, main_menu_text)

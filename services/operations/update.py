@@ -5,8 +5,14 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
-from database.access.resolution import resolve_user_optional, subscription_owner_ref, user_id_from_legacy_ref
-from database.keys import delete_key_by_user_and_email, get_key_by_user_and_email
+from database.access.resolution import (
+    TelegramId,
+    UserId,
+    panel_identity_fields,
+    subscription_owner_ref,
+    user_id_from_legacy_ref,
+)
+from database.keys import delete_key_by_user_and_email, get_key_by_user_and_email, resolve_current_key_owner
 from database.models import Key
 from database.tariffs import get_active_tariff_by_id
 from logger import (
@@ -14,9 +20,10 @@ from logger import (
     PANEL_REMNA,
     PANEL_XUI,
 )
-from panels._3xui import ClientConfig, add_client, get_xui_instance
+from panels._3xui import ClientConfig, add_client, extend_client_key, get_xui_instance
 from panels.remnawave_runtime import invalidate_remnawave_profile, with_remnawave_api
 from services.clusters import ALLOWED_GROUP_CODES, select_cluster
+from services.subscription_links import preserve_saved_public_link, saved_public_subscription_tail
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 from settings.config import PUBLIC_LINK, SUPERNODE
 
@@ -37,8 +44,11 @@ async def update_key_on_cluster(
     subgroup_code: str | None = None,
     tariff_id: int | None = None,
     external_squad_uuid: str | None = None,
+    billing_user_id: int | None = None,
 ):
     try:
+        owner = UserId(billing_user_id) if billing_user_id is not None else tg_id
+        panel_tg, panel_email = await panel_identity_fields(session, owner)
         servers = await get_servers(session)
         cluster = servers.get(cluster_id)
 
@@ -66,7 +76,7 @@ async def update_key_on_cluster(
 
         if not cluster:
             logger.warning(f"[Update] Нет серверов после фильтрации по привязкам в кластере {cluster_id}")
-            return client_id, remnawave_link
+            raise ValueError(f"Нет серверов для перевыпуска в кластере {cluster_id}")
 
         if tariff_id is not None:
             tariff = await get_tariff_by_id(session, tariff_id)
@@ -81,7 +91,7 @@ async def update_key_on_cluster(
 
         if not cluster:
             logger.warning(f"[Update] Нет серверов после фильтрации по спецгруппам в кластере {cluster_id}")
-            return client_id, remnawave_link
+            raise ValueError(f"Нет серверов для перевыпуска в кластере {cluster_id}")
 
         expire_iso = datetime.utcfromtimestamp(expiry_time / 1000).replace(tzinfo=timezone.utc).isoformat()
 
@@ -111,13 +121,10 @@ async def update_key_on_cluster(
             }
 
             try:
-                from database.access.resolution import panel_identity_fields
-
-                _panel_tg, _panel_email = await panel_identity_fields(session, tg_id)
-                if _panel_tg is not None:
-                    user_data["telegramId"] = _panel_tg
-                if _panel_email:
-                    user_data["email"] = _panel_email
+                if panel_tg is not None:
+                    user_data["telegramId"] = panel_tg
+                if panel_email:
+                    user_data["email"] = panel_email
             except Exception as e:
                 logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
 
@@ -135,6 +142,12 @@ async def update_key_on_cluster(
             async def _recreate(api):
                 await api.delete_user(client_id, username=email)
                 created = await api.create_user(user_data)
+                if (
+                    not isinstance(created, dict)
+                    or str(created.get("vlessUuid") or created.get("uuid") or "") != client_id
+                    or str(created.get("username") or "") != email
+                ):
+                    return None
                 try:
                     reset_uuid = str((created or {}).get("vlessUuid") or (created or {}).get("uuid") or client_id)
                     devices = await api.get_user_hwid_devices(reset_uuid, username=email) or []
@@ -158,7 +171,11 @@ async def update_key_on_cluster(
                 fallback_any=True,
                 timeout_sec=12.0,
             )
-            if remna_result:
+            if (
+                isinstance(remna_result, dict)
+                and str(remna_result.get("vlessUuid") or remna_result.get("uuid") or "") == client_id
+                and str(remna_result.get("username") or "") == email
+            ):
                 remnawave_client_id = remna_result.get("vlessUuid") or remna_result.get("uuid")
                 remnawave_link_value = remna_result.get("subscriptionUrl")
                 await invalidate_remnawave_profile(
@@ -171,6 +188,7 @@ async def update_key_on_cluster(
             else:
                 logger.error(f"{PANEL_REMNA} Не удалось авторизоваться/создать клиента")
 
+        remna_confirmed = bool(remnawave_client_id)
         if not remnawave_client_id:
             logger.warning(f"{PANEL_REMNA} client_id не получен, используем исходный {client_id}")
             remnawave_client_id = client_id
@@ -203,7 +221,7 @@ async def update_key_on_cluster(
             config = ClientConfig(
                 client_id=remnawave_client_id,
                 email=unique_email,
-                tg_id=tg_id,
+                tg_id=panel_tg if panel_tg and int(panel_tg) > 0 else "",
                 limit_ip=device_limit_value,
                 total_gb=total_gb_bytes,
                 expiry_time=expiry_time,
@@ -212,10 +230,36 @@ async def update_key_on_cluster(
                 sub_id=sub_id,
             )
 
-            tasks.append(add_client(xui, config))
+            async def create_or_update(api, client):
+                result = await add_client(api, client)
+                if not isinstance(result, dict):
+                    return False
+                if result.get("status") == "success":
+                    return str(result.get("client_id") or "") == client.client_id
+                if result.get("status") == "duplicate":
+                    return bool(
+                        await extend_client_key(
+                            xui=api,
+                            inbound_id=client.inbound_id,
+                            email=client.email,
+                            new_expiry_time=client.expiry_time,
+                            client_id=client.client_id,
+                            total_gb=client.total_gb,
+                            sub_id=client.sub_id,
+                            tg_id=client.tg_id,
+                            limit_ip=client.limit_ip,
+                        )
+                    )
+                return False
 
+            tasks.append(create_or_update(xui, config))
+
+        xui_confirmed = False
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            xui_confirmed = any(result is True for result in results)
+        if not (remna_confirmed or xui_confirmed):
+            raise ValueError("Перевыпуск не подтверждён ни на одном сервере")
 
         logger.info(f"[Update] Ключ {remnawave_client_id} обновлён на серверах подгруппы в {cluster_id}")
         return remnawave_client_id, remnawave_link_value
@@ -236,7 +280,8 @@ async def update_subscription(
     tg_id: int | None = None,
 ) -> None:
     """Пересоздаёт подписку клиента."""
-    uid = await user_id_from_legacy_ref(session, user_id if user_id is not None else tg_id)
+    ref = UserId(user_id) if user_id is not None else TelegramId(tg_id)
+    uid = await user_id_from_legacy_ref(session, ref)
     if uid is None:
         raise ValueError(f"The key {email} does not exist in database")
     user_id = uid
@@ -251,8 +296,10 @@ async def update_subscription(
     tariff_id = record.tariff_id
     alias = record.alias
     remnawave_link = remnawave_link or record.remnawave_link
-    owner_ref = await subscription_owner_ref(session, user_id)
-    public_link = f"{PUBLIC_LINK}{email}/{owner_ref}"
+    owner_ref = saved_public_subscription_tail(old_key_link, email, PUBLIC_LINK)
+    if owner_ref is None:
+        owner_ref = await subscription_owner_ref(session, user_id)
+    public_link = f"{PUBLIC_LINK.rstrip('/')}/{email}/{owner_ref}"
 
     selected_device_limit = getattr(record, "selected_device_limit", None)
     selected_traffic_limit = getattr(record, "selected_traffic_limit", None)
@@ -277,29 +324,14 @@ async def update_subscription(
 
     from middlewares.session import release_session_early
 
+    user_id = await resolve_current_key_owner(session, client_id, email)
+    if user_id is None:
+        raise ValueError(f"Исходная подписка {email} удалена или её владелец неоднозначен")
     await release_session_early(session)
     await delete_key_from_cluster(old_cluster_id, email, client_id, session=session)
-    await delete_key_by_user_and_email(session, uid, email)
 
-    async def restore_previous_key(reason: str) -> None:
-        logger.warning(f"[Update] Перевыпуск {email} не завершён ({reason}), восстанавливаем прежнюю запись")
-        await store_key(
-            session=session,
-            legacy_user_ref=user_id,
-            client_id=client_id,
-            email=email,
-            expiry_time=expiry_time,
-            key=old_key_link,
-            remnawave_link=remnawave_link,
-            server_id=old_cluster_id,
-            tariff_id=tariff_id,
-            alias=alias,
-            selected_device_limit=selected_device_limit,
-            selected_traffic_limit=selected_traffic_limit,
-            selected_price_rub=selected_price_rub,
-            current_device_limit=current_device_limit_db,
-            current_traffic_limit=current_traffic_limit_db,
-        )
+    def log_reissue_failure(reason: str) -> None:
+        logger.warning(f"[Update] Перевыпуск {email} не завершён ({reason}), прежняя запись сохранена")
 
     if country_override or cluster_override:
         new_cluster_id = country_override or cluster_override
@@ -339,7 +371,7 @@ async def update_subscription(
         )
 
     if not cluster_servers:
-        await restore_previous_key(f"нет серверов после фильтрации в {new_cluster_id}")
+        log_reissue_failure(f"нет серверов после фильтрации в {new_cluster_id}")
         return
 
     if tariff:
@@ -352,7 +384,7 @@ async def update_subscription(
                 logger.info(f"[Update] Нет серверов со спецгруппой '{gc}' в {new_cluster_id}")
 
     if not cluster_servers:
-        await restore_previous_key(f"нет серверов после фильтрации по спецгруппам в {new_cluster_id}")
+        log_reissue_failure(f"нет серверов после фильтрации по спецгруппам в {new_cluster_id}")
         return
 
     traffic_limit_gb = None
@@ -376,6 +408,10 @@ async def update_subscription(
     if current_traffic_limit_db is not None:
         traffic_limit_gb = int(current_traffic_limit_db)
 
+    user_id = await resolve_current_key_owner(session, client_id, email)
+    if user_id is None:
+        raise ValueError(f"Исходная подписка {email} удалена или её владелец неоднозначен")
+
     try:
         new_client_id, remnawave_link_value = await update_key_on_cluster(
             tg_id=owner_ref,
@@ -390,6 +426,7 @@ async def update_subscription(
             subgroup_code=subgroup_code,
             tariff_id=tariff_id,
             external_squad_uuid=external_squad_uuid,
+            billing_user_id=user_id,
         )
 
         aggregated = await make_aggregated_link(
@@ -404,11 +441,16 @@ async def update_subscription(
             plan=tariff_id,
         )
     except Exception as e:
-        await restore_previous_key(f"ошибка пересоздания: {e}")
+        log_reissue_failure(f"ошибка пересоздания: {e}")
         raise
 
-    final_key_link = aggregated or public_link
+    final_key_link = preserve_saved_public_link(aggregated or public_link, old_key_link, email, PUBLIC_LINK)
 
+    user_id = await resolve_current_key_owner(session, client_id, email)
+    if user_id is None:
+        raise ValueError(f"Исходная подписка {email} удалена или её владелец неоднозначен")
+    if new_client_id != client_id:
+        await delete_key_by_user_and_email(session, user_id, email)
     await store_key(
         session=session,
         legacy_user_ref=user_id,

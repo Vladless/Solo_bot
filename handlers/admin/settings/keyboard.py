@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.money_config import get_currency_mode
-from settings.buttons import BACK
+from settings.buttons import ADMIN_ACCESS_SETTINGS, BACK, YOOKASSA_SETTINGS
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from .settings_config import (
@@ -60,7 +60,7 @@ def build_toggle_section_keyboard(
     return builder.as_markup()
 
 
-def build_settings_kb() -> InlineKeyboardMarkup:
+def build_settings_kb(*, show_access: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.button(
@@ -99,8 +99,13 @@ def build_settings_kb() -> InlineKeyboardMarkup:
         text="🌀 Remnawave",
         callback_data=AdminPanelCallback(action="settings_remnawave").pack(),
     )
+    if show_access:
+        builder.button(
+            text=ADMIN_ACCESS_SETTINGS,
+            callback_data=AdminPanelCallback(action="settings_access").pack(),
+        )
 
-    builder.adjust(2, 2, 2, 2, 1)
+    builder.adjust(2)
     builder.row(build_admin_back_btn())
 
     return builder.as_markup()
@@ -299,6 +304,13 @@ def build_settings_money_kb(money_state: dict[str, object]) -> InlineKeyboardMar
     )
 
     builder.adjust(1)
+
+    builder.row(
+        InlineKeyboardButton(
+            text=YOOKASSA_SETTINGS,
+            callback_data=AdminPanelCallback(action="settings_yookassa").pack(),
+        )
+    )
 
     builder.row(
         InlineKeyboardButton(

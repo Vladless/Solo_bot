@@ -4,7 +4,7 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, User
 
-from database.access.resolution import resolve_actor_from_legacy_ref
+from database.access.resolution import TelegramId, resolve_actor_from_legacy_ref
 from logger import logger
 
 
@@ -24,7 +24,7 @@ class ActorMiddleware(BaseMiddleware):
                 and session is not None
                 and getattr(session, "execute", None) is not None
             ):
-                data["actor"] = await resolve_actor_from_legacy_ref(session, int(from_user.id))
+                data["actor"] = await resolve_actor_from_legacy_ref(session, TelegramId(from_user.id))
         except Exception as error:
             logger.error(f"[ActorMiddleware] Ошибка резолва actor: {error}", exc_info=True)
             _session = data.get("session")

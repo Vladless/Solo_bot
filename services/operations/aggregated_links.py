@@ -7,6 +7,7 @@ from database import filter_cluster_by_subgroup, get_key_details, get_tariff_by_
 from logger import logger
 from panels._3xui import get_vless_link_for_client, get_xui_instance, resolve_inbound_host
 from panels.remnawave_runtime import with_remnawave_api
+from services.subscription_links import preserve_saved_public_link
 from settings.config import HAPP_CRYPTOLINK, LEGACY_LINKS, PUBLIC_LINK, SUPERNODE
 
 from .utils import is_plan_vless, split_by_panel
@@ -135,6 +136,10 @@ async def make_aggregated_link(
         vless_needed = is_plan_vless(plan)
 
     base = PUBLIC_LINK.rstrip("/")
+    kd = await get_key_details(session, email)
+    public_link = preserve_saved_public_link(
+        f"{base}/{email}/{tg_id}", kd.get("key") if kd else None, email, PUBLIC_LINK
+    )
 
     if vless_needed:
         if legacy_links_enabled:
@@ -144,7 +149,7 @@ async def make_aggregated_link(
                     logger.info("[agg_link] LEGACY choose 3x-ui VLESS")
                     return xui_link
             logger.info("[agg_link] LEGACY fallback base")
-            return f"{base}/{email}/{tg_id}"
+            return public_link
         if xui:
             xui_link = await _try_build_3xui_vless(xui, email)
             if xui_link:
@@ -170,12 +175,12 @@ async def make_aggregated_link(
                 logger.info("[agg_link] choose Remnawave subscriptionUrl (vless)")
                 return sub_url
         logger.info("[agg_link] fallback base link")
-        return f"{base}/{email}/{tg_id}"
+        return public_link
 
     if remna and not xui:
         if legacy_links_enabled:
             logger.info("[agg_link] LEGACY non-vless -> base link")
-            return f"{base}/{email}/{tg_id}"
+            return public_link
 
         happ_cryptolink_enabled = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
 
@@ -207,4 +212,4 @@ async def make_aggregated_link(
             logger.info("[agg_link] fallback Remnawave VLESS (non-vless)")
             return best_vless
 
-    return f"{base}/{email}/{tg_id}"
+    return public_link

@@ -8,7 +8,7 @@ except Exception:
 
 
 def parse_percent(value: float) -> float | None:
-    """Процент партнёра в шкале 0-100: доля 0-1 разворачивается, мусор отсекается."""
+    """Приводит партнёрский процент к шкале 0–100."""
     try:
         val = float(value)
     except (TypeError, ValueError):

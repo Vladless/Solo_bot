@@ -1,6 +1,6 @@
 import time
 
-from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
+from .._common import *
 from .._common import (
     _extract_key_actions_from_markup,
     _is_renew_available,
@@ -32,7 +32,7 @@ async def user_keys(
                 cached_actions = None
         if not isinstance(cached_actions, dict):
             try:
-                _, markup, _ = await build_key_view_payload(session, int(billing_user_id), key_ref)
+                _, markup, _ = await build_key_view_payload(session, billing_user_id, key_ref)
                 key_actions = _extract_key_actions_from_markup(markup)
                 """Действия ключа меняются только вместе с самим ключом, а тот чистит кеш сам."""
                 await cache_set(actions_key, key_actions.model_dump(), 600)
@@ -73,7 +73,7 @@ async def user_key_connection(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
-    """Лёгкая инфо о текущей подписке: онлайн/offline, сервер, протокол, дни до окончания."""
+    """Возвращает состояние подключения и текущей подписки."""
     billing_user_id = await resolve_billing_user_id(request, identity, session)
     db_key = next(
         (k for k in await get_keys(session, billing_user_id) if str(getattr(k, "client_id", "")) == client_id),
@@ -114,7 +114,7 @@ async def user_key_connection(
                 server_name,
                 client_id,
                 fallback_any=True,
-                username=str(getattr(key, "email", "") or "") or None,
+                username=str(getattr(db_key, "email", "") or "") or None,
             )
             if profile:
                 is_online = bool(profile.get("is_online"))
@@ -157,10 +157,7 @@ async def user_key_traffic_history(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
-    """История использования трафика для графика в кабинете.
-
-    granularity=day — по дням (по умолчанию); granularity=hour — по часам за сутки.
-    """
+    """Возвращает историю трафика подписки по дням или часам."""
     from api.ratelimit import enforce_rate_limit
 
     await enforce_rate_limit(request, session, bucket="traffic_history", max_per_window=60, window_sec=60)

@@ -1,6 +1,5 @@
 from math import ceil
-
-import sqlalchemy as sa
+from types import SimpleNamespace
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -15,18 +14,23 @@ from database import (
     get_key_details,
     get_tariff_by_id,
     save_key_config_with_mode,
+    update_balance,
 )
-from database.models import User
+from database.access.resolution import TelegramId, UserId
+from database.keys import lock_owned_key_for_operation, resolve_key_operation_owner
+from database.users import get_locked_balance
 from handlers.keys.view.payload import render_key_info
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.utils import edit_or_send_message
 from hooks.processors import process_addon_purchase_complete
 from logger import logger
-from middlewares.session import release_session_early
+from middlewares.session import operation_session
 from services.addons import (
     calc_pack_full_price_rub,
     get_pack_flags,
 )
+from services.errors import InsufficientFundsError, ValidationError
+from services.payments.checkout_intent import checkout_key_snapshot
 from services.payments.currency_rates import format_for_user
 from services.tariffs.pricing import calculate_config_price
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
@@ -61,7 +65,12 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
         logger.warning(f"[ADDONS] PACK_MODE: подписка {email} не найдена")
         await callback.message.answer("❌ Подписка не найдена.")
         return
-    if record.get("tg_id") != callback.from_user.id:
+    if (
+        key_obj is None
+        or record.get("tg_id") != callback.from_user.id
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await callback.answer("Доступ запрещён.", show_alert=True)
         return
 
@@ -275,7 +284,7 @@ async def handle_addons_traffic_choice(callback: CallbackQuery, state: FSMContex
 async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     from services.operations import renew_key_in_cluster
 
-    tg_id = callback.from_user.id
+    tg_id = TelegramId(callback.from_user.id)
     data = await state.get_data()
 
     if data.get("addon_confirm_in_progress"):
@@ -309,11 +318,13 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
             return
 
         record = await get_key_details(session, email)
-        if not record:
+        owned_key = await resolve_key(session, tg_id, email)
+        if not record or owned_key is None:
             logger.warning(f"[ADDONS] PACK_MODE: подписка {email} не найдена в handle_addons_confirm")
             await callback.message.answer("❌ Подписка не найдена.")
             await state.clear()
             return
+        original_uid = UserId(owned_key.user_id)
 
         tariff = await get_tariff_by_id(session, int(tariff_id))
         if not tariff:
@@ -436,6 +447,7 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
             )
             return
 
+        financial_applied = False
         try:
             expiry_time = record["expiry_time"]
             client_id = record["client_id"]
@@ -496,44 +508,53 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                 f"old_subgroup={old_subgroup}"
             )
 
-            await release_session_early(session)
-            await renew_key_in_cluster(
-                cluster_id=server_id,
-                email=email,
-                client_id=client_id,
-                new_expiry_time=expiry_time,
-                total_gb=total_gb,
-                session=session,
-                hwid_device_limit=hwid_device_limit_to_set,
-                reset_traffic=False,
-                target_subgroup=target_subgroup,
-                old_subgroup=old_subgroup,
-                plan=int(tariff_id),
-            )
+            async with operation_session(session) as billing_session:
+                async with billing_session.begin_nested():
+                    locked_key = await lock_owned_key_for_operation(billing_session, original_uid, client_id, email)
+                    if locked_key is None or locked_key.is_frozen:
+                        raise ValidationError("Подписка недоступна. Обновите страницу.")
+                    if checkout_key_snapshot(locked_key) != checkout_key_snapshot(SimpleNamespace(**record)):
+                        raise ValidationError("Подписка изменилась. Обновите страницу.")
+                    fresh_balance = await get_locked_balance(billing_session, UserId(original_uid))
+                    if fresh_balance is None or fresh_balance < extra_price:
+                        raise InsufficientFundsError("Недостаточно средств на балансе")
+                    applied = await renew_key_in_cluster(
+                        cluster_id=server_id,
+                        email=email,
+                        client_id=client_id,
+                        new_expiry_time=expiry_time,
+                        total_gb=total_gb,
+                        session=billing_session,
+                        hwid_device_limit=hwid_device_limit_to_set,
+                        reset_traffic=False,
+                        target_subgroup=target_subgroup,
+                        old_subgroup=old_subgroup,
+                        plan=int(tariff_id),
+                    )
 
-            result = await session.execute(
-                sa.update(User)
-                .where(User.tg_id == tg_id, User.balance >= extra_price)
-                .values(balance=User.balance - extra_price)
-            )
-            if (result.rowcount or 0) != 1:
-                await session.rollback()
-                await callback.answer("❌ Недостаточно средств.", show_alert=True)
-                await state.clear()
-                return
+                    if not applied:
+                        raise ValidationError("Не удалось применить доп. опции")
 
-            await save_key_config_with_mode(
-                session=session,
-                email=email,
-                selected_devices=new_device_limit_effective,
-                selected_traffic_gb=new_traffic_limit_gb_effective,
-                total_price=int(total_price_after_purchase),
-                has_device_choice=has_device_option,
-                has_traffic_choice=has_traffic_option,
-                config_mode="pack",
-            )
+                    billing_uid = await resolve_key_operation_owner(billing_session, original_uid, client_id, email)
+                    if billing_uid is None:
+                        raise ValueError("Subscription owner changed during addon purchase")
+                    debited = await update_balance(billing_session, billing_uid, -extra_price)
+                    if debited is None:
+                        raise InsufficientFundsError("Недостаточно средств на балансе")
 
-            await session.commit()
+                    await save_key_config_with_mode(
+                        session=billing_session,
+                        email=email,
+                        selected_devices=new_device_limit_effective,
+                        selected_traffic_gb=new_traffic_limit_gb_effective,
+                        total_price=int(total_price_after_purchase),
+                        has_device_choice=has_device_option,
+                        has_traffic_choice=has_traffic_option,
+                        config_mode="pack",
+                        user_id=billing_uid,
+                    )
+
+            financial_applied = True
 
             logger.info(
                 "[ADDONS] PACK_MODE успешная покупка пакета: "
@@ -558,6 +579,8 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
 
         except Exception as error:
             logger.error(f"[ADDONS] PACK_MODE ошибка при покупке пакета для {email}: {error}")
+            if not financial_applied:
+                await session.rollback()
             await callback.message.answer("❌ Ошибка при обновлении подписки. Попробуйте позже.")
             await state.clear()
 

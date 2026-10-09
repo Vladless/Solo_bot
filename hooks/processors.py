@@ -12,11 +12,7 @@ async def process_cluster_override(
     plan: int | None = None,
     **kwargs,
 ) -> str | None:
-    """Обрабатывает хук cluster_override и возвращает название кластера.
-
-    tg_id и state_data опциональны — хук может вызываться из контекстов
-    балансировщика (services.clusters.select_cluster), где этих данных нет.
-    """
+    """Возвращает кластер, выбранный хуками."""
     results = await run_hooks(
         "cluster_override",
         tg_id=tg_id,
@@ -33,7 +29,7 @@ async def process_cluster_balancer(
     session: Any,
     **kwargs,
 ) -> dict | None:
-    """Обрабатывает хук cluster_balancer и возвращает отфильтрованные кластеры."""
+    """Возвращает кластеры после фильтрации хуками."""
     results = await run_hooks(
         "cluster_balancer",
         available_clusters=available_clusters,
@@ -49,7 +45,7 @@ async def process_remnawave_webapp_override(
     session: Any,
     **kwargs,
 ) -> bool:
-    """Обрабатывает хук remnawave_webapp_override и решает, использовать ли webapp."""
+    """Определяет использование веб-приложения Remnawave с учётом хуков."""
     if not remnawave_webapp or not final_link:
         return remnawave_webapp
 
@@ -81,7 +77,7 @@ async def process_happ_cryptolink_override(
     happ_cryptolink: bool = False,
     **kwargs,
 ) -> bool:
-    """Обрабатывает хук happ_cryptolink_override и решает, использовать ли криптоссылку."""
+    """Определяет использование криптоссылки с учётом хуков."""
     results = await run_hooks(
         "happ_cryptolink_override",
         cluster_id=cluster_id,
@@ -201,10 +197,10 @@ async def process_intercept_key_creation_message(
     target_message: Any,
     **kwargs,
 ) -> bool:
-    """Обрабатывает хук intercept_key_creation_message и решает, перехватывать ли сообщение."""
-    from .single_subscription import is_single_sub_enabled, open_single_sub_profile
+    """Открывает кабинет или передаёт хукам перехват сообщения о создании ключа."""
+    from .single_subscription import open_profile_after_creation, open_single_sub_profile
 
-    if is_single_sub_enabled():
+    if open_profile_after_creation():
         if await open_single_sub_profile(target_message, session, admin=bool(kwargs.get("admin", False))):
             return True
 
@@ -226,7 +222,7 @@ async def process_key_creation_complete(
     admin: bool = False,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук key_creation_complete и возвращает кнопки после создания ключа."""
+    """Возвращает кнопки хуков после создания ключа."""
     results = await run_hooks(
         "key_creation_complete",
         chat_id=chat_id,
@@ -245,7 +241,7 @@ async def process_process_callback_renew_key(
     session: Any,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук process_callback_renew_key и возвращает кнопки для продления."""
+    """Собирает кнопки продления из хуков и режима единственной подписки."""
     results = await run_hooks(
         "process_callback_renew_key",
         callback_query=callback_query,
@@ -266,7 +262,7 @@ async def process_renewal_forbidden_groups(
     admin: bool = False,
     **kwargs,
 ) -> list[str]:
-    """Обрабатывает хук renewal_forbidden_groups и возвращает дополнительные запреты."""
+    """Возвращает группы, продление которых запрещено хуками."""
     results = await run_hooks(
         "renewal_forbidden_groups",
         chat_id=chat_id,
@@ -290,7 +286,7 @@ async def process_purchase_tariff_group_override(
     admin: bool = False,
     **kwargs,
 ) -> dict | None:
-    """Обрабатывает хук purchase_tariff_group_override и может изменить группу тарифов."""
+    """Возвращает замену группы тарифов и данные скидки из хуков."""
     results = await run_hooks(
         "purchase_tariff_group_override",
         chat_id=chat_id,
@@ -314,7 +310,7 @@ async def process_renew_tariffs(
     admin: bool = False,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук renew_tariffs и возвращает кнопки для выбора тарифов продления."""
+    """Собирает кнопки выбора тарифов продления с учётом хуков."""
     results = await run_hooks(
         "renew_tariffs",
         chat_id=chat_id,
@@ -337,7 +333,7 @@ async def process_renewal_complete(
     admin: bool = False,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук renewal_complete и возвращает кнопки после продления."""
+    """Собирает кнопки после продления с учётом хуков."""
     results = await run_hooks(
         "renewal_complete",
         chat_id=chat_id,
@@ -359,7 +355,7 @@ async def process_view_key_menu(
     session: Any,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук view_key_menu и возвращает кнопки для меню ключа."""
+    """Возвращает кнопки хуков для меню ключа."""
     results = await run_hooks(
         "view_key_menu",
         key_name=key_name,
@@ -374,7 +370,7 @@ async def process_admin_key_edit_menu(
     session: Any,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук admin_key_edit_menu и возвращает кнопки редактирования ключа."""
+    """Возвращает кнопки хуков для редактирования ключа."""
     results = await run_hooks(
         "admin_key_edit_menu",
         email=email,
@@ -391,7 +387,7 @@ async def process_tariff_menu(
     session: Any,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук tariff_menu и возвращает кнопки для меню тарифов."""
+    """Возвращает кнопки хуков для меню тарифов."""
     results = await run_hooks(
         "tariff_menu",
         group_code=group_code,
@@ -410,7 +406,7 @@ async def process_check_discount_validity(
     admin: bool = False,
     **kwargs,
 ) -> dict | None:
-    """Обрабатывает хук check_discount_validity и проверяет валидность скидки."""
+    """Возвращает отказ в скидке, если её отклонили хуки."""
     results = await run_hooks(
         "check_discount_validity",
         chat_id=chat_id,
@@ -433,7 +429,7 @@ async def process_addons_menu(
     session: Any,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук addons_menu и возвращает операции для меню конфигуратора."""
+    """Собирает действия конфигуратора с учётом хуков."""
     results = await run_hooks(
         "addons_menu",
         email=email,
@@ -453,7 +449,7 @@ async def process_connect_device_menu(
     admin: bool = False,
     **kwargs,
 ) -> list:
-    """Обрабатывает хук connect_device_menu и возвращает кнопки подключения устройства."""
+    """Собирает кнопки подключения устройства с учётом хуков."""
     results = await run_hooks(
         "connect_device_menu",
         chat_id=chat_id,
@@ -476,7 +472,7 @@ async def process_addon_purchase_complete(
     admin: bool = False,
     **kwargs,
 ) -> bool:
-    """Обрабатывает хук addon_purchase_complete. True = caller пропускает render_key_info."""
+    """Открывает кабинет или передаёт хукам показ результата покупки дополнения."""
     from .single_subscription import is_single_sub_enabled, open_single_sub_profile
 
     if is_single_sub_enabled():

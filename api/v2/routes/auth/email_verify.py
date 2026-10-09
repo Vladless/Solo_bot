@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_token
 from api.v2.routes.auth._common import _client_ip
+from database import identities as idb
 from mail import send_email_verify_code_email, smtp_configured
 from utils.web_email_codes import email_verify_codes as verify_util
 
@@ -70,9 +71,6 @@ async def verify_email(
         raise HTTPException(status_code=429, detail="Слишком много попыток, попробуйте позже")
     if not await verify_util.verify_and_consume_code(email, body.code.strip()):
         raise HTTPException(status_code=400, detail="Неверный или просроченный код")
-    from sqlalchemy import update
-
-    from database.models import Identity as IdentityModel
-
-    await session.execute(update(IdentityModel).where(IdentityModel.id == identity.id).values(email_verified=True))
+    if await idb.mark_identity_email_verified(session, identity.id, email) is None:
+        raise HTTPException(status_code=409, detail="Email изменился. Запросите новый код подтверждения")
     return {"ok": True}

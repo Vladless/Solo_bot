@@ -44,7 +44,7 @@ export function DefaultFriendsListBlockView({ block, context }: TypedBlockViewPr
   const totalCountFromApi = mode === "partner" ? (partnerData.data?.total ?? 0) : (refData.data?.total ?? 0);
   const apiItems: CabinetFriendItem[] = mode === "partner"
     ? (partnerData.data?.items ?? []).map((p) => ({
-        name: `tg · ${p.tg_id}`,
+        name: p.tg_id ? `tg · ${p.tg_id}` : p.user_id != null ? `id ${p.user_id}` : "—",
         plan: p.keys_count > 0 ? `${p.keys_count} ключ${p.keys_count > 1 ? "ей" : ""}` : "—",
         bonus: p.payments_count > 0 ? activeBadge : pendingBadge,
         ts: formatDayMonth(p.joined_at),

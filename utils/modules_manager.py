@@ -8,6 +8,7 @@ from aiogram import Router
 from core.executor import run_io
 from hooks.hooks import unregister_module_hooks
 from logger import logger
+from utils.core_features import is_core_replaced_module
 
 
 IGNORE_SUBMODULES = {"models", "schemas", "db"}
@@ -69,6 +70,8 @@ class ModulesManager:
 
     async def start(self, name: str) -> None:
         name = _normalize_module_name(name)
+        if is_core_replaced_module(name):
+            raise ValueError("Эта платёжная система перенесена в ядро: управление в настройках касс.")
         if not self._is_safe_module_name(name):
             raise ValueError(f"[Modules] Недопустимое имя модуля: {name!r}")
         rec = self.registry.get(name) or ModuleRecord(name, self.pkg(name))
@@ -167,7 +170,7 @@ class ModulesManager:
         return _normalize_module_name(name) in self.disabled
 
     def should_autostart(self, name: str) -> bool:
-        return _normalize_module_name(name) not in self.disabled
+        return not is_core_replaced_module(name) and _normalize_module_name(name) not in self.disabled
 
 
 manager = ModulesManager()

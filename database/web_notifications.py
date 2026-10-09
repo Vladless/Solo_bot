@@ -32,7 +32,7 @@ async def upsert_push_subscription(
     endpoint: str,
     keys_json: dict,
 ) -> WebPushSubscription:
-    """Upsert push subscription by endpoint (unique)."""
+    """Сохраняет push-подписку по уникальному endpoint."""
     stmt = (
         pg_insert(WebPushSubscription)
         .values(
@@ -60,7 +60,17 @@ async def upsert_push_subscription(
 async def get_push_subscriptions_by_identity(
     session: AsyncSession,
     identity_id: str,
+    *,
+    user_id: int | None = None,
 ) -> list[WebPushSubscription]:
+    if user_id is not None:
+        owner = await session.scalar(select(User.id).where(User.id == int(user_id), User.identity_id == identity_id))
+        if owner is not None:
+            await session.execute(
+                update(WebPushSubscription)
+                .where(WebPushSubscription.identity_id == identity_id, WebPushSubscription.user_id != owner)
+                .values(user_id=owner)
+            )
     result = await session.execute(select(WebPushSubscription).where(WebPushSubscription.identity_id == identity_id))
     return list(result.scalars().all())
 
@@ -128,7 +138,7 @@ async def count_unread_for_identity(
         .select_from(WebNotification)
         .where(
             WebNotification.identity_id == identity_id,
-            WebNotification.read == False,  # noqa: E712 SQLAlchemy expression
+            WebNotification.read is False,
         )
     )
     count = result.scalar() or 0
@@ -144,7 +154,7 @@ async def mark_all_read_for_identity(
         update(WebNotification)
         .where(
             WebNotification.identity_id == identity_id,
-            WebNotification.read == False,  # noqa: E712 SQLAlchemy expression
+            WebNotification.read is False,
         )
         .values(read=True)
     )
@@ -157,7 +167,7 @@ async def mark_one_read_for_identity(
     identity_id: str,
     notification_id: str,
 ) -> bool:
-    """Mark single notification as read. Returns True if updated."""
+    """Отмечает уведомление владельца прочитанным."""
     result = await session.execute(
         update(WebNotification)
         .where(
@@ -175,7 +185,7 @@ async def delete_one_for_identity(
     identity_id: str,
     notification_id: str,
 ) -> bool:
-    """Delete single notification owned by identity. Returns True if deleted."""
+    """Удаляет уведомление указанной идентичности."""
     from sqlalchemy import delete as sql_delete
 
     result = await session.execute(
@@ -231,7 +241,7 @@ class _SafeFormatDict(dict):
 
 
 def _render_template(template: str, **kwargs: object) -> str:
-    """Safe format — unknown placeholders stay as-is."""
+    """Подставляет известные переменные в шаблон."""
     try:
         return template.format_map(_SafeFormatDict({k: str(v) for k, v in kwargs.items() if v is not None}))
     except Exception:
@@ -249,7 +259,7 @@ def _get_web_config_str(key: str, default: str) -> str:
 
 
 def _push_url(data: dict | None) -> str:
-    """Push ведёт туда же, куда клик по уведомлению в кабинете; внешние ссылки service worker не откроет."""
+    """Возвращает адрес перехода для push-уведомления."""
     href = str((data or {}).get("href") or "").strip()
     if href.startswith("/") and not href.startswith("//"):
         return href
@@ -266,11 +276,7 @@ async def notify_web(
     data: dict | None = None,
     template_vars: dict | None = None,
 ) -> WebNotification | None:
-    """Создаёт web-уведомление адресату: users.id (или legacy tg_id у старых вызовов).
-
-    title/message — если None, берутся из WEB_CONFIG шаблонов по type.
-    template_vars — подстановки в шаблон ({email}, {amount}, {name}, {duration}).
-    """
+    """Создаёт уведомление сайта для выбранного клиента."""
     try:
         user = await resolve_user_optional(session, user_ref)
         if user is None or user.identity_id is None:
@@ -314,7 +320,7 @@ async def notify_web(
             from services.web_push import push_enabled, send_push_to_many
 
             if push_enabled():
-                subs = await get_push_subscriptions_by_identity(session, identity_id)
+                subs = await get_push_subscriptions_by_identity(session, identity_id, user_id=notif_user_id)
                 if subs:
                     sub_infos = [{"endpoint": s.endpoint, "keys": s.keys_json} for s in subs]
                     sent, dead = await send_push_to_many(

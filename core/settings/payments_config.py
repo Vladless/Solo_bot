@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
 from database.settings_cache import settings_cache
+from settings.config import YOOKASSA_SBP_ONLY
 
 from ..defaults import DEFAULT_PAYMENTS_CONFIG
 from .runtime_sync import publish_runtime_config, register_runtime_config
@@ -13,12 +14,17 @@ register_runtime_config("PAYMENTS_CONFIG", PAYMENTS_CONFIG)
 
 
 async def load_payments_config(session: AsyncSession) -> None:
+    from .yookassa_autopay_config import migrate_missing_autopay_flag
+
     stmt = select(Setting).where(Setting.key == "PAYMENTS_CONFIG")
     result = await session.execute(stmt)
     setting = result.scalar_one_or_none()
 
     if setting is None:
         payments_config = DEFAULT_PAYMENTS_CONFIG.copy()
+        payments_config.update(await migrate_missing_autopay_flag(session, {}))
+        if YOOKASSA_SBP_ONLY and payments_config.get("YOOKASSA"):
+            payments_config.update(YOOKASSA=False, YOOKASSA_SBP=True)
         setting = Setting(
             key="PAYMENTS_CONFIG",
             value=payments_config,
@@ -26,7 +32,9 @@ async def load_payments_config(session: AsyncSession) -> None:
         )
         session.add(setting)
     else:
-        stored = setting.value or {}
+        stored = await migrate_missing_autopay_flag(session, setting.value or {})
+        if "YOOKASSA_SBP" not in stored and YOOKASSA_SBP_ONLY and stored.get("YOOKASSA"):
+            stored = {**stored, "YOOKASSA": False, "YOOKASSA_SBP": True}
         payments_config = DEFAULT_PAYMENTS_CONFIG.copy()
         payments_config.update(stored)
         setting.value = payments_config

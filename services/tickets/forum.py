@@ -39,7 +39,8 @@ def _client_bot_link(admin_ref: int | None):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="👤 Открыть клиента в боте", url=f"https://telegram.me/{username}?start=suser_{int(admin_ref)}"
+                    text="👤 Открыть клиента в боте",
+                    url=f"https://telegram.me/{username}?start=suser_u{int(admin_ref)}",
                 )
             ]
         ]

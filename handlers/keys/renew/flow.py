@@ -15,7 +15,8 @@ from database import (
     get_key_details,
     get_tariff_by_id,
 )
-from database.access.resolution import notify_telegram_chat_id
+from database.access.resolution import TelegramId, UserId, notify_telegram_chat_id, resolve_user_optional
+from database.keys import resolve_key_operation_owner
 from database.models import Server
 from handlers.notifications.webapp_only import webapp_only_markup
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
@@ -26,6 +27,7 @@ from hooks.processors import (
 )
 from logger import logger
 from services.formatting import build_renewal_done_text
+from services.keys import renewal_key_snapshot
 from services.payments.currency_rates import format_for_user
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 from settings.buttons import MAIN_MENU, MY_SUB, PAYMENT
@@ -68,8 +70,9 @@ async def _finalize_renewal(
     new_expiry_time: int,
     selected_device: int | None,
     selected_traffic: int | None,
+    expected_key_snapshot: dict | None = None,
 ) -> None:
-    """Списание и завершение смены тарифа. cost — нетто (new_full − остаток), может быть < 0."""
+    """Пересчитывает баланс и завершает смену тарифа."""
     balance = round(await get_balance(session, tg_id), 2)
     cost = round(float(cost), 2)
 
@@ -133,6 +136,7 @@ async def _finalize_renewal(
         selected_price_rub=int(full_price),
         credited_to_balance_rub=max(0, int(round(-cost))),
         state=state,
+        expected_key_snapshot=expected_key_snapshot,
     )
 
 
@@ -163,21 +167,27 @@ async def complete_key_renewal(
     selected_price_rub: int | None = None,
     credited_to_balance_rub: int = 0,
     state: FSMContext | None = None,
+    expected_key_snapshot: dict | None = None,
 ):
     """Продлевает подписку через сервис и отправляет Telegram-уведомление."""
     from services.errors import ServiceError
     from services.keys import execute_renewal
 
+    renewal_applied = False
     try:
         logger.info(f"[Info] Продление ключа {client_id} по тарифу ID={tariff_id} (Start)")
 
-        tg_notify = await notify_telegram_chat_id(session, tg_id)
-        renewal_hook_chat = tg_notify if tg_notify is not None else tg_id
+        owner_ref = tg_id if isinstance(tg_id, UserId | TelegramId) else TelegramId(tg_id)
+        owner = await resolve_user_optional(session, owner_ref)
+        if owner is None:
+            return False
+        billing_user_id = UserId(owner.id)
+        tg_notify = await notify_telegram_chat_id(session, billing_user_id)
 
         waiting_message = None
         wait_text = "⏳ Подождите. Идет продление подписки…"
         try:
-            if callback_query:
+            if callback_query and callback_query.message.chat.id == tg_notify:
                 await edit_or_send_message(
                     target_message=callback_query.message,
                     text=wait_text,
@@ -196,11 +206,14 @@ async def complete_key_renewal(
             return False
 
         server_or_cluster = key_info["server_id"]
+        quoted_key_snapshot = (
+            expected_key_snapshot if expected_key_snapshot is not None else renewal_key_snapshot(key_info)
+        )
 
         try:
             await execute_renewal(
                 session=session,
-                billing_user_id=tg_id,
+                billing_user_id=billing_user_id,
                 client_id=client_id,
                 key_email=email,
                 key_server_id=server_or_cluster,
@@ -211,7 +224,9 @@ async def complete_key_renewal(
                 selected_device_limit=selected_device_limit,
                 selected_traffic_limit=selected_traffic_limit,
                 selected_price_rub=selected_price_rub,
+                expected_key_snapshot=quoted_key_snapshot,
             )
+            renewal_applied = True
         except ServiceError as e:
             logger.error(f"[Error] Сервис продления: {e.message}")
             err_text = f"⚠️ {e.message}"
@@ -219,13 +234,17 @@ async def complete_key_renewal(
             err_kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
             err_markup = err_kb.as_markup()
             try:
-                if callback_query:
+                delivery_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+                if delivery_owner is not None:
+                    billing_user_id = delivery_owner
+                tg_notify = await notify_telegram_chat_id(session, billing_user_id)
+                if callback_query and callback_query.message.chat.id == tg_notify:
                     await edit_or_send_message(
                         target_message=callback_query.message,
                         text=err_text,
                         reply_markup=err_markup,
                     )
-                elif waiting_message:
+                elif waiting_message and waiting_message.chat.id == tg_notify:
                     await edit_or_send_message(
                         target_message=waiting_message,
                         text=err_text,
@@ -237,8 +256,6 @@ async def complete_key_renewal(
                 logger.warning(f"[Renew] Не удалось показать ошибку продления: {notify_err}")
             return False
 
-        # The renewal is committed at this point. Clear its FSM context now so
-        # notification/rendering failures cannot leave a stale renewal mode.
         if state is not None:
             try:
                 from handlers.tariffs.buy.config import clear_user_renewal_context
@@ -280,7 +297,10 @@ async def complete_key_renewal(
         )
 
         if credited_to_balance_rub and credited_to_balance_rub > 0:
-            new_balance = round(await get_balance(session, tg_id), 2)
+            delivery_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+            if delivery_owner is not None:
+                billing_user_id = delivery_owner
+            new_balance = round(await get_balance(session, billing_user_id), 2)
             response_message += (
                 f"\n💰 Остаток прежней подписки <b>{int(credited_to_balance_rub)} ₽</b> "
                 f"зачислен на баланс. Текущий баланс: <b>{new_balance:g} ₽</b>"
@@ -288,8 +308,16 @@ async def complete_key_renewal(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=build_key_callback("view_key", client_id, email)))
-        hook_commands = await process_renewal_complete(
-            chat_id=renewal_hook_chat, admin=False, session=session, email=email, client_id=client_id
+        delivery_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+        if delivery_owner is not None:
+            billing_user_id = delivery_owner
+        tg_notify = await notify_telegram_chat_id(session, billing_user_id)
+        hook_commands = (
+            await process_renewal_complete(
+                chat_id=tg_notify, admin=False, session=session, email=email, client_id=client_id
+            )
+            if tg_notify is not None
+            else []
         )
         if hook_commands:
             builder = insert_hook_buttons(builder, hook_commands)
@@ -297,14 +325,18 @@ async def complete_key_renewal(
         renewal_media_path = "img/pic_renewed.jpg"
 
         try:
-            if callback_query:
+            delivery_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+            if delivery_owner is not None:
+                billing_user_id = delivery_owner
+            tg_notify = await notify_telegram_chat_id(session, billing_user_id)
+            if callback_query and callback_query.message.chat.id == tg_notify:
                 await edit_or_send_message(
                     target_message=callback_query.message,
                     text=response_message,
                     reply_markup=builder.as_markup(),
                     media_path=renewal_media_path,
                 )
-            elif waiting_message:
+            elif waiting_message and waiting_message.chat.id == tg_notify:
                 await edit_or_send_message(
                     target_message=waiting_message,
                     text=response_message,
@@ -319,6 +351,10 @@ async def complete_key_renewal(
                 logger.info(f"[Renew] Нет Telegram-чата для итогового сообщения (ref={tg_id}), пропуск")
         except Exception as e:
             logger.error(f"[Error] Ошибка при выводе финального сообщения: {e}")
+            delivery_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+            if delivery_owner is not None:
+                billing_user_id = delivery_owner
+            tg_notify = await notify_telegram_chat_id(session, billing_user_id)
             if tg_notify is not None:
                 await bot.send_message(
                     tg_notify, response_message, reply_markup=webapp_only_markup() or builder.as_markup()
@@ -329,4 +365,4 @@ async def complete_key_renewal(
 
     except Exception as e:
         logger.error(f"[Error] Ошибка в complete_key_renewal: {e}")
-        return False
+        return renewal_applied

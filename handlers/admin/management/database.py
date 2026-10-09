@@ -1,6 +1,7 @@
 import gzip
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -21,8 +22,8 @@ from filters.admin import HasPermission
 from filters.permissions import PERM_MANAGEMENT
 from logger import logger
 from settings.buttons import BACK
-from settings.config import BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_IN_DOCKER, PG_PORT
-from utils.backup import _find_docker_postgres_container
+from settings.config import BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT
+from utils.backup import _get_postgres_execution_target
 
 from ..panel.headers import menu_text, quote, section
 
@@ -40,8 +41,6 @@ from . import router
 from .keyboard import AdminPanelCallback, build_back_to_db_menu, build_database_kb, build_export_db_sources_kb
 
 
-DOCKER_POSTGRES_CONTAINER = "solobot-postgres"
-
 TELEGRAM_DOWNLOAD_LIMIT = 20 * 1024 * 1024
 
 
@@ -53,21 +52,62 @@ def sync_restore_database(
     pg_host: str,
     pg_port: str,
 ) -> tuple[bool, str]:
-    """Восстановление БД из файла. Вызывать через run_io()."""
+    """Восстанавливает БД из обычного или бинарного дампа."""
     is_custom_dump = False
-    with open(tmp_path, "rb") as f:
-        if f.read(5) == b"PGDMP":
-            is_custom_dump = True
+    try:
+        with open(tmp_path, "rb") as f:
+            header = f.read(5)
+            if not header:
+                return False, "Дамп пуст"
+            is_custom_dump = header == b"PGDMP"
+            if not is_custom_dump:
+                f.seek(0)
+                if any(re.match(rb"\s*\\(?:connect|c)(?:\s|$)", line) for line in f):
+                    return False, "SQL-дамп переключает базу. Используйте дамп без \\connect или бинарный pg_dump."
+    except OSError as exc:
+        return False, str(exc)
 
-    use_docker = PG_IN_DOCKER
-    docker_container = _find_docker_postgres_container() if use_docker else None
+    try:
+        safe_name = _safe_pg_identifier(db_name, "db_name")
+        safe_user = _safe_pg_identifier(db_user, "db_user")
+    except ValueError as error:
+        return False, str(error)
 
-    if use_docker and not docker_container:
-        return False, f"Контейнер PostgreSQL '{DOCKER_POSTGRES_CONTAINER}' не найден или не запущен"
+    try:
+        target, docker_container = _get_postgres_execution_target(client="pg_restore" if is_custom_dump else "psql")
+    except OSError as error:
+        return False, str(error)
+    use_docker = target == "docker"
+    if not use_docker:
+        required = ("psql", "pg_restore") if is_custom_dump else ("psql",)
+        missing = [client for client in required if shutil.which(client) is None]
+        if missing:
+            return False, "Не найдены PostgreSQL client утилиты: " + ", ".join(missing)
+    if is_custom_dump:
+        try:
+            if use_docker:
+                with open(tmp_path, "rb") as dump_file:
+                    checked = subprocess.run(
+                        ["docker", "exec", "-i", docker_container, "pg_restore", "--list"],
+                        stdin=dump_file,
+                        capture_output=True,
+                    )
+            else:
+                checked = subprocess.run(["pg_restore", "--list", tmp_path], capture_output=True, text=True)
+            if checked.returncode != 0:
+                error = (
+                    checked.stderr.decode("utf-8", errors="replace")
+                    if isinstance(checked.stderr, bytes)
+                    else checked.stderr
+                )
+                return False, error or "Дамп повреждён или несовместим с установленным pg_restore"
+        except OSError as error:
+            return False, str(error)
+    pg_port = str(pg_port)
 
-    def _run_admin_psql(sql: str) -> None:
+    def _run_admin_psql(sql: str) -> str:
         if use_docker:
-            subprocess.run(
+            result = subprocess.run(
                 [
                     "docker",
                     "exec",
@@ -75,6 +115,9 @@ def sync_restore_database(
                     f"PGPASSWORD={db_password}",
                     docker_container,
                     "psql",
+                    "--no-psqlrc",
+                    "--set=ON_ERROR_STOP=1",
+                    "-At",
                     "-U",
                     db_user,
                     "-h",
@@ -90,16 +133,19 @@ def sync_restore_database(
                 capture_output=True,
                 text=True,
             )
-            return
+            return result.stdout.strip()
 
         if shutil.which("psql") is None:
             raise FileNotFoundError("psql не найден на хосте и контейнер PostgreSQL не обнаружен")
 
         env = os.environ.copy()
         env["PGPASSWORD"] = db_password
-        subprocess.run(
+        result = subprocess.run(
             [
                 "psql",
+                "--no-psqlrc",
+                "--set=ON_ERROR_STOP=1",
+                "-At",
                 "-U",
                 db_user,
                 "-h",
@@ -116,21 +162,17 @@ def sync_restore_database(
             text=True,
             env=env,
         )
+        return result.stdout.strip()
 
+    token = secrets.token_hex(6)
+    stage_name = f"solo_restore_{token}"
+    previous_name = f"solo_previous_{token}"
+    quoted_name = f'"{safe_name}"'
+    quoted_user = f'"{safe_user}"'
+    stage_created = False
     try:
-        safe_name = _safe_pg_identifier(db_name, "db_name")
-        safe_user = _safe_pg_identifier(db_user, "db_user")
-        _run_admin_psql(
-            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{safe_name}' AND pid <> pg_backend_pid();"
-        )
-        _run_admin_psql(f"DROP DATABASE IF EXISTS {safe_name};")
-        _run_admin_psql(f"CREATE DATABASE {safe_name} OWNER {safe_user};")
-    except ValueError as e:
-        return False, str(e)
-    except subprocess.CalledProcessError as e:
-        return False, (e.stderr or e.stdout or str(e))
-
-    try:
+        _run_admin_psql(f"CREATE DATABASE {stage_name} OWNER {quoted_user} TEMPLATE template0;")
+        stage_created = True
         if use_docker:
             with open(tmp_path, "rb") as dump_file:
                 if is_custom_dump:
@@ -143,7 +185,7 @@ def sync_restore_database(
                             f"PGPASSWORD={db_password}",
                             docker_container,
                             "pg_restore",
-                            f"--dbname={db_name}",
+                            f"--dbname={stage_name}",
                             "-U",
                             db_user,
                             "-h",
@@ -154,6 +196,7 @@ def sync_restore_database(
                             "--clean",
                             "--if-exists",
                             "--exit-on-error",
+                            "--single-transaction",
                         ],
                         stdin=dump_file,
                         capture_output=True,
@@ -168,6 +211,9 @@ def sync_restore_database(
                             f"PGPASSWORD={db_password}",
                             docker_container,
                             "psql",
+                            "--no-psqlrc",
+                            "--set=ON_ERROR_STOP=1",
+                            "--single-transaction",
                             "-U",
                             db_user,
                             "-h",
@@ -175,7 +221,9 @@ def sync_restore_database(
                             "-p",
                             "5432",
                             "-d",
-                            db_name,
+                            stage_name,
+                            "-f",
+                            "-",
                         ],
                         stdin=dump_file,
                         capture_output=True,
@@ -189,7 +237,7 @@ def sync_restore_database(
                 result = subprocess.run(
                     [
                         "pg_restore",
-                        f"--dbname={db_name}",
+                        f"--dbname={stage_name}",
                         "-U",
                         db_user,
                         "-h",
@@ -200,6 +248,7 @@ def sync_restore_database(
                         "--clean",
                         "--if-exists",
                         "--exit-on-error",
+                        "--single-transaction",
                         tmp_path,
                     ],
                     capture_output=True,
@@ -210,15 +259,61 @@ def sync_restore_database(
                 if shutil.which("psql") is None:
                     return False, "psql не найден на хосте и контейнер PostgreSQL не обнаружен"
                 result = subprocess.run(
-                    ["psql", "-U", db_user, "-h", pg_host, "-p", pg_port, "-d", db_name, "-f", tmp_path],
+                    [
+                        "psql",
+                        "--no-psqlrc",
+                        "--set=ON_ERROR_STOP=1",
+                        "--single-transaction",
+                        "-U",
+                        db_user,
+                        "-h",
+                        pg_host,
+                        "-p",
+                        pg_port,
+                        "-d",
+                        stage_name,
+                        "-f",
+                        tmp_path,
+                    ],
                     capture_output=True,
                     text=True,
                     env=env,
                 )
         stderr = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else result.stderr
-        return result.returncode == 0, stderr or ""
+        if result.returncode != 0:
+            return False, stderr or "Ошибка восстановления дампа"
+        target_exists = (
+            _run_admin_psql(f"SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = '{safe_name}');") == "t"
+        )
+        swap = []
+        if target_exists:
+            swap.extend([
+                f"ALTER DATABASE {quoted_name} ALLOW_CONNECTIONS false;",
+                f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{safe_name}' AND pid <> pg_backend_pid();",
+                f"ALTER DATABASE {quoted_name} RENAME TO {previous_name};",
+            ])
+        swap.append(f"ALTER DATABASE {stage_name} RENAME TO {quoted_name};")
+        _run_admin_psql("BEGIN; " + " ".join(swap) + " COMMIT;")
+        stage_created = False
+        if target_exists:
+            try:
+                _run_admin_psql(f"DROP DATABASE {previous_name};")
+            except Exception as exc:
+                logger.warning("[Restore] Прежняя база сохранена как {}: {}", previous_name, type(exc).__name__)
+        return True, stderr or ""
+    except subprocess.CalledProcessError as exc:
+        error = exc.stderr or exc.stdout or f"PostgreSQL завершился с кодом {exc.returncode}"
+        if isinstance(error, bytes):
+            error = error.decode("utf-8", errors="replace")
+        return False, error
     except Exception as e:
         return False, str(e)
+    finally:
+        if stage_created:
+            try:
+                _run_admin_psql(f"DROP DATABASE IF EXISTS {stage_name};")
+            except Exception as exc:
+                logger.warning("[Restore] Не удалось удалить временную базу {}: {}", stage_name, type(exc).__name__)
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -236,19 +331,26 @@ def list_local_backups(limit: int = 20) -> list[Path]:
 
 
 def _restore_media_from_dir(extracted_root: Path) -> int:
+    """Восстанавливает изображения и установленные наборы сайта."""
     restored = 0
     mapping = {
         "web_uploads": _PROJECT_ROOT / "static" / "web_uploads",
+        "web_packs": _PROJECT_ROOT / "static" / "web_packs",
         "img": _PROJECT_ROOT / "img",
     }
     for src_name, dest_dir in mapping.items():
         src_dir = extracted_root / src_name
-        if not src_dir.is_dir():
+        if not src_dir.is_dir() or src_dir.is_symlink():
             continue
         dest_dir.mkdir(parents=True, exist_ok=True)
-        for item in src_dir.iterdir():
-            if item.is_file():
-                shutil.copy2(item, dest_dir / item.name)
+        destination_root = dest_dir.resolve()
+        for item in src_dir.rglob("*"):
+            if item.is_file() and not item.is_symlink():
+                target = dest_dir / item.relative_to(src_dir)
+                if target.is_symlink() or not target.resolve().is_relative_to(destination_root):
+                    raise ValueError("Путь восстановления выходит за пределы каталога файлов сайта")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, target)
                 restored += 1
     return restored
 
@@ -261,7 +363,7 @@ def sync_restore_from_path(
     pg_host: str,
     pg_port: str,
 ) -> tuple[bool, str]:
-    """Восстановление из локального файла бэкапа (.tar.gz / .sql / .sql.gz / .dump). Без лимита Telegram."""
+    """Восстанавливает базу и файлы из локального архива или дампа."""
     src = Path(source_path)
     if not src.is_file():
         return False, f"Файл не найден: {source_path}"
@@ -269,6 +371,7 @@ def sync_restore_from_path(
     name = src.name.lower()
     with tempfile.TemporaryDirectory() as tmpdir:
         dump_path: str | None = None
+        media_root: Path | None = None
         media_note = ""
 
         if name.endswith((".tar.gz", ".tgz")):
@@ -289,9 +392,7 @@ def sync_restore_from_path(
             if db_file is None or not db_file.is_file():
                 return False, "В архиве не найден database.sql"
             dump_path = str(db_file)
-            media_count = _restore_media_from_dir(base)
-            if media_count:
-                media_note = f" Восстановлено медиа-файлов: {media_count}."
+            media_root = base
         elif name.endswith((".sql.gz", ".gz")):
             dump_path = os.path.join(tmpdir, "database.sql")
             try:
@@ -305,6 +406,13 @@ def sync_restore_from_path(
         success, err = sync_restore_database(dump_path, db_name, db_user, db_password, pg_host, pg_port)
         if not success:
             return False, err
+        if media_root is not None:
+            try:
+                media_count = _restore_media_from_dir(media_root)
+            except Exception as exc:
+                return False, f"БД восстановлена, но не удалось восстановить файлы сайта: {exc}"
+            if media_count:
+                media_note = f" Восстановлено медиа-файлов: {media_count}."
         return True, media_note
 
 

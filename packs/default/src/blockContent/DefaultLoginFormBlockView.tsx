@@ -155,7 +155,10 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
   const hidePwLabel = typeof d.hidePwLabel === "string" ? d.hidePwLabel : "скрыть";
   const rememberLabel = typeof d.rememberLabel === "string" ? d.rememberLabel : "Запомнить";
   const forgotLabel = typeof d.forgotLabel === "string" ? d.forgotLabel : "Забыли пароль?";
-  const forgotHref = (typeof d.forgotHref === "string" && d.forgotHref.trim()) || slugToPath("forgot-password");
+  const savedForgotHref = typeof d.forgotHref === "string" ? d.forgotHref.trim() : "";
+  const forgotHref = !savedForgotHref || savedForgotHref === "/reset-password"
+    ? slugToPath("forgot-password")
+    : savedForgotHref;
   const submitLabel = typeof d.submitLabel === "string" ? d.submitLabel : "Войти";
   const sendCodeLabel = typeof d.sendCodeLabel === "string" ? d.sendCodeLabel : "Получить код";
   const requestNewCodeLabel = typeof d.requestNewCodeLabel === "string" ? d.requestNewCodeLabel : "Запросить новый код";

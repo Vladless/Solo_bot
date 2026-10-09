@@ -1,5 +1,24 @@
 from typing import Final
 
+from settings.buttons import (
+    KASSA2328,
+    SETTING_ADMIN_GRANULAR_PERMISSIONS,
+    SETTING_EXPIRY_SKIP_TRIAL,
+    SETTING_SINGLE_SUBSCRIPTION_SCREEN,
+    SETTING_TRAFFIC_EXHAUSTED,
+    SETTING_TRAFFIC_LEVEL_1,
+    SETTING_TRAFFIC_LEVEL_2,
+    SETTING_TRAFFIC_PERCENT_1,
+    SETTING_TRAFFIC_PERCENT_2,
+    SETTING_TRAFFIC_WARNING,
+    YOOKASSA_AUTOPAY_SETTING_OPTIONS,
+    YOOKASSA_AUTOPAY_SETTING_TITLES,
+    YOOKASSA_CARDS,
+    YOOKASSA_MARKUP_ENABLED,
+    YOOKASSA_MARKUP_PERCENT,
+    YOOKASSA_SBP,
+)
+
 
 BUTTON_TITLES: Final[dict[str, str]] = {
     "CHANNEL_BUTTON_ENABLE": "Канал",
@@ -26,6 +45,11 @@ NOTIFICATION_TITLES: Final[dict[str, str]] = {
     "HOT_LEADS_ENABLED": "Горячие лиды",
     "COLD_LEADS_ENABLED": "Холодные лиды",
     "RETURNING_ENABLED": "Возврат давно ушедших",
+    "EXPIRY_24H_SKIP_TRIAL_ENABLED": SETTING_EXPIRY_SKIP_TRIAL,
+    "TRAFFIC_WARNING_ENABLED": SETTING_TRAFFIC_WARNING,
+    "TRAFFIC_WARNING_LEVEL_1_ENABLED": SETTING_TRAFFIC_LEVEL_1,
+    "TRAFFIC_WARNING_LEVEL_2_ENABLED": SETTING_TRAFFIC_LEVEL_2,
+    "TRAFFIC_EXHAUSTED_ENABLED": SETTING_TRAFFIC_EXHAUSTED,
 }
 
 ADMIN_NOTIFICATION_TITLES: Final[dict[str, str]] = {
@@ -50,10 +74,12 @@ NOTIFICATION_TIME_FIELDS: Final[dict[str, str]] = {
     "HWID_DELETE_PENALTY": "HWID штраф",
     "HWID_DAILY_RECOVERY": "HWID восст/сут",
     "HWID_MIN_TRUST_TO_DELETE": "HWID порог",
+    "TRAFFIC_WARNING_LEVEL_1_PERCENT": SETTING_TRAFFIC_PERCENT_1,
+    "TRAFFIC_WARNING_LEVEL_2_PERCENT": SETTING_TRAFFIC_PERCENT_2,
 }
 
 PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
-    "YOOKASSA": "YooKassa",
+    "YOOKASSA": YOOKASSA_CARDS,
     "YOOMONEY": "YooMoney",
     "ROBOKASSA": "Robokassa",
     "KASSAI_CARDS": "KassaAI карты",
@@ -72,6 +98,9 @@ PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
     "CRYPTOBOT": "CryptoBot",
     "FREEKASSA": "FreeKassa",
     "STARS": "Telegram Stars",
+    "YOOKASSA_AUTOPAY": "YooKassa (Автоплатёж)",
+    "YOOKASSA_SBP": YOOKASSA_SBP,
+    "KASSA2328": KASSA2328,
 }
 
 MODES_TITLES: Final[dict[str, str]] = {
@@ -100,6 +129,7 @@ MODES_TITLES: Final[dict[str, str]] = {
     "GIFT_EXTEND_ENABLED": "Подарок продлить",
     "KEYWORD_REPLIES_ENABLED": "Горячие слова",
     "WEBAPP_ONLY_MODE": "Только веб-приложение",
+    "SINGLE_SUBSCRIPTION_OPEN_PROFILE": SETTING_SINGLE_SUBSCRIPTION_SCREEN,
 }
 
 MONEY_FIELDS: Final[dict[str, str]] = {
@@ -123,6 +153,9 @@ WEB_TITLES: Final[dict[str, str]] = {
     "WEB_OPEN_IN_BROWSER": "Открывать в браузере",
     "WEB_NODE_STATUS_INTERVAL_MIN": "Статус серверов (мин)",
     "EMAIL_BINDING_ENABLED": "Привязка почты",
+    "EMAIL_BINDING_VERIFY_ENABLED": "Подтверждение почты кодом в боте",
+    "EMAIL_BINDING_REMINDER_ENABLED": "Напоминать о привязке почты в WebApp",
+    "EMAIL_BINDING_REMINDER_INTERVAL_DAYS": "Повтор напоминания о почте (дни)",
     "WEB_NOTIFY_PAYMENT_TITLE": "Уведомление об оплате — заголовок",
     "WEB_NOTIFY_PAYMENT_MESSAGE": "Уведомление об оплате — текст",
     "WEB_NOTIFY_KEY_CREATED_TITLE": "Подписка создана — заголовок",
@@ -153,4 +186,13 @@ REMNAWAVE_TITLES: Final[dict[str, str]] = {
 
 MANAGEMENT_TITLES: Final[dict[str, str]] = {
     "MAINTENANCE_ENABLED": "Режим обслуживания",
+    "ADMIN_GRANULAR_PERMISSIONS_ENABLED": SETTING_ADMIN_GRANULAR_PERMISSIONS,
 }
+
+YOOKASSA_TITLES: Final[dict[str, str]] = {
+    "MARKUP_ENABLED": YOOKASSA_MARKUP_ENABLED,
+    "MARKUP_PERCENT": YOOKASSA_MARKUP_PERCENT,
+}
+
+YOOKASSA_AUTOPAY_TITLES: Final[dict[str, str]] = YOOKASSA_AUTOPAY_SETTING_TITLES
+YOOKASSA_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = YOOKASSA_AUTOPAY_SETTING_OPTIONS

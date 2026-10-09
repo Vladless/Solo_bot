@@ -21,6 +21,7 @@ from database import (
     get_key_details,
     get_tariff_by_id,
 )
+from database.access.resolution import TelegramId
 from database.models import Server
 from database.notifications import check_cold_lead_discount, check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_subgroup_description, get_tariffs
@@ -59,7 +60,7 @@ from ..utils import (
     order_tariff_items,
     resolve_key,
 )
-from .flow import _finalize_renewal, complete_key_renewal, normalize_expiry_ms
+from .flow import _finalize_renewal, complete_key_renewal, normalize_expiry_ms, renewal_key_snapshot
 from .switch import _maybe_show_switch_confirm
 
 
@@ -70,7 +71,7 @@ moscow_tz = pytz.timezone("Europe/Moscow")
 @router.callback_query(F.data.startswith("renew_key|"), flags={"popup": True})
 async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Обрабатывает нажатие кнопки продления конкретного ключа."""
-    tg_id = callback_query.message.chat.id
+    tg_id = TelegramId(callback_query.from_user.id)
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
     key_name = key_obj.email if key_obj else key_ref
@@ -87,12 +88,15 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 message_or_query=callback_query,
             )
             return
-        if not key_owned_by_user(record, callback_query.from_user.id):
+        if (
+            key_obj is None
+            or not key_owned_by_user(record, callback_query.from_user.id)
+            or record.get("user_id") != key_obj.user_id
+            or record.get("client_id") != key_obj.client_id
+        ):
             await callback_query.answer("Доступ запрещён.", show_alert=True)
             return
 
-        # Starting a renewal for another key must not reuse a previous key's
-        # renewal/configuration context.
         from handlers.tariffs.buy.config import clear_user_renewal_context
 
         await clear_user_renewal_context(state)
@@ -372,7 +376,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
                     group_code = current_tariff["group_code"]
                     original_group_code = group_code
 
-        tg_id = callback.from_user.id
+        tg_id = TelegramId(callback.from_user.id)
         language_code = callback.from_user.language_code
         discount_info = await check_hot_lead_discount(session, tg_id)
         if not discount_info.get("available"):
@@ -481,7 +485,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 @router.callback_query(F.data.startswith("renew_plan|"))
 async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMContext, session: Any):
     """Обрабатывает выбор конкретного тарифа для продления."""
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
     tariff_id = int(callback_query.data.split("|")[1])
 
     data = await state.get_data()
@@ -697,6 +701,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             callback_query,
             tariff_id,
             state=state,
+            expected_key_snapshot=renewal_key_snapshot(record),
         )
 
     except Exception as e:
@@ -706,7 +711,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
 @router.callback_query(F.data.startswith("cfg_renew_confirm|"))
 async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Подтверждает выбор параметров тарифа при продлении."""
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
 
     try:
         data = await state.get_data()
@@ -730,7 +735,7 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
 
         duration_days = int(tariff.get("duration_days") or 30)
         record = await get_key_details(session, email)
-        if not record:
+        if not record or await resolve_key(session, tg_id, email) is None:
             await callback_query.message.answer("❌ Подписка не найдена.")
             return
         expiry_time = normalize_expiry_ms(record.get("expiry_time"))
@@ -841,6 +846,7 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
             selected_traffic_limit=int(selected_traffic_gb) if selected_traffic_gb is not None else None,
             selected_price_rub=int(final_price),
             state=state,
+            expected_key_snapshot=renewal_key_snapshot(record),
         )
 
     except Exception as e:
@@ -850,8 +856,8 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
 
 @router.callback_query(F.data == "renew_sw_confirm")
 async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    """Подтверждение смены тарифа: остаток на баланс, новый тариф по полной цене."""
-    tg_id = callback_query.from_user.id
+    """Подтверждает смену тарифа с перерасчётом остатка."""
+    tg_id = TelegramId(callback_query.from_user.id)
     try:
         data = await state.get_data()
 
@@ -866,7 +872,7 @@ async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMC
         selected_traffic = data.get("renew_sw_selected_traffic")
 
         record = await get_key_details(session, email)
-        if not record:
+        if not record or await resolve_key(session, tg_id, email) is None:
             await callback_query.message.answer(KEY_NOT_FOUND_MSG)
             return
 
@@ -902,6 +908,7 @@ async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMC
             new_expiry_time=quote.new_expiry_ms,
             selected_device=selected_device,
             selected_traffic=selected_traffic,
+            expected_key_snapshot=renewal_key_snapshot(record),
         )
     except Exception as e:
         logger.error(f"[RENEW_SWITCH] Ошибка подтверждения смены для {tg_id}: {e}")

@@ -26,7 +26,7 @@ from database import (
     identities as idb,
     identity_sessions as idsess,
 )
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import UserId, resolve_user_optional
 from logger import logger
 from mail import (
     send_email_verify_code_email,
@@ -35,7 +35,7 @@ from mail import (
     smtp_configured,
 )
 from utils.disposable_emails import is_disposable_email
-from utils.referral_codes import decode_referral_code
+from utils.referral_codes import decode_referral_code, encode_referral_code
 from utils.turnstile import turnstile_enabled, verify_turnstile_token
 from utils.web_email_codes import (
     email_verify_codes as email_verify,
@@ -107,20 +107,25 @@ async def register_by_email(
         if referrer_user is None:
             raise HTTPException(status_code=400, detail="Код приглашения недействителен")
     if referrer_user is not None:
-        set_client_invite(INVITE_REFERRAL, referrer_user.tg_id or referrer_user.id)
+        invite_ref = (
+            encode_referral_code(referrer_user.id)
+            if isinstance(referrer_legacy, UserId) or referrer_user.tg_id is None
+            else referrer_user.tg_id
+        )
+        set_client_invite(INVITE_REFERRAL, invite_ref)
     identity, token = await idb.create_identity_with_token(
         session, email=email, password=body.password, request=request
     )
     await bind_identity_actor(request, session, identity)
     billing_user_id = await idb.ensure_billing_user_for_identity(session, identity)
     if referrer_user is not None and not await get_referral_by_referred_id(session, billing_user_id):
-        await add_referral(session, billing_user_id, referrer_user.id)
+        await add_referral(session, billing_user_id, UserId(referrer_user.id))
         try:
             from database.web_notifications import notify_web
 
             await notify_web(
                 session,
-                user_ref=int(referrer_user.id),
+                user_ref=UserId(referrer_user.id),
                 type="referral_joined",
                 title="Ваш реферал присоединился",
                 message="Новый пользователь зарегистрировался по вашей реферальной ссылке.",
@@ -314,20 +319,12 @@ async def login_by_code(
     if not await login_codes.verify_and_consume_code(email_norm, body.code.strip()):
         logger.warning("[Site:Auth] Неверный или просроченный код входа: почта {}", email_norm)
         raise HTTPException(status_code=401, detail="Неверный код или срок действия истёк")
-    identity = await idb.get_identity_by_email(session, email_norm)
-    if not identity:
+    result = await idb.login_by_verified_email(session, email_norm, request=request)
+    if not result:
         logger.warning("[Site:Auth] Вход по коду: аккаунта с почтой {} нет", email_norm)
         raise HTTPException(status_code=401, detail="Аккаунт не найден")
-    if not getattr(identity, "email_verified", False):
-        from sqlalchemy import update as sa_update
-
-        from database.models import Identity as IdentityModel
-
-        await session.execute(
-            sa_update(IdentityModel).where(IdentityModel.id == identity.id).values(email_verified=True)
-        )
+    identity, token = result
     await bind_identity_actor(request, session, identity)
-    token = await idb.issue_token_for_identity(session, identity, request=request)
     if getattr(identity, "is_admin", False):
         from database.site_state import mark_site_initialized
 
@@ -416,7 +413,7 @@ async def confirm_password_reset(
     identity = await idb.get_identity_by_email(session, email_norm)
     if not identity:
         raise HTTPException(status_code=400, detail="Аккаунт не найден")
-    updated = await idb.set_password_for_identity(session, identity.id, body.password)
+    updated = await idb.set_password_for_identity(session, identity.id, body.password, expected_email=email_norm)
     if not updated:
         raise HTTPException(status_code=400, detail="Не удалось обновить пароль")
     await bind_identity_actor(request, session, updated)

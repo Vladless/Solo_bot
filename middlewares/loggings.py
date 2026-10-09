@@ -23,6 +23,7 @@ except ImportError:
     AUDIT_REDIS_BUFFER_ENABLED = False
 
 from core.executor import spawn
+from database.access.resolution import TelegramId, resolve_actor_from_legacy_ref
 from logger import logger
 
 
@@ -33,7 +34,7 @@ class UserInfo(TypedDict):
 
 
 def _log_activity_sync(user_info: UserInfo) -> None:
-    """Синхронный вывод в лог, чтобы не блокировать event loop в create_task."""
+    """Синхронно записывает активность пользователя в лог."""
     logger.info(
         f"Активность пользователя │ "
         f"ID: {str(user_info['user_id']).ljust(10)} │ "
@@ -43,9 +44,7 @@ def _log_activity_sync(user_info: UserInfo) -> None:
 
 
 class LoggingMiddleware(BaseMiddleware):
-    """Middleware для логирования действий пользователя. Лог пишется в фоне.
-    Аудит: при включённом Redis-буфере пишем только в Redis (в БД — раз в сутки через drain);
-    при выключенном буфере или сбое Redis — пишем в БД."""
+    """Записывает действия пользователя в лог и журнал аудита."""
 
     def __init__(self, sessionmaker=None) -> None:
         super().__init__()
@@ -65,19 +64,25 @@ class LoggingMiddleware(BaseMiddleware):
 
         try:
             result = await handler(event, data)
-            db_user = data.get("user")
             actor = data.get("actor")
+            if actor is None:
+                session = data.get("session")
+                from_user = data.get("event_from_user") or getattr(event, "from_user", None)
+                if (
+                    session is not None
+                    and getattr(session, "execute", None) is not None
+                    and from_user is not None
+                    and not getattr(from_user, "is_bot", False)
+                ):
+                    try:
+                        actor = await resolve_actor_from_legacy_ref(session, TelegramId(from_user.id))
+                    except Exception as error:
+                        logger.warning("[Audit] Не удалось определить текущую личность Telegram: {}", error)
             if actor is not None:
                 set_telegram_actor(
                     audit_context,
                     identity_id=getattr(actor, "identity_id", None),
                     tg_id=getattr(actor, "telegram_chat_id", None),
-                )
-            if isinstance(db_user, dict):
-                set_telegram_actor(
-                    audit_context,
-                    identity_id=db_user.get("identity_id"),
-                    tg_id=db_user.get("tg_id"),
                 )
             payload = _telegram_access_payload(audit_context, event, result="success")
             if AUDIT_REDIS_BUFFER_ENABLED:

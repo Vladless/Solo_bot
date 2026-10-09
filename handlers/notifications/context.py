@@ -14,9 +14,9 @@ class NotificationContext:
     preload_data: dict | None = None
     bulk_updates: dict | None = None
 
-    def get_balance(self, tg_id: int) -> float:
-        if self.preload_data and tg_id in self.preload_data.get("balances_cache", {}):
-            return self.preload_data["balances_cache"][tg_id]
+    def get_balance(self, user_id: int) -> float:
+        if self.preload_data and user_id in self.preload_data.get("balances_cache", {}):
+            return self.preload_data["balances_cache"][user_id]
         return 0.0
 
     def get_tariff(self, tariff_id: int) -> dict | None:

@@ -3,7 +3,9 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MODES_CONFIG, update_modes_config
+from core.defaults import DEFAULT_MODES_CONFIG
 from filters.admin import IsAdminFilter
+from settings.texts import SINGLE_SUBSCRIPTION_SCREEN_HINT
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
@@ -16,7 +18,7 @@ router.callback_query.filter(IsAdminFilter())
 
 async def load_modes_settings() -> dict[str, bool]:
     config = MODES_CONFIG or {}
-    return {k: bool(config.get(k, False)) for k in MODES_TITLES.keys()}
+    return {k: bool(config.get(k, DEFAULT_MODES_CONFIG.get(k, False))) for k in MODES_TITLES}
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_modes"))
@@ -26,6 +28,7 @@ async def open_settings_modes_menu(callback: CallbackQuery, session: AsyncSessio
         "Режимы",
         "Как бот себя ведёт.",
         quote("Нажмите на режим, чтобы включить или выключить его."),
+        quote(SINGLE_SUBSCRIPTION_SCREEN_HINT),
     )
     await callback.message.edit_text(text=text, reply_markup=build_settings_modes_kb(modes_state))
     await callback.answer()
@@ -46,8 +49,8 @@ async def toggle_mode_setting(
 
     key = keys[index - 1]
 
-    config = {k: bool((MODES_CONFIG or {}).get(k, False)) for k in MODES_TITLES.keys()}
-    config[key] = not config[key]
+    config = {**DEFAULT_MODES_CONFIG, **MODES_CONFIG}
+    config[key] = not bool(config.get(key, False))
 
     await update_modes_config(session, config)
 

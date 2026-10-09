@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 
+from contextlib import asynccontextmanager
 from typing import Any
 
 from aiogram import BaseMiddleware
@@ -46,17 +47,29 @@ async def release_session_early(session: Any) -> bool:
 
 
 def wrap_session(session: AsyncSession, maker) -> _SessionProxy:
-    """Оборачивает сессию в прокси с release_early (для фоновых задач вроде periodic_notifications)."""
+    """Оборачивает сессию в прокси с возможностью досрочного освобождения."""
     return _SessionProxy(session, maker, {})
 
 
-class _PendingCall:
-    """Вызов к отпущенной сессии: у неё синхронных методов больше нет, всё идёт короткой сессией.
+@asynccontextmanager
+async def operation_session(session):
+    """Сохраняет блокировки одной операции до общего коммита."""
+    if not isinstance(session, _SessionProxy):
+        yield session
+        return
+    await session.release_early()
+    async with session._maker() as owned:
+        try:
+            yield owned
+            await owned.commit()
+            await _flush_cache_purges(owned)
+        except BaseException:
+            await owned.rollback()
+            raise
 
-    Если результат не дождались (`session.add(...)` без await), операция до БД не доходит.
-    Питон сообщает об этом только предупреждением в stderr — здесь оно превращается в строку лога
-    с именем метода, иначе запись теряется молча.
-    """
+
+class _PendingCall:
+    """Ожидает вызов в короткой сессии и сообщает о неисполненной операции."""
 
     __slots__ = ("_coro", "_method", "_awaited")
 

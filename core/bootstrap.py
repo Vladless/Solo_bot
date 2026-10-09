@@ -18,6 +18,8 @@ from .settings.remnawave_config import REMNAWAVE_CONFIG, load_remnawave_config, 
 from .settings.runtime_sync import publish_runtime_snapshot
 from .settings.tariffs_config import TARIFFS_CONFIG, load_tariffs_config, update_tariffs_config
 from .settings.web_config import WEB_CONFIG, load_web_config, update_web_config
+from .settings.yookassa_autopay_config import load_yookassa_autopay_config
+from .settings.yookassa_config import YOOKASSA_CONFIG, load_yookassa_config, update_yookassa_config
 
 
 async def bootstrap() -> None:
@@ -30,6 +32,8 @@ async def bootstrap() -> None:
         await load_notifications_config(session)
         await load_modes_config(session)
         await load_payments_config(session)
+        await load_yookassa_config(session)
+        await load_yookassa_autopay_config(session)
         await load_providers_order(session)
         await load_money_config(session)
         await load_management_config(session)

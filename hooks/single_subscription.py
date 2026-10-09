@@ -11,6 +11,11 @@ def is_single_sub_enabled() -> bool:
     return bool(MODES_CONFIG.get("SINGLE_SUBSCRIPTION_MODE", False))
 
 
+def open_profile_after_creation() -> bool:
+    """Выбирает кабинет после создания единственной подписки."""
+    return is_single_sub_enabled() and bool(MODES_CONFIG.get("SINGLE_SUBSCRIPTION_OPEN_PROFILE", True))
+
+
 def single_sub_back_to_profile() -> list[dict]:
     return [
         {"remove_prefix": "view_key|"},

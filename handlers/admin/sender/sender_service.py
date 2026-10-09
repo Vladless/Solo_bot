@@ -15,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.executor import spawn
 from core.settings.modes_config import resolve_protect_content
 from database import async_session_maker, save_blocked_user_ids
+from database.access.resolution import TelegramId, UserId, chat_id_for_user
+from database.bans import save_blocked_user_pairs
+from database.broadcasts import get_broadcast_addresses
 from database.db import isolated_sessionmaker
 from handlers.admin.sender.sender_utils import get_recipient_emails, is_telegram_chat_id, parse_channels
 from logger import logger
@@ -34,11 +37,7 @@ def run_broadcast_in_thread(
     progress_cb: Callable[[int, int, int, int, int], None] | None = None,
     channel: str = "both",
 ) -> dict:
-    """
-    Синхронная обёртка: запускает рассылку в отдельном event loop в текущем потоке.
-    progress_cb принимает (completed, total, sent, failed, pending_retries).
-    channel: 'bot' / 'site' / 'both'.
-    """
+    """Запускает рассылку в отдельном цикле событий."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     bot = None
@@ -48,7 +47,15 @@ def run_broadcast_in_thread(
             default=DefaultBotProperties(parse_mode=ParseMode.HTML, protect_content=resolve_protect_content()),
         )
         keyboard = InlineKeyboardMarkup.model_validate(keyboard_data) if keyboard_data else None
-        messages = [{"tg_id": tg_id, "text": text_message, "photo": photo, "keyboard": keyboard} for tg_id in tg_ids]
+        messages = [
+            {
+                **({"user_id": int(ref)} if isinstance(ref, UserId) else {"tg_id": int(ref)}),
+                "text": text_message,
+                "photo": photo,
+                "keyboard": keyboard,
+            }
+            for ref in tg_ids
+        ]
 
         async def on_progress(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
             if progress_cb:
@@ -81,7 +88,7 @@ def run_broadcast_in_thread(
 
 
 def _keyboard_url(keyboard: Any) -> str | None:
-    """Первая ссылка из клавиатуры рассылки — «полная новость», куда ведёт уведомление."""
+    """Возвращает первую ссылку из клавиатуры рассылки."""
     rows = getattr(keyboard, "inline_keyboard", None)
     if not rows:
         return None
@@ -94,10 +101,13 @@ def _keyboard_url(keyboard: Any) -> str | None:
 
 
 class BroadcastMessage:
-    __slots__ = ("tg_id", "text", "photo", "keyboard", "attempts", "retry_at")
+    __slots__ = ("tg_id", "user_id", "text", "photo", "keyboard", "attempts", "retry_at")
 
-    def __init__(self, tg_id: int, text: str, photo: str | None = None, keyboard: Any = None) -> None:
+    def __init__(
+        self, tg_id: int, text: str, photo: str | None = None, keyboard: Any = None, user_id: int | None = None
+    ) -> None:
         self.tg_id = tg_id
+        self.user_id = UserId(user_id) if user_id is not None else None
         self.text = text
         self.photo = photo
         self.keyboard = keyboard
@@ -150,6 +160,8 @@ class BroadcastService:
         self.rate_limiter = RateLimiter(max_rate=messages_per_second)
         self.max_attempts = max_attempts
         self.blocked_users: set[int] = set()
+        self.blocked_user_pairs: set[tuple[UserId, int]] = set()
+        self._owner_check_lock = asyncio.Lock()
         self.queue: asyncio.Queue = asyncio.Queue()
         self.results: list[bool] = []
         self.total_sent = 0
@@ -161,6 +173,16 @@ class BroadcastService:
     async def _send_single_message(self, msg: BroadcastMessage) -> str:
         try:
             await self.rate_limiter.acquire()
+            if msg.user_id is not None:
+                if self._session is not None:
+                    async with self._owner_check_lock:
+                        current_chat = await chat_id_for_user(self._session, msg.user_id)
+                else:
+                    async with self._sessionmaker() as session:
+                        current_chat = await chat_id_for_user(session, msg.user_id)
+                if current_chat != msg.tg_id:
+                    logger.info(f"[Broadcast] Пропущен устаревший адрес получателя user_id={msg.user_id}")
+                    return "fail"
 
             if msg.photo:
                 await self.bot.send_photo(
@@ -193,7 +215,7 @@ class BroadcastService:
         except TelegramForbiddenError:
             logger.warning(f"🚫 Бот заблокирован пользователем {msg.tg_id}")
             if is_telegram_chat_id(msg.tg_id):
-                self.blocked_users.add(msg.tg_id)
+                self._record_blocked(msg)
             return "fail"
 
         except TelegramBadRequest as e:
@@ -201,7 +223,7 @@ class BroadcastService:
             if "chat not found" in error_msg:
                 logger.warning(f"🚫 Чат не найден для пользователя {msg.tg_id}")
                 if is_telegram_chat_id(msg.tg_id):
-                    self.blocked_users.add(msg.tg_id)
+                    self._record_blocked(msg)
             else:
                 logger.warning(f"📩 Не удалось отправить сообщение пользователю {msg.tg_id}: {e}")
             return "fail"
@@ -209,6 +231,11 @@ class BroadcastService:
         except Exception as e:
             logger.error(f"❌ Ошибка отправки сообщения пользователю {msg.tg_id}: {e}")
             return "fail"
+
+    def _record_blocked(self, msg: BroadcastMessage) -> None:
+        self.blocked_users.add(msg.tg_id)
+        if msg.user_id is not None:
+            self.blocked_user_pairs.add((msg.user_id, msg.tg_id))
 
     async def _schedule_retry(self, msg: BroadcastMessage) -> None:
         try:
@@ -263,12 +290,16 @@ class BroadcastService:
     async def _save_blocked_users(self) -> None:
         if not self.blocked_users:
             return
+        canonical_chats = {tg for _, tg in self.blocked_user_pairs}
+        legacy_chats = list(self.blocked_users - canonical_chats)
         try:
             if self._session is not None:
-                await save_blocked_user_ids(self._session, list(self.blocked_users))
+                await save_blocked_user_ids(self._session, legacy_chats)
+                await save_blocked_user_pairs(self._session, list(self.blocked_user_pairs))
             else:
                 async with self._sessionmaker() as session:
-                    await save_blocked_user_ids(session, list(self.blocked_users))
+                    await save_blocked_user_ids(session, legacy_chats)
+                    await save_blocked_user_pairs(session, list(self.blocked_user_pairs))
                     await session.commit()
         except Exception as e:
             logger.error(f"❌ Ошибка при сохранении заблокированных пользователей: {e}")
@@ -282,7 +313,7 @@ class BroadcastService:
         interval: float,
         progress_every: int,
     ) -> None:
-        """Периодически вызывает on_progress(completed, total, sent, failed, pending_retries)."""
+        """Периодически сообщает о ходе рассылки."""
         last_reported = 0
         last_emit_ts = time.time()
         force_interval = 30.0
@@ -318,11 +349,27 @@ class BroadcastService:
         send_to_bot = "bot" in channels
         send_to_site = "site" in channels
         send_to_email = "email" in channels
+        user_ids = [int(message["user_id"]) for message in messages if message.get("user_id") is not None]
+        if user_ids:
+            if self._session is not None:
+                addresses = await get_broadcast_addresses(self._session, user_ids)
+            else:
+                async with self._sessionmaker() as session:
+                    addresses = await get_broadcast_addresses(session, user_ids)
+            normalized = []
+            for message in messages:
+                user_id = message.get("user_id")
+                if user_id is None:
+                    normalized.append(message)
+                elif int(user_id) in addresses:
+                    normalized.append({**message, "tg_id": addresses[int(user_id)]["tg_id"]})
+            messages = normalized
         self.is_running = True
         self.start_time = time.time()
         self.results = []
         self.total_sent = 0
         self.blocked_users = set()
+        self.blocked_user_pairs = set()
         self.pending_retries = 0
 
         bot_recipient_count = 0
@@ -337,6 +384,7 @@ class BroadcastService:
                     text=msg_data["text"],
                     photo=msg_data.get("photo"),
                     keyboard=msg_data.get("keyboard"),
+                    user_id=msg_data.get("user_id"),
                 )
                 await self.queue.put(msg)
 
@@ -403,6 +451,7 @@ class BroadcastService:
             "total_messages": len(messages),
             "blocked_users": len(self.blocked_users),
             "blocked_user_ids": list(self.blocked_users),
+            "blocked_user_pairs": [(int(uid), tg) for uid, tg in self.blocked_user_pairs],
         }
 
         logger.info(
@@ -431,15 +480,20 @@ class BroadcastService:
                 logger.warning("[Broadcast] Канал 'почта' выбран, но SMTP не настроен")
                 return (0, 0)
 
-            tg_ids = [m.get("tg_id") for m in messages if m.get("tg_id")]
+            tg_ids = [m["tg_id"] for m in messages if m.get("user_id") is None and m.get("tg_id")]
+            user_ids = [int(m["user_id"]) for m in messages if m.get("user_id") is not None]
             if self._session is not None:
                 email_map = await get_recipient_emails(self._session, tg_ids)
+                addresses = await get_broadcast_addresses(self._session, user_ids)
             else:
                 async with self._sessionmaker() as session:
                     email_map = await get_recipient_emails(session, tg_ids)
+                    addresses = await get_broadcast_addresses(session, user_ids)
 
-            addresses = sorted(set(email_map.values()))
-            if not addresses:
+            emails = sorted(
+                set(email_map.values()) | {address["email"] for address in addresses.values() if address["email"]}
+            )
+            if not emails:
                 return (0, 0)
 
             text = messages[0].get("text", "")
@@ -469,7 +523,7 @@ class BroadcastService:
                         failed += 1
                         logger.warning(f"[Broadcast] Письмо на {addr} не отправлено: {exc}")
 
-            await asyncio.gather(*[_send_one(addr) for addr in addresses])
+            await asyncio.gather(*[_send_one(addr) for addr in emails])
             logger.info(f"📧 Email-рассылка завершена: отправлено {sent}, ошибок {failed}")
             return (sent, failed)
         except Exception as e:
@@ -477,7 +531,7 @@ class BroadcastService:
             return (0, 0)
 
     async def _bot_chat_url(self) -> str | None:
-        """Ссылка на чат с ботом — там лежит полный текст рассылки."""
+        """Возвращает ссылку на чат с ботом."""
         if self.bot is None:
             return None
         if self._bot_chat_url_cache is not None:
@@ -527,10 +581,12 @@ class BroadcastService:
                 async with self._sessionmaker() as session:
                     for msg in messages:
                         tg_id = msg.get("tg_id")
-                        if tg_id and tg_id not in self.blocked_users:
+                        user_id = msg.get("user_id")
+                        ref = UserId(user_id) if user_id is not None else TelegramId(tg_id) if tg_id else None
+                        if ref is not None and tg_id not in self.blocked_users:
                             await notify_web(
                                 session,
-                                user_ref=tg_id,
+                                user_ref=ref,
                                 type="broadcast",
                                 title=title,
                                 message=body,
@@ -540,10 +596,12 @@ class BroadcastService:
             else:
                 for msg in messages:
                     tg_id = msg.get("tg_id")
-                    if tg_id and tg_id not in self.blocked_users:
+                    user_id = msg.get("user_id")
+                    ref = UserId(user_id) if user_id is not None else TelegramId(tg_id) if tg_id else None
+                    if ref is not None and tg_id not in self.blocked_users:
                         await notify_web(
                             session,
-                            user_ref=tg_id,
+                            user_ref=ref,
                             type="broadcast",
                             title=title,
                             message=body,

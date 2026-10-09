@@ -11,9 +11,7 @@ def verify_telegram_login(
     *,
     max_age_seconds: int = 86400,
 ) -> bool:
-    """
-    Проверяет подпись и свежесть данных от Telegram Login Widget.
-    """
+    """Проверяет подпись и свежесть данных виджета входа Telegram."""
     if not payload or not bot_token:
         return False
     received_hash = payload.get("hash")
@@ -43,11 +41,7 @@ def verify_webapp_init_data(
     *,
     max_age_seconds: int = 86400,
 ) -> dict | None:
-    """
-    Валидирует Telegram WebApp initData (HMAC-SHA256).
-    Возвращает dict с user_id или None если невалидно.
-    https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
-    """
+    """Проверяет подпись данных Telegram WebApp и возвращает данные пользователя или None."""
     import json
 
     from urllib.parse import parse_qs

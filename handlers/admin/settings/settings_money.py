@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MONEY_CONFIG, update_money_config
 from filters.admin import IsAdminFilter
 from settings.buttons import BACK
+from settings.texts import MONEY_SETTINGS_DESCRIPTION, YOOKASSA_SETTINGS_HINT
 
 from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
@@ -23,10 +24,11 @@ class MoneySettingsState(StatesGroup):
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_money"))
-async def open_settings_money(callback: CallbackQuery) -> None:
+async def open_settings_money(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
     text = menu_text(
         "Деньги",
-        "Валюты, курс и кэшбэк.",
+        MONEY_SETTINGS_DESCRIPTION,
         section(
             "⚙️ Что здесь",
             "Валюты: RUB и USD",
@@ -35,6 +37,7 @@ async def open_settings_money(callback: CallbackQuery) -> None:
             "Кэшбэк: процент выплаты",
         ),
         quote("Кэшбэк начисляется, пока процент больше нуля."),
+        quote(YOOKASSA_SETTINGS_HINT),
     )
     await callback.message.edit_text(
         text=text,

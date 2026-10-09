@@ -18,12 +18,14 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     pkcs12,
 )
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import PAYMENTS_CONFIG
 from database import register_pending_payment
-from database.models import User
+from database.access.resolution import TelegramId
+from database.payments import resolve_payment_creation_owner
+from services.payments.checkout_snapshot import capture_payment_checkout
+from database.users import get_user_language as _get_user_language
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -34,6 +36,7 @@ from handlers.payments.keyboards import (
 from handlers.utils import edit_or_send_message
 from logger import logger
 from services.payments.currency_rates import format_for_user
+from services.payments.owner_refs import payment_owner_token
 from services.payments.payment_links import register_payment_creator
 from settings.buttons import BACK, OVERPAY_CARDS, OVERPAY_SBP, PAY_2
 from settings.config import (
@@ -112,8 +115,7 @@ def _resolve_cert_path(path: str) -> str:
 
 
 def _pem_from_cryptography(p12_data: bytes, password: bytes | None) -> bytes | None:
-    """Штатный разбор. Ключ идёт последним: openssl читает цепочку до первого не-сертификата,
-    и CA, поставленные после ключа, молча теряются."""
+    """Преобразует PKCS12 в PEM через cryptography."""
     private_key, certificate, additional = pkcs12.load_key_and_certificates(p12_data, password)
     if private_key is None or certificate is None:
         logger.error("[Overpay] В .p12 нет приватного ключа или сертификата")
@@ -126,8 +128,7 @@ def _pem_from_cryptography(p12_data: bytes, password: bytes | None) -> bytes | N
 
 
 def _pem_from_openssl(path: str, password: str) -> bytes | None:
-    """Запасной путь для контейнеров, которые не берёт cryptography: старое шифрование,
-    нестандартные поля, самодельные сборки. Пароль передаём через окружение, не в аргументах."""
+    """Преобразует PKCS12 в PEM через OpenSSL."""
     env = {**os.environ, "OVERPAY_P12_PASS": password}
     for extra in (["-legacy"], []):
         try:
@@ -206,11 +207,6 @@ def _base_url() -> str:
     return (OVERPAY_API_URL or "").rstrip("/")
 
 
-async def _get_user_language(session: AsyncSession, tg_id: int) -> str | None:
-    result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
-    return result.scalar_one_or_none()
-
-
 async def process_callback_pay_overpay(
     callback_query: types.CallbackQuery,
     state: FSMContext,
@@ -218,7 +214,7 @@ async def process_callback_pay_overpay(
     method_name: str,
 ):
     try:
-        tg_id = callback_query.from_user.id
+        tg_id = TelegramId(callback_query.from_user.id)
         await state.clear()
 
         method = OVERPAY_METHODS.get(method_name)
@@ -332,7 +328,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         return
 
     await state.update_data(amount=user_amount)
-    result = await generate_overpay_payment_link(user_amount, message.from_user.id, method, session)
+    result = await generate_overpay_payment_link(user_amount, TelegramId(message.from_user.id), method, session)
     if not result:
         await edit_or_send_message(
             target_message=message,
@@ -343,7 +339,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
 
     payment_url = result[0]
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
-    tg_id = message.from_user.id
+    tg_id = TelegramId(message.from_user.id)
     language_code = await _get_user_language(session, tg_id)
     amount_text = await format_for_user(session, tg_id, float(user_amount), language_code, force_currency="RUB")
     await edit_or_send_message(
@@ -391,7 +387,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(amount=amount)
-    result = await generate_overpay_payment_link(amount, callback_query.from_user.id, method, session)
+    result = await generate_overpay_payment_link(amount, TelegramId(callback_query.from_user.id), method, session)
     if not result:
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -402,7 +398,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
     payment_url = result[0]
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
     language_code = await _get_user_language(session, tg_id)
     amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
     await edit_or_send_message(
@@ -556,6 +552,8 @@ async def generate_overpay_payment_link(
     return_url: str | None = None,
     metadata: dict | None = None,
 ) -> tuple[str, str] | None:
+    tg_id = await resolve_payment_creation_owner(session, tg_id)
+    metadata = await capture_payment_checkout(session, tg_id, metadata)
     if not _overpay_credentials_ok():
         logger.error("[Overpay] Не заданы реквизиты API")
         return None
@@ -570,7 +568,7 @@ async def generate_overpay_payment_link(
     if not terminal_id:
         logger.error(f"[Overpay] Не задан terminal_id для метода '{method_name}'")
         return None
-    unique_tx_id = merchant_tx_id or f"ovp_{int(time.time())}_{tg_id}"
+    unique_tx_id = merchant_tx_id or f"ovp_{int(time.time())}_{payment_owner_token(tg_id)}"
     ret_url = return_url or OVERPAY_RETURN_URL or ""
 
     use_sbp_direct = method_name == "sbp" and bool(OVERPAY_SBP_DIRECT_QR)
@@ -655,6 +653,7 @@ def _create_link_factory(method_name: str):
         failure_url: str | None,
         metadata: dict | None,
     ) -> tuple[str, str | None]:
+        tg_id = await resolve_payment_creation_owner(session, tg_id)
         if currency != "RUB":
             raise ValueError("Overpay поддерживает только RUB")
         method = OVERPAY_METHODS.get(method_name)

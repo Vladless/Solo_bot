@@ -35,10 +35,9 @@ from database import (
     get_balance,
     identities as idb,
 )
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, public_tg_id, resolve_user_optional
 from database.models import Gift, GiftUsage, Tariff, User
 from database.tariffs import get_tariff_by_id
-from database.temporary_data import create_temporary_data
 from logger import logger
 from services.errors import NotFoundError, ValidationError
 from services.formatting import get_site_gift_link
@@ -46,7 +45,7 @@ from services.gifts import (
     create_gift as service_create_gift,
     redeem_gift as service_redeem_gift,
 )
-from services.payments.payment_links import PaymentLinkRequest, create_payment_link
+from services.payments.payment_links import PaymentLinkRequest, create_payment_link, store_provider_checkout
 from services.tariffs import ConfigOptionRejected, calculate_config_price, ensure_allowed_config
 from settings.config import GIFT_BUTTON
 
@@ -86,8 +85,8 @@ async def list_gifts_admin(
     items = [
         {
             "gift_id": g.gift_id,
-            "sender_tg_id": g.sender_tg_id,
-            "recipient_tg_id": g.recipient_tg_id,
+            "sender_tg_id": public_tg_id(g.sender_tg_id),
+            "recipient_tg_id": public_tg_id(g.recipient_tg_id),
             "selected_months": g.selected_months,
             "selected_price_rub": g.selected_price_rub,
             "is_used": bool(g.is_used),
@@ -191,26 +190,28 @@ async def create_gift_for_user(
         success_url = validate_redirect_url(str(body.success_url or ""), f"{base_url}/payment-success")
         failure_url = validate_redirect_url(str(body.failure_url or ""), f"{base_url}/payment-failure")
         payment_request = PaymentLinkRequest(
-            legacy_user_ref=int(billing_user_id),
+            legacy_user_ref=billing_user_id,
             amount=required_amount,
             currency="RUB",
             provider_id=provider_id,
             success_url=success_url,
             failure_url=failure_url,
+            accepted_gross_amount=body.accepted_gross_amount,
             metadata={
                 "payment_flow": "gift_create",
+                "autopay_consent": body.autopay_consent,
+                "autopay_accepted_amount": body.autopay_accepted_amount,
+                "autopay_accepted_gross_amount": body.autopay_accepted_gross_amount,
+                "autopay_accepted_period_days": body.autopay_accepted_period_days,
                 "tariff_id": int(body.tariff_id),
                 "selected_device_limit": body.selected_device_limit,
                 "selected_traffic_gb": body.selected_traffic_gb,
                 "selected_price_rub": int(price),
             },
         )
-        payment_result = await create_payment_link(session, payment_request)
-        if not payment_result.success or not payment_result.payment_url or not payment_result.payment_id:
-            raise HTTPException(status_code=400, detail=payment_result.error or "Не удалось создать ссылку оплаты")
-        await create_temporary_data(
+        await store_provider_checkout(
             session,
-            int(billing_user_id),
+            billing_user_id,
             "waiting_for_payment",
             {
                 "payment_flow": "gift_create",
@@ -220,7 +221,11 @@ async def create_gift_for_user(
                 "selected_device_limit": body.selected_device_limit,
                 "selected_traffic_gb": body.selected_traffic_gb,
             },
+            provider_id=provider_id,
         )
+        payment_result = await create_payment_link(session, payment_request)
+        if not payment_result.success or not payment_result.payment_url or not payment_result.payment_id:
+            raise HTTPException(status_code=400, detail=payment_result.error or "Не удалось создать ссылку оплаты")
         return GiftCreateResponse(
             ok=True,
             message="Требуется оплата для создания подарка",
@@ -435,7 +440,7 @@ async def get_gifts_by_tg_id(
     session: AsyncSession = Depends(get_session),
 ):
     """Список подарков по tg_id отправителя."""
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, TelegramId(tg_id))
     if u is None:
         raise HTTPException(status_code=404, detail="Gifts not found")
     result = await session.execute(select(Gift).where(Gift.sender_user_id == u.id))

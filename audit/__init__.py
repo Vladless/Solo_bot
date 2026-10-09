@@ -14,7 +14,9 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.access.resolution import UserId
 from database.audit import (
+    audit_user_tg_ref_is_ambiguous,
     create_audit_reset_marker_db,
     delete_old_audit_events_db,
     ensure_audit_table,
@@ -84,7 +86,7 @@ def new_request_id() -> str:
 
 
 def _naive_utc(dt: datetime) -> datetime:
-    """Приводит datetime к naive UTC для запросов к колонкам DateTime (без timezone)."""
+    """Приводит время к UTC без указания часового пояса."""
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc)
     return dt.replace(tzinfo=None)
@@ -176,11 +178,7 @@ def describe_telegram_event(event: TelegramObject) -> str:
 
 
 def _pg_safe(value: str | None, limit: int = 2000) -> str | None:
-    """Готовит строку к записи в PostgreSQL: там запрещён байт \x00.
-
-    Путь берётся из запроса как есть, поэтому сканер с `%00` в адресе оставлял
-    запись, которую база отвергала навсегда — и она запирала всю очередь аудита.
-    """
+    """Удаляет нулевые байты и ограничивает длину строки для PostgreSQL."""
     if value is None:
         return None
     clean = str(value).replace("\x00", "")
@@ -665,6 +663,8 @@ async def _list_audit_events_from_redis(
     channel: str | None,
     event_types: list[str] | None,
     max_events: int = 3000,
+    *,
+    ambiguous_user_ref: bool = False,
 ) -> list[SimpleNamespace]:
     if not AUDIT_REDIS_BUFFER_ENABLED:
         return []
@@ -682,6 +682,26 @@ async def _list_audit_events_from_redis(
         for rec in reversed(raw):
             if not isinstance(rec, dict):
                 continue
+            if (
+                identity_id
+                and rec.get("actor_identity_id") != identity_id
+                and not (rec.get("entity_type") == "identity" and rec.get("entity_id") == identity_id)
+            ):
+                legacy_tg_match = tg_id is not None and (
+                    rec.get("actor_tg_id") == tg_id
+                    or (rec.get("entity_type") == "telegram_user" and str(rec.get("entity_id")) == str(tg_id))
+                    or (
+                        not ambiguous_user_ref
+                        and rec.get("entity_type") == "user"
+                        and str(rec.get("entity_id")) == str(tg_id)
+                    )
+                )
+                if rec.get("actor_identity_id") is not None or not legacy_tg_match:
+                    continue
+                if rec.get("entity_type") == "identity" and rec.get("entity_id") is not None:
+                    continue
+                if ambiguous_user_ref and rec.get("entity_type") == "user" and str(rec.get("entity_id")) == str(tg_id):
+                    continue
             created = rec.get("created_at")
             rid = rec.get("request_id") or ""
             if (created, rid) in seen:
@@ -754,6 +774,8 @@ def _aggregate_audit_rows(
 
 
 def _audit_actor_key(identity_id: Any, tg_id: Any) -> tuple[str, str | int] | None:
+    if isinstance(tg_id, UserId):
+        return ("user", int(tg_id))
     if tg_id not in (None, 0, "0", ""):
         try:
             return ("tg", int(tg_id))
@@ -821,7 +843,10 @@ async def list_audit_events(
             offset=offset,
         )
 
-    redis_events = await _list_audit_events_from_redis(tg_id, identity_id, channel, event_types_list, max_events=3000)
+    ambiguous_user_ref = await audit_user_tg_ref_is_ambiguous(session, identity_id, tg_id)
+    redis_events = await _list_audit_events_from_redis(
+        tg_id, identity_id, channel, event_types_list, max_events=3000, ambiguous_user_ref=ambiguous_user_ref
+    )
     need = offset + limit + len(redis_events)
     db_events = await fetch_audit_events_db_window(
         session,
@@ -833,10 +858,16 @@ async def list_audit_events(
         limit=min(5000, need),
     )
     merged = _dedupe_event_like(redis_events + db_events)
-    for ev in merged:
+    for index, ev in enumerate(merged):
         if ev.created_at is not None and ev.created_at.tzinfo is None:
+            if isinstance(ev, AuditEvent):
+                ev = SimpleNamespace(**{attr.key: getattr(ev, attr.key) for attr in AuditEvent.__mapper__.column_attrs})
+                merged[index] = ev
             ev.created_at = ev.created_at.replace(tzinfo=timezone.utc)
-    merged.sort(key=lambda e: (e.created_at, getattr(e, "id", 0)), reverse=True)
+    merged.sort(
+        key=lambda e: (e.created_at or datetime.min.replace(tzinfo=timezone.utc), getattr(e, "id", 0) or 0),
+        reverse=True,
+    )
     return merged[offset : offset + limit]
 
 
@@ -966,7 +997,7 @@ async def get_audit_funnel_from_redis(
 
 
 def _record_created_at(rec: dict) -> datetime:
-    """Время события из записи Redis; при мусоре — текущее."""
+    """Возвращает время события из Redis или текущее время."""
     created = rec.get("created_at")
     if isinstance(created, str):
         try:
@@ -979,11 +1010,7 @@ def _record_created_at(rec: dict) -> datetime:
 
 
 async def _drain_batch_one_by_one(session_factory: Any, batch: list[dict]) -> tuple[int, list[str]]:
-    """Пишет пачку по одной записи. Возвращает записанное и то, что база не приняла.
-
-    Нужен, когда пачка падает целиком: без такого разбора одна неисправимая
-    запись запирает очередь навсегда и весь журнал перестаёт доходить до базы.
-    """
+    """Записывает события по одному и возвращает число записей и ошибки."""
     written = 0
     poisoned: list[str] = []
     for rec in batch:

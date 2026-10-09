@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.admin_permissions import require_full_admin
 from api.depends import get_session, verify_identity_admin
 from api.v2.schemas import SettingResponse, SettingUpsert
 from core.settings.bonus_config import (
@@ -28,10 +29,18 @@ from core.settings.providers_order_config import PROVIDERS_ORDER, update_provide
 from core.settings.remnawave_config import REMNAWAVE_CONFIG, update_remnawave_config
 from core.settings.tariffs_config import TARIFFS_CONFIG, update_tariffs_config
 from core.settings.web_config import WEB_CONFIG, update_web_config
+from core.settings.yookassa_autopay_config import (
+    AUTOPAY_SETTING_LIMITS,
+    YOOKASSA_AUTOPAY_CONFIG,
+    update_yookassa_autopay_config,
+    validate_yookassa_autopay_settings,
+)
+from core.settings.yookassa_config import YOOKASSA_CONFIG, update_yookassa_config
 from database.models import Setting
 from database.settings import set_setting
 from database.settings_cache import settings_cache
 from handlers.admin.settings.settings_config import (
+    ADMIN_NOTIFICATION_TITLES,
     BUTTON_TITLES,
     MANAGEMENT_TITLES,
     MODES_TITLES,
@@ -42,8 +51,17 @@ from handlers.admin.settings.settings_config import (
     REMNAWAVE_TITLES,
     TARIFFS_TITLES,
     WEB_TITLES,
+    YOOKASSA_AUTOPAY_OPTIONS,
+    YOOKASSA_AUTOPAY_TITLES,
+    YOOKASSA_TITLES,
 )
 from handlers.admin.settings.settings_descriptions import SECTION_DESCRIPTIONS, SETTING_HINTS
+from settings.texts import (
+    SETTING_INVALID_VALUE,
+    TRAFFIC_SETTINGS_INVALID,
+    YOOKASSA_AUTOPAY_SETTINGS_TITLE,
+    YOOKASSA_MARKUP_INVALID,
+)
 
 
 router = APIRouter()
@@ -61,8 +79,7 @@ async def get_all_settings(identity=Depends(verify_identity_admin)):
 
 @router.get("/configs")
 async def get_configs(identity=Depends(verify_identity_admin)):
-    """Все конфиги: payments, buttons, notifications, modes, money,
-    providers_order, tariffs, web, remnawave, management."""
+    """Возвращает текущие настройки по разделам."""
     return {
         "payments": dict(PAYMENTS_CONFIG),
         "buttons": dict(BUTTONS_CONFIG),
@@ -75,14 +92,24 @@ async def get_configs(identity=Depends(verify_identity_admin)):
         "web": dict(WEB_CONFIG),
         "remnawave": dict(REMNAWAVE_CONFIG),
         "management": dict(MANAGEMENT_CONFIG),
+        "yookassa": dict(YOOKASSA_CONFIG),
+        "yookassa_autopay": {
+            key: value for key, value in YOOKASSA_AUTOPAY_CONFIG.items() if key in YOOKASSA_AUTOPAY_TITLES
+        },
     }
 
 
 _SCHEMA_SECTIONS: list[tuple[str, str, dict, dict]] = [
     ("payments", "Кассы", PAYMENTS_CONFIG, PAYMENT_PROVIDER_TITLES),
     ("money", "Деньги", MONEY_CONFIG, MONEY_FIELDS),
+    ("yookassa_autopay", YOOKASSA_AUTOPAY_SETTINGS_TITLE, YOOKASSA_AUTOPAY_CONFIG, YOOKASSA_AUTOPAY_TITLES),
     ("buttons", "Кнопки", BUTTONS_CONFIG, BUTTON_TITLES),
-    ("notifications", "Уведомления", NOTIFICATIONS_CONFIG, {**NOTIFICATION_TITLES, **NOTIFICATION_TIME_FIELDS}),
+    (
+        "notifications",
+        "Уведомления",
+        NOTIFICATIONS_CONFIG,
+        {**NOTIFICATION_TITLES, **ADMIN_NOTIFICATION_TITLES, **NOTIFICATION_TIME_FIELDS},
+    ),
     ("modes", "Режимы", MODES_CONFIG, MODES_TITLES),
     ("tariffs", "Тарификация", TARIFFS_CONFIG, TARIFFS_TITLES),
     ("web", "Сайт", WEB_CONFIG, WEB_TITLES),
@@ -124,6 +151,11 @@ _FIELD_OPTIONS: dict[str, list[dict[str, str]]] = {
         {"value": "webapp_only", "label": "Только веб-апп"},
     ],
     "DAILY_BONUS_MODE": BONUS_MODE_OPTIONS,
+    **YOOKASSA_AUTOPAY_OPTIONS,
+}
+
+_FIELD_NUMBER_LIMITS: dict[str, dict[str, int | float]] = {
+    key: {"min": minimum, "max": maximum} for key, (minimum, maximum) in AUTOPAY_SETTING_LIMITS.items()
 }
 
 
@@ -137,33 +169,50 @@ def _field_type(value: Any) -> str | None:
     return None
 
 
+def _schema_fields(config: dict, titles: dict, scope: str | None = None) -> list[dict[str, Any]]:
+    """Описывает поля раздела и место их сохранения."""
+    fields = []
+    for key, value in config.items():
+        if key in _SCHEMA_HIDDEN_KEYS:
+            continue
+        options = _FIELD_OPTIONS.get(key)
+        if key not in titles and options is None:
+            continue
+        if key == "QUICK_AMOUNTS" and isinstance(value, list | tuple):
+            value = ", ".join(str(amount) for amount in value)
+        field_type = "enum" if options else _field_type(value)
+        if scope == "yookassa" and key == "MARKUP_PERCENT":
+            field_type = "number"
+        if field_type is None:
+            continue
+        field: dict[str, Any] = {
+            "key": key,
+            "label": titles.get(key) or _FIELD_LABELS.get(key, key),
+            "type": field_type,
+            "value": value,
+        }
+        if scope:
+            field["scope"] = scope
+        if scope == "yookassa" and key == "MARKUP_PERCENT":
+            field.update(min=0, max=100)
+        field.update(_FIELD_NUMBER_LIMITS.get(key, {}))
+        hint = SETTING_HINTS.get(key) or BONUS_HINTS.get(key)
+        if hint:
+            field["hint"] = hint
+        if options:
+            field["options"] = options
+        fields.append(field)
+    return fields
+
+
 @router.get("/schema")
 async def get_settings_schema(identity=Depends(verify_identity_admin)):
-    """Схема настроек бота для веб-админки: секции, ключи, названия, типы, текущие значения."""
+    """Возвращает схему настроек веб-админки."""
     sections = []
     for scope, title, config, titles in _SCHEMA_SECTIONS:
-        fields = []
-        for key, value in config.items():
-            if key in _SCHEMA_HIDDEN_KEYS:
-                continue
-            options = _FIELD_OPTIONS.get(key)
-            if key not in titles and options is None:
-                continue
-            field_type = "enum" if options else _field_type(value)
-            if field_type is None:
-                continue
-            field: dict[str, Any] = {
-                "key": key,
-                "label": titles.get(key) or _FIELD_LABELS.get(key, key),
-                "type": field_type,
-                "value": value,
-            }
-            hint = SETTING_HINTS.get(key) or BONUS_HINTS.get(key)
-            if hint:
-                field["hint"] = hint
-            if options:
-                field["options"] = options
-            fields.append(field)
+        fields = _schema_fields(config, titles)
+        if scope == "money":
+            fields.extend(_schema_fields(YOOKASSA_CONFIG, YOOKASSA_TITLES, "yookassa"))
         sections.append({
             "scope": scope,
             "title": title,
@@ -180,26 +229,58 @@ async def update_config_scope(
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Обновление конфига по scope (payments, buttons, notifications, modes, money, providers_order, tariffs)."""
+    """Сохраняет настройки выбранного раздела."""
     data = dict(payload.value or {})
     normalized = scope.strip().lower().replace("-", "_")
     if normalized == "payments":
-        cleaned = {key: bool(value) for key, value in data.items()}
+        cleaned = {**PAYMENTS_CONFIG, **{key: bool(value) for key, value in data.items()}}
         await update_payments_config(session, cleaned)
         return {"payments": dict(PAYMENTS_CONFIG)}
     if normalized == "buttons":
-        cleaned = {key: bool(value) for key, value in data.items()}
+        cleaned = {**BUTTONS_CONFIG, **{key: bool(value) for key, value in data.items()}}
         await update_buttons_config(session, cleaned)
         return {"buttons": dict(BUTTONS_CONFIG)}
     if normalized == "notifications":
-        await update_notifications_config(session, data)
+        boolean_keys = {*NOTIFICATION_TITLES, *ADMIN_NOTIFICATION_TITLES}
+        if any(key in boolean_keys and not isinstance(value, bool) for key, value in data.items()):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        try:
+            await update_notifications_config(session, data)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=TRAFFIC_SETTINGS_INVALID) from exc
         return {"notifications": dict(NOTIFICATIONS_CONFIG)}
+    if normalized == "yookassa":
+        if "MARKUP_ENABLED" in data and not isinstance(data["MARKUP_ENABLED"], bool):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        try:
+            await update_yookassa_config(session, data)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=YOOKASSA_MARKUP_INVALID) from exc
+        return {"yookassa": dict(YOOKASSA_CONFIG)}
+    if normalized == "yookassa_autopay":
+        await require_full_admin(session, identity)
+        if any(key not in YOOKASSA_AUTOPAY_TITLES for key in data):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        try:
+            values = validate_yookassa_autopay_settings(data)
+            await update_yookassa_autopay_config(session, values)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "yookassa_autopay": {
+                key: value for key, value in YOOKASSA_AUTOPAY_CONFIG.items() if key in YOOKASSA_AUTOPAY_TITLES
+            }
+        }
     if normalized == "modes":
-        cleaned = {key: bool(value) for key, value in data.items()}
+        if "SINGLE_SUBSCRIPTION_OPEN_PROFILE" in data and not isinstance(
+            data["SINGLE_SUBSCRIPTION_OPEN_PROFILE"], bool
+        ):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        cleaned = {**MODES_CONFIG, **{key: bool(value) for key, value in data.items()}}
         await update_modes_config(session, cleaned)
         return {"modes": dict(MODES_CONFIG)}
     if normalized == "money":
-        await update_money_config(session, data)
+        await update_money_config(session, {**MONEY_CONFIG, **data})
         return {"money": dict(MONEY_CONFIG)}
     if normalized == "providers_order":
         cleaned: dict[str, int] = {}
@@ -211,7 +292,7 @@ async def update_config_scope(
         await update_providers_order(session, cleaned)
         return {"providers_order": dict(PROVIDERS_ORDER)}
     if normalized == "tariffs":
-        cleaned = dict(data)
+        cleaned = {**TARIFFS_CONFIG, **data}
         if "ALLOW_DOWNGRADE" in cleaned:
             cleaned["ALLOW_DOWNGRADE"] = bool(cleaned.get("ALLOW_DOWNGRADE"))
         if "KEY_ADDONS_RECALC_PRICE" in cleaned:
@@ -232,6 +313,16 @@ async def update_config_scope(
         await update_bonus_config(session, merged)
         return {BONUS_SECTION_SLUG: dict(BONUS_CONFIG)}
     if normalized == "web":
+        if "EMAIL_BINDING_REMINDER_ENABLED" in data and not isinstance(data["EMAIL_BINDING_REMINDER_ENABLED"], bool):
+            raise HTTPException(
+                status_code=400, detail="Включение напоминания о почте должно быть логическим значением"
+            )
+        if "EMAIL_BINDING_REMINDER_INTERVAL_DAYS" in data:
+            interval = data["EMAIL_BINDING_REMINDER_INTERVAL_DAYS"]
+            if isinstance(interval, bool) or not isinstance(interval, int) or not 1 <= interval <= 365:
+                raise HTTPException(
+                    status_code=400, detail="Интервал напоминания о почте: целое число от 1 до 365 дней"
+                )
         merged = dict(WEB_CONFIG)
         merged.update(data)
         await update_web_config(session, merged)
@@ -242,6 +333,10 @@ async def update_config_scope(
         await update_remnawave_config(session, merged)
         return {"remnawave": dict(REMNAWAVE_CONFIG)}
     if normalized == "management":
+        if "ADMIN_GRANULAR_PERMISSIONS_ENABLED" in data and not isinstance(
+            data["ADMIN_GRANULAR_PERMISSIONS_ENABLED"], bool
+        ):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
         merged = dict(MANAGEMENT_CONFIG)
         merged.update(data)
         await update_management_config(session, merged)

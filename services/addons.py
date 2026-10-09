@@ -112,11 +112,7 @@ def resolve_carried_addons(
     new_base_devices: int | None,
     new_base_traffic: int | None,
 ) -> CarriedAddons:
-    """Опции, докупленные сверх базы тарифа, и их цена на новый срок.
-
-    Пусто, если перенос выключен, клиент ничего не докупал, тариф меняется или
-    база тарифа меняется этим продлением — тогда докупки не переносятся.
-    """
+    """Рассчитывает перенос докупленных опций и их стоимость при неизменной базе тарифа."""
     if not tariff or not key_details or not is_addons_carry_enabled():
         return CarriedAddons()
 

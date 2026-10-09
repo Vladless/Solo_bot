@@ -92,10 +92,7 @@ async def notify_admin(server_name: str, status: str, down_duration: timedelta =
 
 
 async def check_servers(sessionmaker=None):
-    """
-    Периодическая проверка серверов.
-    Использует короткую сессию на итерацию, чтобы не держать транзакцию во время ping.
-    """
+    """Периодически проверяет серверы, освобождая сессию базы данных перед сетевыми запросами."""
     maker = sessionmaker or async_session_maker
     while True:
         async with maker() as session:

@@ -10,7 +10,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
-from database import get_key_details, get_keys, get_vless_enabled_batch
+from database import get_key_by_email, get_key_details, get_keys, get_vless_enabled_batch
+from database.access.resolution import UserId
 from database.models import Key
 from handlers.keys.utils import build_key_callback, build_key_ref, key_owned_by_user, resolve_key
 from handlers.keys.view.screens import (
@@ -185,7 +186,12 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
     key_obj = await resolve_key(session, tg_id, key_ref_or_email)
     key_name = key_obj.email if key_obj else key_ref_or_email
     record = await get_key_details(session, key_name)
-    if not record:
+    if (
+        key_obj is None
+        or not record
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         return "<b>Информация о подписке не найдена.</b>", builder.as_markup(), False
@@ -391,7 +397,9 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
 
 
 async def build_key_view_message(session: AsyncSession, email: str):
-    text, reply_markup, _ = await build_key_view_payload(session, 0, email)
+    key_obj = await get_key_by_email(session, email)
+    owner_ref = UserId(key_obj.user_id) if key_obj is not None else UserId(0)
+    text, reply_markup, _ = await build_key_view_payload(session, owner_ref, email)
     return text, reply_markup
 
 
@@ -556,7 +564,12 @@ async def _render_my_devices(
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
     key_name = key_obj.email if key_obj else key_ref
     record = await get_key_details(session, key_name)
-    if not record or not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await safe_answer_callback(callback_query, "❌ Ключ не найден.", show_alert=True)
         return
 

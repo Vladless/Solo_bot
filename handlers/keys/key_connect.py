@@ -52,7 +52,12 @@ async def handle_connect_device(callback_query: CallbackQuery, session: AsyncSes
         key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
         key_name = key_obj.email if key_obj else key_ref
         record = await get_key_details(session, key_name)
-        if not key_owned_by_user(record, callback_query.from_user.id):
+        if (
+            key_obj is None
+            or not key_owned_by_user(record, callback_query.from_user.id)
+            or record.get("user_id") != key_obj.user_id
+            or record.get("client_id") != key_obj.client_id
+        ):
             await callback_query.answer("Доступ запрещён.", show_alert=True)
             return
 
@@ -98,7 +103,12 @@ async def process_callback_connect_phone(callback_query: CallbackQuery, session:
 
     try:
         record = await get_key_details(session, email)
-        if not key_owned_by_user(record, callback_query.from_user.id):
+        if (
+            key_obj is None
+            or not key_owned_by_user(record, callback_query.from_user.id)
+            or record.get("user_id") != key_obj.user_id
+            or record.get("client_id") != key_obj.client_id
+        ):
             await callback_query.answer("Доступ запрещён.", show_alert=True)
             return
         key_link = await get_subscription_link(session, email)
@@ -152,7 +162,12 @@ async def process_callback_connect_ios(callback_query: CallbackQuery, session: A
 
     try:
         record = await get_key_details(session, email)
-        if not key_owned_by_user(record, callback_query.from_user.id):
+        if (
+            key_obj is None
+            or not key_owned_by_user(record, callback_query.from_user.id)
+            or record.get("user_id") != key_obj.user_id
+            or record.get("client_id") != key_obj.client_id
+        ):
             await callback_query.answer("Доступ запрещён.", show_alert=True)
             return
         key_link = await get_subscription_link(session, email)
@@ -202,7 +217,12 @@ async def process_callback_connect_android(callback_query: CallbackQuery, sessio
 
     try:
         record = await get_key_details(session, email)
-        if not key_owned_by_user(record, callback_query.from_user.id):
+        if (
+            key_obj is None
+            or not key_owned_by_user(record, callback_query.from_user.id)
+            or record.get("user_id") != key_obj.user_id
+            or record.get("client_id") != key_obj.client_id
+        ):
             await callback_query.answer("Доступ запрещён.", show_alert=True)
             return
         key_link = await get_subscription_link(session, email)

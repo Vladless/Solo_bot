@@ -5,7 +5,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_servers, get_tariff_by_id, update_key_expiry
-from database.access.resolution import chat_id_for_user
+from database.access.resolution import UserId, chat_id_for_user
 from database.keys import delete_key, mark_key_as_frozen, mark_key_as_unfrozen, update_key_subscription_links
 from database.models import Key
 from logger import logger
@@ -23,7 +23,7 @@ DAY_MS = 86400 * 1000
 
 
 def _subscription_href(client_id: str | None) -> str:
-    """Куда ведёт клик по уведомлению в кабинете — карточка этой подписки."""
+    """Возвращает ссылку на подписку в кабинете."""
     key = str(client_id or "").strip()
     return f"/dashboard?tab=keys&subKey={quote(key)}" if key else "/dashboard?tab=keys"
 
@@ -58,10 +58,7 @@ async def bulk_reissue(session: AsyncSession, keys: list[Key]) -> tuple[int, int
 async def _notify_reissue(
     bot, session: AsyncSession, user_id: int, email: str, new_link: str, client_id: str | None = None
 ) -> bool:
-    """Сообщает о новой ссылке и в Telegram, и в кабинет: у веб-клиента чата нет.
-
-    Уведомление пишется отдельной сессией: сбой не должен ронять остаток пачки.
-    """
+    """Уведомляет клиента о новой ссылке на подписку."""
     delivered = False
     chat_id = await chat_id_for_user(session, user_id)
     if chat_id is not None:
@@ -84,7 +81,7 @@ async def _notify_reissue(
         async with async_session_maker() as notify_session:
             notification = await notify_web(
                 notify_session,
-                user_ref=int(user_id),
+                user_ref=UserId(user_id),
                 type="system",
                 title="Подписка перевыпущена",
                 message="Ссылка подписки обновлена, старая больше не работает.",
@@ -163,7 +160,7 @@ async def bulk_add_days(session: AsyncSession, keys: list[Key], days: int) -> tu
         try:
             traffic, device = await _key_limits(session, key)
             new_expiry = key.expiry_time + add_ms
-            await renew_key_in_cluster(
+            renewed = await renew_key_in_cluster(
                 key.server_id,
                 email=key.email,
                 client_id=key.client_id,
@@ -174,7 +171,10 @@ async def bulk_add_days(session: AsyncSession, keys: list[Key], days: int) -> tu
                 reset_traffic=False,
                 plan=key.tariff_id,
             )
-            await update_key_expiry(session, key.client_id, new_expiry)
+            if not renewed:
+                fail += 1
+                continue
+            await update_key_expiry(session, key.client_id, new_expiry, user_id=key.user_id)
             ok += 1
         except Exception as e:
             fail += 1
@@ -194,7 +194,7 @@ async def bulk_add_gb(session: AsyncSession, keys: list[Key], gb: int) -> tuple[
                 skipped += 1
                 continue
             new_total = traffic + int(gb)
-            await renew_key_in_cluster(
+            renewed = await renew_key_in_cluster(
                 key.server_id,
                 email=key.email,
                 client_id=key.client_id,
@@ -205,8 +205,13 @@ async def bulk_add_gb(session: AsyncSession, keys: list[Key], gb: int) -> tuple[
                 reset_traffic=False,
                 plan=key.tariff_id,
             )
+            if not renewed:
+                fail += 1
+                continue
             await session.execute(
-                update(Key).where(Key.client_id == key.client_id).values(current_traffic_limit=new_total)
+                update(Key)
+                .where(Key.user_id == key.user_id, Key.client_id == key.client_id)
+                .values(current_traffic_limit=new_total)
             )
             ok += 1
         except Exception as e:
@@ -223,7 +228,7 @@ async def bulk_delete(session: AsyncSession, keys: list[Key]) -> tuple[int, int,
             continue
         try:
             await delete_key_from_cluster(key.server_id, key.email, key.client_id, session=session)
-            await delete_key(session, key.client_id)
+            await delete_key(session, key.client_id, user_id=key.user_id)
             ok += 1
         except Exception as e:
             fail += 1
@@ -246,7 +251,7 @@ async def bulk_freeze(session: AsyncSession, keys: list[Key]) -> tuple[int, int,
                 fail += 1
                 continue
             time_left = max(0, key.expiry_time - now_ms)
-            await mark_key_as_frozen(session, key.user_id, key.client_id, time_left)
+            await mark_key_as_frozen(session, UserId(key.user_id), key.client_id, time_left)
             ok += 1
         except Exception as e:
             fail += 1
@@ -271,7 +276,7 @@ async def bulk_unfreeze(session: AsyncSession, keys: list[Key]) -> tuple[int, in
             traffic, device = await _key_limits(session, key)
             stored_left = max(0, key.expiry_time)
             new_expiry = stored_left if stored_left > now_ms else now_ms + stored_left
-            await renew_key_in_cluster(
+            renewed = await renew_key_in_cluster(
                 key.server_id,
                 email=key.email,
                 client_id=key.client_id,
@@ -282,7 +287,10 @@ async def bulk_unfreeze(session: AsyncSession, keys: list[Key]) -> tuple[int, in
                 reset_traffic=False,
                 plan=key.tariff_id,
             )
-            await mark_key_as_unfrozen(session, key.user_id, key.client_id, new_expiry)
+            if not renewed:
+                fail += 1
+                continue
+            await mark_key_as_unfrozen(session, UserId(key.user_id), key.client_id, new_expiry)
             ok += 1
         except Exception as e:
             fail += 1

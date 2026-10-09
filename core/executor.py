@@ -28,13 +28,13 @@ def spawn(coro: Coroutine[object, object, object], *, name: str | None = None) -
 
 
 def _atexit_shutdown_pools() -> None:
-    """Очистка пулов при выходе из процесса (в т.ч. по atexit), уменьшает предупреждения resource_tracker."""
+    """Закрывает пулы потоков и процессов при завершении приложения."""
     shutdown_process_pool()
     shutdown_thread_pool()
 
 
 def _worker_ignore_sigint() -> None:
-    """Initializer воркера: игнорирует SIGINT, чтобы Ctrl+C не обрывал queue.get() с трейсбеком."""
+    """Отключает обработку SIGINT в рабочем процессе."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
@@ -51,7 +51,7 @@ def get_thread_pool() -> ThreadPoolExecutor:
 
 
 def shutdown_thread_pool() -> None:
-    """Останавливает пул потоков (вызывать при shutdown приложения)."""
+    """Останавливает общий пул потоков."""
     global _thread_pool
     if _thread_pool is not None:
         _thread_pool.shutdown(wait=True)
@@ -60,10 +60,7 @@ def shutdown_thread_pool() -> None:
 
 
 def get_process_pool() -> ProcessPoolExecutor:
-    """
-    Возвращает пул процессов для тяжёлых задач (бэкап и т.д.).
-    Задачи выполняются в отдельных процессах и могут использовать другие ядра CPU.
-    """
+    """Возвращает общий пул процессов для тяжёлых задач."""
     global _process_pool
     if _process_pool is None:
         from settings.config import PROCESS_POOL_SIZE
@@ -81,7 +78,7 @@ def get_process_pool() -> ProcessPoolExecutor:
 
 
 def shutdown_process_pool() -> None:
-    """Останавливает пул процессов (вызывать при shutdown приложения)."""
+    """Останавливает общий пул процессов."""
     global _process_pool
     if _process_pool is not None:
         try:
@@ -94,10 +91,7 @@ def shutdown_process_pool() -> None:
 
 
 def should_run_heavy_tasks_separately() -> bool:
-    """
-    True, если есть запас по ядрам/потокам — тогда рассылка и уведомления
-    можно выносить в отдельный поток/ядро.
-    """
+    """Проверяет наличие ресурсов для отдельного выполнения тяжёлых задач."""
     try:
         from settings.config import EXECUTOR_POOL_SIZE
 
@@ -109,7 +103,7 @@ def should_run_heavy_tasks_separately() -> bool:
 
 
 async def run_io[T](fn: Callable[..., T], *args: object) -> T:
-    """Выполняет fn(*args) в пуле потоков (I/O). Один вызов для всех блокирующих операций."""
+    """Выполняет блокирующую функцию в пуле потоков."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(get_thread_pool(), lambda: fn(*args))
 
@@ -131,7 +125,7 @@ def _drop_process_pool() -> None:
 
 
 async def run_cpu[T](fn: Callable[..., T], *args: object) -> T:
-    """Выполняет fn(*args) в пуле процессов; на сломанном пуле повторяет на новом."""
+    """Выполняет функцию в пуле процессов и пересоздаёт сломанный пул при ошибке."""
     loop = asyncio.get_running_loop()
     try:
         return await loop.run_in_executor(get_process_pool(), fn, *args)

@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import UserId, resolve_user_optional
 from database.models import SubscriptionEvent
 
 
@@ -13,9 +13,14 @@ async def get_tariff_cooldown_remaining(session: AsyncSession, tg_id: int, tarif
         return 0
 
     user = await resolve_user_optional(session, tg_id)
-    refs = [SubscriptionEvent.tg_id == tg_id]
+    if user is None and isinstance(tg_id, UserId):
+        return 0
+    refs = []
     if user is not None:
         refs.append(SubscriptionEvent.user_id == user.id)
+    telegram_id = user.tg_id if user is not None else tg_id
+    if telegram_id is not None:
+        refs.append(and_(SubscriptionEvent.user_id.is_(None), SubscriptionEvent.tg_id == telegram_id))
 
     last = await session.scalar(
         select(SubscriptionEvent.created_at)

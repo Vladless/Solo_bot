@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +11,16 @@ _LOCK_NAMESPACE = 0x62_6F_6E_75
 
 async def lock_user_bonus(session: AsyncSession, user_id: int) -> None:
     """Транзакционная блокировка выдачи бонуса пользователю — защита от двойного клика."""
+    uid = int(user_id)
+    if not -(2**31) <= uid < 2**31:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:owner_key, 0))"),
+            {"owner_key": f"daily_bonus:{uid}"},
+        )
+        return
     await session.execute(
         text("SELECT pg_advisory_xact_lock(:ns, :uid)"),
-        {"ns": _LOCK_NAMESPACE, "uid": int(user_id)},
+        {"ns": _LOCK_NAMESPACE, "uid": uid},
     )
 
 
@@ -80,7 +87,7 @@ async def get_user_created_at(session: AsyncSession, user_id: int) -> datetime |
 
 
 async def has_active_subscription(session: AsyncSession, user_id: int) -> bool:
-    now_ms = int(datetime.utcnow().timestamp() * 1000)
+    now_ms = int(datetime.now(UTC).timestamp() * 1000)
     result = await session.execute(
         select(func.count())
         .select_from(Key)

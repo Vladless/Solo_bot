@@ -72,8 +72,7 @@ async def update_tariffs_config(session: AsyncSession, new_values: dict[str, Any
 
 
 def get_override_value(overrides: Any, key: int | str | None) -> Any:
-    """Доплата за конкретный вариант. Ключ ищем и строкой, и числом:
-    из JSONB приходят строки, а собранный в памяти тариф может нести int."""
+    """Возвращает доплату за вариант по строковому или числовому ключу."""
     if not isinstance(overrides, dict) or key is None:
         return None
     if key in overrides:

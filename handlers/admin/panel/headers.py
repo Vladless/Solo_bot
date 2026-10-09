@@ -234,11 +234,7 @@ def card(*sections: str) -> str:
 
 
 def menu_text(title: str, *paragraphs: str, wide: bool = False) -> str:
-    """Собирает текст экрана: заголовок и абзацы. Значения таблиц выравниваются по одной вертикали.
-
-    wide — экран-редактор: подчёркивание длиннее, поэтому пузырь и клавиатура шире,
-    и подписи кнопок в многокнопочных рядах не обрезаются.
-    """
+    """Собирает экран с заголовком, абзацами и выровненными таблицами."""
     body = [wrap_text(p, WIDE_TEXT_EM if wide else MENU_TEXT_EM) for p in paragraphs if p]
 
     return align_screen("\n\n".join([menu_title(title, wide), *body]))

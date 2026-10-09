@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from database.access.resolution import public_tg_id
 
 
 class PaymentBase(BaseModel):
@@ -12,8 +14,11 @@ class PaymentBase(BaseModel):
 
 
 class PaymentResponse(PaymentBase):
+    user_id: int | None
     id: int
     created_at: datetime
+
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
 
     class Config:
         from_attributes = True
@@ -29,9 +34,12 @@ class ReferralResponse(BaseModel):
 
 
 class NotificationResponse(BaseModel):
-    tg_id: int
+    user_id: int
+    tg_id: int | None
     notification_type: str
     last_notification_time: datetime
+
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
 
     class Config:
         from_attributes = True
@@ -52,6 +60,7 @@ class GiftBase(BaseModel):
 
 
 class GiftResponse(GiftBase):
+    sender_user_id: int | None
     gift_id: str
     created_at: datetime
 
@@ -61,8 +70,11 @@ class GiftResponse(GiftBase):
 
 class GiftUsageResponse(BaseModel):
     gift_id: str
-    tg_id: int
+    user_id: int
+    tg_id: int | None
     used_at: datetime
+
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
 
     class Config:
         from_attributes = True
@@ -72,9 +84,11 @@ class ManualBanResponse(BaseModel):
     user_id: int
     tg_id: int | None = None
     banned_at: datetime
-    reason: str
-    banned_by: int
+    reason: str | None
+    banned_by: int | None
     until: datetime | None = None
+
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
 
     class Config:
         from_attributes = True
@@ -87,6 +101,8 @@ class TemporaryDataResponse(BaseModel):
     data: dict
     updated_at: datetime
 
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
+
     class Config:
         from_attributes = True
 
@@ -94,6 +110,8 @@ class TemporaryDataResponse(BaseModel):
 class BlockedUserResponse(BaseModel):
     user_id: int
     tg_id: int | None = None
+
+    _public_tg_id = field_validator("tg_id")(public_tg_id)
 
     class Config:
         from_attributes = True

@@ -9,12 +9,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import PAYMENTS_CONFIG
 from database import add_payment, async_session_maker
-from database.models import User
+from database.access.resolution import TelegramId
+from database.payments import resolve_payment_creation_owner
+from services.payments.checkout_snapshot import capture_payment_checkout
+from database.users import get_user_language as _get_user_language
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -25,6 +27,7 @@ from handlers.payments.keyboards import (
 from handlers.utils import edit_or_send_message
 from logger import logger
 from services.payments.currency_rates import format_for_user, get_rub_rate, pick_currency, to_rub
+from services.payments.owner_refs import payment_owner_token
 from services.payments.payment_links import register_payment_creator
 from settings.buttons import (
     BACK,
@@ -110,11 +113,6 @@ def _platega_credentials_ok() -> bool:
     return bool((PLATEGA_MERCHANT_ID or "").strip()) and bool((PLATEGA_API_SECRET or "").strip())
 
 
-async def _get_user_language(session: AsyncSession, tg_id: int) -> str | None:
-    result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
-    return result.scalar_one_or_none()
-
-
 async def process_callback_pay_platega(
     callback_query: types.CallbackQuery,
     state: FSMContext,
@@ -122,7 +120,7 @@ async def process_callback_pay_platega(
     method_name: str,
 ):
     try:
-        tg_id = callback_query.from_user.id
+        tg_id = TelegramId(callback_query.from_user.id)
         await state.clear()
 
         method = PLATEGA_METHODS.get(method_name)
@@ -272,7 +270,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
             amount_rub = int(await to_rub(user_amount, "USD", session=session_http))
 
     await state.update_data(amount=amount_rub)
-    payment_url = await generate_platega_payment_link(amount_rub, message.chat.id, method, session)
+    payment_url = await generate_platega_payment_link(amount_rub, TelegramId(message.from_user.id), method, session)
 
     if not payment_url:
         await edit_or_send_message(
@@ -339,7 +337,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(amount=amount)
-    payment_url = await generate_platega_payment_link(amount, callback_query.message.chat.id, method, session)
+    payment_url = await generate_platega_payment_link(amount, TelegramId(callback_query.from_user.id), method, session)
 
     if not payment_url:
         await edit_or_send_message(
@@ -351,7 +349,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
 
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
     language_code = await _get_user_language(session, tg_id)
     amount_text = await format_for_user(
         session, tg_id, float(amount), language_code, force_currency=method["currency"]
@@ -385,6 +383,8 @@ async def generate_platega_payment_link(
     failure_url: str | None = None,
     metadata: dict | None = None,
 ) -> str | None:
+    tg_id = await resolve_payment_creation_owner(session, tg_id)
+    metadata = await capture_payment_checkout(session, tg_id, metadata)
     if not _platega_credentials_ok():
         logger.error("[Platega] Не заданы PLATEGA_MERCHANT_ID / PLATEGA_API_SECRET")
         return None
@@ -393,7 +393,7 @@ async def generate_platega_payment_link(
     payment_currency = str(method.get("payment_currency") or method.get("currency") or "RUB").upper()
     method_name = next((k for k, v in PLATEGA_METHODS.items() if v is method), None) or ""
 
-    unique_order_id = payment_id or f"plg_{int(time.time())}_{tg_id}_{int(amount)}"
+    unique_order_id = payment_id or f"plg_{int(time.time())}_{payment_owner_token(tg_id)}_{int(amount)}"
 
     pending_metadata = dict(metadata or {})
     pending_metadata.setdefault("provider", "platega")
@@ -505,6 +505,7 @@ def _create_link_factory(method_name: str):
         failure_url: str | None,
         metadata: dict | None,
     ) -> tuple[str, str | None]:
+        tg_id = await resolve_payment_creation_owner(session, tg_id)
         method = PLATEGA_METHODS.get(method_name)
         if not method or not _platega_method_enabled(method):
             raise ValueError("Способ оплаты Platega недоступен")
@@ -518,7 +519,7 @@ def _create_link_factory(method_name: str):
             symbol = "$" if method["currency"] == "USD" else "₽"
             raise ValueError(f"Минимальная сумма Platega — {symbol}{min_amount}")
 
-        payment_id = f"plg_{int(time.time())}_{tg_id}_{amount_int}"
+        payment_id = f"plg_{int(time.time())}_{payment_owner_token(tg_id)}_{amount_int}"
         url = await generate_platega_payment_link(
             amount_int,
             tg_id,

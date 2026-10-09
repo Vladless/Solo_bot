@@ -17,6 +17,7 @@ from .servers import Server, ServerSpecialgroup, ServerSubgroup
 from .subscription_events import DailySubscriptionMetric, SubscriptionEvent
 from .tariffs import Tariff, TariffSubgroupSetting
 from .tickets import Ticket, TicketMessage
+from .traffic_notifications import TrafficNotificationState
 from .users import BlockedUser, ManualBan, TemporaryData, TrackingSource, User
 from .web import (
     WebBlock,
@@ -31,6 +32,13 @@ from .web import (
     WebPageView,
     WebPushSubscription,
     WebTheme,
+)
+from .yookassa_autopay import (
+    YooKassaAutopayAttempt,
+    YooKassaLog,
+    YooKassaPayment,
+    YooKassaSavedCard,
+    YooKassaSubscription,
 )
 
 
@@ -65,6 +73,7 @@ __all__ = [
     "Referral",
     "Notification",
     "ScheduledBroadcast",
+    "TrafficNotificationState",
     "Poll",
     "RateLimitCounter",
     "PollMessage",
@@ -83,4 +92,9 @@ __all__ = [
     "WebPushSubscription",
     "WebNotification",
     "WebFlow",
+    "YooKassaSavedCard",
+    "YooKassaSubscription",
+    "YooKassaPayment",
+    "YooKassaLog",
+    "YooKassaAutopayAttempt",
 ]

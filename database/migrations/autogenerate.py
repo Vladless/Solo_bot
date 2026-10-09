@@ -136,12 +136,7 @@ INDEX_SETS_SQL = """
 
 
 def _already_covered(conn: Connection, op) -> bool:
-    """Есть ли уже такое покрытие теми же колонками — под другим именем.
-
-    Колонку с `unique=True` алембик заводит вместе с ограничением и следом просит второе такое же:
-    так на старой базе появлялся дубль вида `users_partner_code_key1`. Дублировать индексы и
-    уникальность незачем — они обслуживаются на каждой записи.
-    """
+    """Проверяет наличие индекса или ограничения на те же колонки."""
     if isinstance(op, ops.CreateUniqueConstraintOp):
         wanted = (op.table_name, tuple(str(column) for column in op.columns))
         rows = conn.execute(text(UNIQUE_SETS_SQL)).fetchall()
@@ -159,11 +154,7 @@ def _has_nulls(conn: Connection, table: str, column: str) -> bool:
 
 
 def _safe_alter(conn: Connection, op: ops.AlterColumnOp) -> tuple[ops.AlterColumnOp | None, str]:
-    """Оставляет в правке колонки только безопасное: расширение типа и посильную смену строгости.
-
-    Сужение типа теряет данные, а NOT NULL поверх пустых значений база просто не поставит —
-    такие расхождения уходят в отчёт, а не выполняются молча.
-    """
+    """Оставляет только безопасные изменения типа и обязательности колонки."""
     kwargs: dict[str, object] = {}
     note = ""
 
@@ -235,10 +226,7 @@ def _record(report: SchemaReport, op) -> None:
 
 
 def _include_object(obj, name, type_, reflected, compare_to) -> bool:
-    """Отсекает из сравнения то, чего нет в моделях: снятие объектов и данных — решение человека.
-
-    Так alembic не предлагает снести ни служебный журнал переносов, ни то, что клиент завёл сам.
-    """
+    """Исключает из сравнения объекты базы данных, которых нет в моделях."""
     return not (reflected and compare_to is None)
 
 
@@ -291,12 +279,7 @@ def _apply(conn: Connection, metadata: MetaData, report: SchemaReport) -> None:
 
 
 async def apply_model_changes(conn: AsyncConnection, metadata: MetaData, report: SchemaReport) -> None:
-    """Приводит схему к моделям автогенерацией alembic: разницу считает и применяет он сам.
-
-    Файлов ревизий нет: сравниваются модели с фактической схемой, поэтому шаг идемпотентен и не
-    зависит от истории установки. Применяется только то, что добавляет или расширяет — снятие
-    таблиц, колонок и ограничений остаётся человеку, чтобы обновление не удаляло данные.
-    """
+    """Применяет добавления и безопасные изменения схемы по текущим моделям."""
     if conn.dialect.name != "postgresql":
         return
     await conn.run_sync(lambda sync_conn: _apply(sync_conn, metadata, report))

@@ -1,8 +1,13 @@
 from api.shared.billing_actor import resolve_billing_user_id
 from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from core.client_origin import client_origin
+from database.access.resolution import UserId
+from database.coupons import check_coupon_usage
+from database.keys import lock_owned_key_for_operation, resolve_key_operation_owner
+from database.users import get_locked_balance
+from services.payments.checkout_intent import checkout_key_snapshot
 
-from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
+from .._common import *
 from .._common import (
     _key_actions_config,
     user_router,
@@ -188,7 +193,7 @@ async def user_key_addons_preview(
         extra_price_rub = int(max(0, total_price_rub - base_price_for_current))
     final_extra_price_rub, discount_rub, _coupon_id, applied_coupon_code = await resolve_percent_coupon_soft(
         session=session,
-        billing_user_id=int(billing_user_id),
+        billing_user_id=billing_user_id,
         base_price_rub=int(max(0, extra_price_rub)),
         coupon_code=coupon_code,
     )
@@ -229,7 +234,7 @@ async def user_key_addons_preview(
         discount_rub=int(discount_rub),
         final_price_rub=int(max(0, final_extra_price_rub)),
         applied_coupon_code=applied_coupon_code,
-        balance_rub=float(await get_balance(session, int(billing_user_id))),
+        balance_rub=float(await get_balance(session, billing_user_id)),
     )
 
 
@@ -427,11 +432,11 @@ async def user_key_apply_addons(
             raise HTTPException(status_code=400, detail="Снижение параметров через сайт пока не поддерживается")
     final_extra_price_rub, discount_rub, coupon_id, applied_coupon_code = await resolve_percent_coupon_soft(
         session=session,
-        billing_user_id=int(billing_user_id),
+        billing_user_id=billing_user_id,
         base_price_rub=int(max(0, extra_price_rub)),
         coupon_code=body.coupon_code,
     )
-    balance = float(await get_balance(session, int(billing_user_id)))
+    balance = float(await get_balance(session, billing_user_id))
     required_amount = int(max(0, ceil(float(final_extra_price_rub) - balance)))
     if extra_price_rub <= 0:
         return AccountKeyApplyAddonsResponse(
@@ -460,14 +465,19 @@ async def user_key_apply_addons(
         success_url = validate_redirect_url(str(body.success_url or ""), f"{base_url}/payment-success")
         failure_url = validate_redirect_url(str(body.failure_url or ""), f"{base_url}/payment-failure")
         payment_request = PaymentLinkRequest(
-            legacy_user_ref=int(billing_user_id),
+            legacy_user_ref=billing_user_id,
             amount=required_amount,
             currency="RUB",
             provider_id=provider_id,
             success_url=success_url,
             failure_url=failure_url,
+            accepted_gross_amount=body.accepted_gross_amount,
             metadata={
                 "payment_flow": "key_addons",
+                "autopay_consent": body.autopay_consent,
+                "autopay_accepted_amount": body.autopay_accepted_amount,
+                "autopay_accepted_gross_amount": body.autopay_accepted_gross_amount,
+                "autopay_accepted_period_days": body.autopay_accepted_period_days,
                 "tariff_id": int(tariff_id),
                 "email": email,
                 "selected_device_limit": int(selected_device)
@@ -485,12 +495,9 @@ async def user_key_apply_addons(
                 "coupon_id": int(coupon_id) if coupon_id is not None else None,
             },
         )
-        payment_result = await create_payment_link(session, payment_request)
-        if not payment_result.success or not payment_result.payment_url or not payment_result.payment_id:
-            raise HTTPException(status_code=400, detail=payment_result.error or "Не удалось создать ссылку оплаты")
-        await create_temporary_data(
+        await store_provider_checkout(
             session,
-            int(billing_user_id),
+            billing_user_id,
             "waiting_for_addons_payment",
             {
                 "tariff_id": int(tariff_id),
@@ -510,7 +517,11 @@ async def user_key_apply_addons(
                 "applied_coupon_code": applied_coupon_code,
                 "coupon_id": int(coupon_id) if coupon_id is not None else None,
             },
+            provider_id=provider_id,
         )
+        payment_result = await create_payment_link(session, payment_request)
+        if not payment_result.success or not payment_result.payment_url or not payment_result.payment_id:
+            raise HTTPException(status_code=400, detail=payment_result.error or "Не удалось создать ссылку оплаты")
         return AccountKeyApplyAddonsResponse(
             ok=True,
             message="Требуется оплата для применения доп. опций",
@@ -528,6 +539,17 @@ async def user_key_apply_addons(
             payment_id=payment_result.payment_id,
             payment_url=payment_result.payment_url,
         )
+    expected_snapshot = checkout_key_snapshot(db_key)
+    db_key = await lock_owned_key_for_operation(session, billing_user_id, client_id, email)
+    if db_key is None or db_key.is_frozen:
+        raise HTTPException(status_code=409, detail="Подписка недоступна. Обновите страницу.")
+    if checkout_key_snapshot(db_key) != expected_snapshot:
+        raise HTTPException(status_code=409, detail="Подписка изменилась. Обновите страницу.")
+    if coupon_id is not None and await check_coupon_usage(session, int(coupon_id), billing_user_id):
+        raise HTTPException(status_code=409, detail="Купон уже использован. Обновите страницу.")
+    fresh_balance = await get_locked_balance(session, UserId(billing_user_id))
+    if fresh_balance is None or fresh_balance < int(final_extra_price_rub):
+        raise HTTPException(status_code=402, detail="Недостаточно средств на балансе")
     target_subgroup = tariff.get("subgroup_title")
     current_subgroup = None
     current_tariff_id = key_details.get("tariff_id")
@@ -564,7 +586,7 @@ async def user_key_apply_addons(
                 new_traffic_limit_gb_effective = 0
             else:
                 new_traffic_limit_gb_effective = int(new_traffic_limit_gb_effective) + pack_traffic_val
-        await renew_key_in_cluster(
+        applied = await renew_key_in_cluster(
             cluster_id=server_id,
             email=email,
             client_id=str(getattr(db_key, "client_id", "") or ""),
@@ -577,18 +599,20 @@ async def user_key_apply_addons(
             old_subgroup=current_subgroup,
             plan=int(tariff_id),
         )
-        await save_key_config_with_mode(
-            session=session,
-            email=email,
-            selected_devices=int(new_device_limit_effective) if new_device_limit_effective is not None else None,
-            selected_traffic_gb=int(new_traffic_limit_gb_effective)
+        if not applied:
+            raise HTTPException(status_code=503, detail="Не удалось применить доп. опции. Повторите попытку.")
+        config_update = {
+            "session": session,
+            "email": email,
+            "selected_devices": int(new_device_limit_effective) if new_device_limit_effective is not None else None,
+            "selected_traffic_gb": int(new_traffic_limit_gb_effective)
             if new_traffic_limit_gb_effective is not None
             else None,
-            total_price=int(total_price_after_purchase),
-            has_device_choice=bool(has_device_option and include_device_effective),
-            has_traffic_choice=bool(has_traffic_option and include_traffic_effective),
-            config_mode="pack",
-        )
+            "total_price": int(total_price_after_purchase),
+            "has_device_choice": bool(has_device_option and include_device_effective),
+            "has_traffic_choice": bool(has_traffic_option and include_traffic_effective),
+            "config_mode": "pack",
+        }
     else:
         selected_device_for_effective = (
             int(selected_device)
@@ -609,7 +633,7 @@ async def user_key_apply_addons(
         traffic_limit_gb_effective = (
             int(traffic_limit_bytes_effective_new / GB) if traffic_limit_bytes_effective_new else 0
         )
-        await renew_key_in_cluster(
+        applied = await renew_key_in_cluster(
             cluster_id=server_id,
             email=email,
             client_id=str(getattr(db_key, "client_id", "") or ""),
@@ -622,31 +646,38 @@ async def user_key_apply_addons(
             old_subgroup=current_subgroup,
             plan=int(tariff_id),
         )
-        await save_key_config_with_mode(
-            session=session,
-            email=email,
-            selected_devices=int(selected_device)
+        if not applied:
+            raise HTTPException(status_code=503, detail="Не удалось применить доп. опции. Повторите попытку.")
+        config_update = {
+            "session": session,
+            "email": email,
+            "selected_devices": int(selected_device)
             if has_device_option and include_device_effective and selected_device is not None
             else None,
-            selected_traffic_gb=int(selected_traffic)
+            "selected_traffic_gb": int(selected_traffic)
             if has_traffic_option and include_traffic_effective and selected_traffic is not None
             else None,
-            total_price=int(total_price_after_purchase),
-            has_device_choice=bool(has_device_option and include_device_effective),
-            has_traffic_choice=bool(has_traffic_option and include_traffic_effective),
-            config_mode="addon",
-        )
+            "total_price": int(total_price_after_purchase),
+            "has_device_choice": bool(has_device_option and include_device_effective),
+            "has_traffic_choice": bool(has_traffic_option and include_traffic_effective),
+            "config_mode": "addon",
+        }
+    billing_user_id = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
+    if billing_user_id is None:
+        raise HTTPException(status_code=409, detail="Владелец подписки изменился. Обновите страницу.")
     if int(final_extra_price_rub) > 0:
-        debited = await update_balance(session, int(billing_user_id), -int(final_extra_price_rub))
+        debited = await update_balance(session, billing_user_id, -int(final_extra_price_rub))
         if debited is None:
             raise HTTPException(status_code=402, detail="Недостаточно средств на балансе")
+    await save_key_config_with_mode(**config_update, user_id=billing_user_id)
+    if int(final_extra_price_rub) > 0:
         try:
             from database.subscription_events import record_subscription_event
 
             await record_subscription_event(
                 session,
                 event_type="addons",
-                user_id=int(billing_user_id),
+                user_id=billing_user_id,
                 client_id=str(getattr(db_key, "client_id", "") or ""),
                 tariff_id=int(tariff_id),
                 server_id=str(getattr(db_key, "server_id", "") or "") or None,
@@ -657,7 +688,7 @@ async def user_key_apply_addons(
         except Exception as error:
             logger.warning("[Site:Subs] Событие докупки не записано: {}", error)
     if coupon_id is not None:
-        await mark_coupon_used(session, int(coupon_id), int(billing_user_id))
+        await mark_coupon_used(session, int(coupon_id), billing_user_id)
     return AccountKeyApplyAddonsResponse(
         ok=True,
         message="Доп. опции применены",
@@ -669,5 +700,5 @@ async def user_key_apply_addons(
         final_price_rub=int(final_extra_price_rub),
         applied_coupon_code=applied_coupon_code,
         charged_rub=int(final_extra_price_rub),
-        balance_rub=float(await get_balance(session, int(billing_user_id))),
+        balance_rub=float(await get_balance(session, billing_user_id)),
     )

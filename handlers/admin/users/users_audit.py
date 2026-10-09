@@ -27,13 +27,14 @@ PAGE_SIZE = 10
 LOGS_DIR = Path(__file__).resolve().parents[3] / "logs"
 BALANCE_LOG_PATTERN = re.compile(
     r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \| [^|]+ \| [^|]+ \| .*?\[DB\] Баланс пользователя "
-    r"(?P<tg_id>\d+) обновлён: (?P<old>-?\d+(?:\.\d+)?) → (?P<new>-?\d+(?:\.\d+)?)$"
+    r"(?:id=(?P<user_id>\d+)|(?P<tg_id>-?\d+)) обновлён: "
+    r"(?P<old>-?\d+(?:\.\d+)?) → (?P<new>-?\d+(?:\.\d+)?)$"
 )
 router = Router()
 
 
 def _serialize_audit_events(events: list) -> list[dict]:
-    """Для кэша Redis: список событий в JSON-сериализуемый вид."""
+    """Преобразует события аудита в данные для кеша."""
     out = []
     for e in events:
         out.append({
@@ -54,7 +55,7 @@ def _serialize_audit_events(events: list) -> list[dict]:
 
 
 def _deserialize_audit_events(cached: list[dict]) -> list:
-    """Из кэша: список dict → объекты с атрибутами как у AuditEvent."""
+    """Восстанавливает события аудита из кеша."""
     out = []
     for d in cached:
         created = d.get("created_at")
@@ -102,7 +103,13 @@ def _event_created_at_moscow(event) -> datetime | None:
     return created.astimezone(MOSCOW_TZ)
 
 
-def _load_balance_log_events(user_id: int, limit: int) -> list:
+def _load_balance_log_events(
+    user_id: int,
+    limit: int,
+    *,
+    tg_id: int | None = None,
+    identity_id: str | None = None,
+) -> list:
     if limit <= 0 or not LOGS_DIR.is_dir():
         return []
 
@@ -121,8 +128,16 @@ def _load_balance_log_events(user_id: int, limit: int) -> list:
             match = BALANCE_LOG_PATTERN.match(line.strip())
             if not match:
                 continue
-            if int(match.group("user_id")) != user_id:
+            logged_user_id = match.group("user_id")
+            logged_tg_id = match.group("tg_id")
+            if logged_user_id is not None:
+                if int(logged_user_id) != user_id:
+                    continue
+                entity_type, entity_id = "user", user_id
+            elif tg_id is None or int(logged_tg_id) != tg_id:
                 continue
+            else:
+                entity_type, entity_id = "telegram_user", tg_id
 
             old_balance = float(match.group("old"))
             new_balance = float(match.group("new"))
@@ -140,10 +155,10 @@ def _load_balance_log_events(user_id: int, limit: int) -> list:
                     event_type="balance_changed",
                     channel="system",
                     path_or_handler="logger:balance",
-                    actor_identity_id=None,
-                    actor_tg_id=user_id,
-                    entity_type="telegram_user",
-                    entity_id=user_id,
+                    actor_identity_id=identity_id,
+                    actor_tg_id=tg_id if tg_id is not None and tg_id > 0 else None,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
                     result="success",
                     reason=None,
                     metadata_={
@@ -315,7 +330,7 @@ CATEGORY_BLOCK_LABELS = {
 
 
 def _event_category(event) -> str:
-    """Определяет категорию события для группировки (при выборке «все»)."""
+    """Определяет категорию события аудита."""
     path = (getattr(event, "path_or_handler", None) or "").lower()
     etype = (getattr(event, "event_type", None) or "").lower()
     if etype == "balance_changed":
@@ -407,7 +422,7 @@ def _format_balance_event(event) -> str:
 
 
 def _humanize_path(path: str) -> str:
-    """Сокращает типичные callback для админки до читаемого вида."""
+    """Преобразует действия админки в читаемые подписи."""
     if not path or "callback:" not in path:
         return path
     if "users_audit:" in path:
@@ -433,7 +448,7 @@ def _humanize_path(path: str) -> str:
 def _format_event_line(
     event, show_request_id: bool = False, inside_block: bool = False, skip_time: bool = False
 ) -> str:
-    """Строка события. Если skip_time=True — только описание (время уже в строке статуса)."""
+    """Форматирует строку события аудита."""
     created_dt = _event_created_at_moscow(event)
     created_at = created_dt.strftime("%d.%m %H:%M:%S") if created_dt is not None else "unknown"
     if event.event_type == "balance_changed":
@@ -476,7 +491,7 @@ def _format_event_line(
 
 
 def _format_event_status(event) -> str:
-    """Только время и результат (ок/ошибка)."""
+    """Форматирует время и результат события."""
     created_dt = _event_created_at_moscow(event)
     created_at = created_dt.strftime("%d.%m %H:%M:%S") if created_dt is not None else "unknown"
     result_text = "ок" if event.result == "success" else "ошибка"
@@ -515,8 +530,10 @@ async def _render_user_audit(
 
     cache_key_str = cache_key(
         "audit_history",
+        "id",
         user_id,
         user_identity_id or "",
+        owner_tg_id if owner_tg_id is not None else "",
         channel_filter,
         category_filter,
         page,
@@ -540,7 +557,12 @@ async def _render_user_audit(
                     limit=combined_limit,
                     offset=0,
                 )
-            balance_events = _load_balance_log_events(user_id, combined_limit)
+            balance_events = _load_balance_log_events(
+                user_id,
+                combined_limit,
+                tg_id=owner_tg_id,
+                identity_id=user_identity_id,
+            )
             merged_events = sorted(audit_events + balance_events, key=_event_created_at, reverse=True)
             start = page * PAGE_SIZE
             stop = start + PAGE_SIZE

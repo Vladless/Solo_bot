@@ -19,9 +19,12 @@ from database import (
     update_key_expiry,
     update_trial,
 )
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, UserId, resolve_user_optional
 from database.coupons import mark_coupon_used
 from database.keys import (
+    get_key_by_user_and_email,
+    lock_owned_key_for_operation,
+    resolve_key_operation_owner,
     update_key_post_creation_snapshot,
     update_key_renewal_snapshot,
 )
@@ -59,17 +62,7 @@ class RenewalPricing:
 
 @dataclass
 class RenewalQuote:
-    """Расчет продления/смены тарифа.
-
-    Смена тарифа, остаток → баланс: net_cost_rub = new_full_price_rub − credit_rub
-    (>0 списать, <0 вернуть на баланс).
-    Смена тарифа, остаток → дни (RENEWAL_CREDIT_AS_DAYS): credit_rub=0,
-    net_cost_rub=полная цена, бонус-дни new_expiry_ms (credit_days).
-    Смена тарифа с сохранением срока (RENEWAL_SWITCH_KEEP_PERIOD, приоритетнее
-    режима дней): expiry не меняется, net_cost_rub = цена нового за остаток
-    периода − credit_rub, keeps_period=True. На уход с триала не действует:
-    там сохранять нечего, клиент получает полный период нового тарифа.
-    """
+    """Расчёт стоимости и срока продления или смены тарифа."""
 
     is_switch: bool
     duration_days: int
@@ -108,18 +101,14 @@ class RenewalResult:
 
 
 async def resolve_cluster_name(session: AsyncSession, server_or_cluster: str) -> str | None:
-    """Определяет имя кластера: если имя — уже кластер, возвращаем его;
-    иначе ищем сервер с таким именем и отдаём его ``cluster_name``."""
+    """Определяет имя кластера по кластеру или серверу."""
     if await cluster_name_exists(session, server_or_cluster):
         return server_or_cluster
     return await get_cluster_name_for_server_name(session, server_or_cluster)
 
 
 def normalize_expiry_ms(raw_value: int | float | None) -> int:
-    """Нормализует таймстамп истечения в миллисекунды.
-
-    Единая реализация — обрабатывает секунды, миллисекунды и микросекунды.
-    """
+    """Приводит срок истечения к миллисекундам."""
     if not raw_value:
         return 0
     value = int(raw_value)
@@ -166,15 +155,14 @@ async def calculate_renewal_pricing(
     selected_traffic_limit: int | None = None,
     credit_rub: float = 0.0,
 ) -> RenewalPricing:
-    """Считает цену продления без фактического выполнения.
-
-    Если тариф configurable и переданы selected_device_limit / selected_traffic_limit —
-    они используются как явный выбор и валидируются по device_options / traffic_options_gb.
-    Иначе берутся текущие значения из подписки.
-
-    Raises: NotFoundError, ValidationError
-    """
+    """Рассчитывает стоимость продления по выбранным лимитам."""
     from services.coupons import resolve_percent_coupon
+
+    owner_ref = billing_user_id if isinstance(billing_user_id, TelegramId) else UserId(billing_user_id)
+    owner = await resolve_user_optional(session, owner_ref)
+    if owner is None:
+        raise NotFoundError("Пользователь не найден")
+    billing_user_id = UserId(owner.id)
 
     tariff = await get_tariff_by_id(session, int(tariff_id))
     if not tariff or not tariff.get("is_active", True):
@@ -185,7 +173,13 @@ async def calculate_renewal_pricing(
         raise ValidationError("Некорректная длительность тарифа")
 
     key_details = await get_key_details(session, key_email)
-    if not key_details:
+    current_key = await get_key_by_user_and_email(session, owner.id, key_email)
+    if (
+        current_key is None
+        or not key_details
+        or key_details.get("user_id") != owner.id
+        or key_details.get("client_id") != current_key.client_id
+    ):
         raise NotFoundError("Подписка не найдена")
 
     is_configurable = bool(tariff.get("configurable"))
@@ -336,7 +330,7 @@ async def _is_same_config(
     new_selected_device: int | None,
     new_selected_traffic: int | None,
 ) -> bool:
-    """Совпадают ли эффективные лимиты (устройства+трафик); tariff_id/длительность не учитываются."""
+    """Сравнивает лимиты устройств и трафика."""
     if current_tariff_id is None:
         return False
 
@@ -370,7 +364,7 @@ async def compute_renewal_expiry(
     new_selected_traffic: int | None,
     new_duration_days: int | None = None,
 ) -> int:
-    """Новый expiry: та же конфигурация или истекший ключ — стек к остатку, иначе период от now."""
+    """Рассчитывает новый срок с учётом остатка и конфигурации."""
     now_ms = int(now_ms)
     current_expiry_ms = int(current_expiry_ms)
     new_tariff = await get_tariff_by_id(session, int(new_tariff_id))
@@ -413,7 +407,7 @@ async def compute_renewal_quote(
     new_selected_traffic: int | None,
     coupon_code: str | None = None,
 ) -> RenewalQuote:
-    """Единый расчёт: продление это или смена, цена нового, остаток на баланс и нетто."""
+    """Рассчитывает условия продления или смены тарифа."""
     pricing = await calculate_renewal_pricing(
         session,
         billing_user_id=billing_user_id,
@@ -551,6 +545,27 @@ async def compute_renewal_quote(
     )
 
 
+def renewal_key_snapshot(key) -> dict:
+    """Фиксирует параметры ключа для проверки котировки продления."""
+    fields = (
+        "client_id",
+        "email",
+        "server_id",
+        "expiry_time",
+        "tariff_id",
+        "selected_device_limit",
+        "selected_traffic_limit",
+        "selected_price_rub",
+        "current_device_limit",
+        "current_traffic_limit",
+    )
+    snapshot = {field: key.get(field) if isinstance(key, dict) else getattr(key, field, None) for field in fields}
+    snapshot["is_frozen"] = bool(
+        key.get("is_frozen", False) if isinstance(key, dict) else getattr(key, "is_frozen", False)
+    )
+    return snapshot
+
+
 async def execute_renewal(
     session: AsyncSession,
     billing_user_id: int,
@@ -565,19 +580,39 @@ async def execute_renewal(
     selected_traffic_limit: int | None = None,
     selected_price_rub: int | None = None,
     coupon_id: int | None = None,
+    expected_expiry_time: int | None = None,
+    expected_key_snapshot: dict | None = None,
 ) -> RenewalResult:
-    """Выполняет продление ключа на кластере и обновляет БД.
+    """Продлевает ключ на кластере и обновляет базу."""
+    owner_ref = billing_user_id if isinstance(billing_user_id, TelegramId) else UserId(billing_user_id)
+    owner = await resolve_user_optional(session, owner_ref)
+    if owner is None:
+        raise NotFoundError("Пользователь не найден")
+    billing_user_id = UserId(owner.id)
 
-    Не отправляет сообщений в Telegram — это делает вызывающий код.
-    Raises: NotFoundError, ValidationError
-    """
     tariff = await get_tariff_by_id(session, tariff_id)
     if not tariff:
         raise NotFoundError(f"Тариф с id={tariff_id} не найден")
 
     key_info = await get_key_details(session, key_email)
-    if not key_info:
+    quoted_snapshot = (
+        dict(expected_key_snapshot) if expected_key_snapshot is not None else renewal_key_snapshot(key_info or {})
+    )
+    quoted_snapshot["is_frozen"] = bool(quoted_snapshot.get("is_frozen", False))
+    current_key = await lock_owned_key_for_operation(session, owner.id, client_id, key_email)
+    if (
+        current_key is None
+        or current_key.client_id != client_id
+        or not key_info
+        or key_info.get("user_id") != owner.id
+        or key_info.get("client_id") != client_id
+    ):
         raise NotFoundError(f"Ключ {client_id} не найден в БД")
+    if renewal_key_snapshot(current_key) != quoted_snapshot or (
+        expected_expiry_time is not None
+        and normalize_expiry_ms(current_key.expiry_time) != normalize_expiry_ms(expected_expiry_time)
+    ):
+        raise ServiceError("Подписка изменилась после расчёта. Откройте продление заново.")
 
     final_device, final_traffic = _resolve_effective_limits(
         tariff,
@@ -644,7 +679,12 @@ async def execute_renewal(
     key_row = await get_key_details(session, key_email)
     effective_client_id = key_row["client_id"] if key_row else client_id
 
-    await update_key_expiry(session, effective_client_id, new_expiry_time, price_rub=float(cost))
+    billing_user_id = await resolve_key_operation_owner(session, billing_user_id, effective_client_id, key_email)
+    if billing_user_id is None:
+        raise NotFoundError("Владелец подписки изменился. Откройте её заново.")
+    await update_key_expiry(
+        session, effective_client_id, new_expiry_time, price_rub=float(cost), user_id=billing_user_id
+    )
     from database.keys import invalidate_keys_list
 
     await invalidate_keys_list(session, billing_user_id)
@@ -691,6 +731,7 @@ async def execute_renewal(
             has_device_choice=has_device,
             has_traffic_choice=has_traffic,
             config_mode="renewal",
+            user_id=billing_user_id,
         )
         if carried.has_any:
             await update_key_renewal_snapshot(
@@ -704,7 +745,7 @@ async def execute_renewal(
                 apply_limits=True,
             )
         elif has_device or has_traffic:
-            await reset_key_current_limits_to_selected(session, effective_client_id)
+            await reset_key_current_limits_to_selected(session, effective_client_id, user_id=billing_user_id)
 
     if coupon_id is not None:
         await mark_coupon_used(session, coupon_id, billing_user_id)
@@ -761,7 +802,7 @@ def _try_int(v: Any) -> int | None:
 
 @dataclass
 class CreatedVpnKey:
-    """Результат headless-создания ключа (без UI-ответа)."""
+    """Результат создания ключа без отправки сообщений."""
 
     client_id: str
     email: str
@@ -783,18 +824,10 @@ async def create_vpn_key_headless(
     skip_balance_charge: bool = False,
     is_trial: bool = False,
     forced_cluster: str | None = None,
+    forced_client_id: str | None = None,
+    forced_email: str | None = None,
 ) -> CreatedVpnKey:
-    """Создаёт VPN-ключ для пользователя без aiogram/FSM зависимостей.
-
-    Используется из service-слоя (gift redemption, web tariff purchase, webhook
-    completion) — везде, где нет Message/CallbackQuery. Доменная логика та же,
-    что и у `handlers.keys.key_mode.key_cluster_mode`, но без построения
-    клавиатуры и отправки ответа.
-
-    Raises:
-        NotFoundError: пользователь не найден.
-        ValidationError: не удалось определить кластер или создать ключ.
-    """
+    """Создаёт VPN-ключ без обработки Telegram-сообщений."""
     from handlers.utils import generate_random_email
     from services.clusters import select_cluster
     from services.operations import create_key_on_cluster
@@ -806,9 +839,10 @@ async def create_vpn_key_headless(
     owner = await resolve_user_optional(session, tg_id)
     if owner is None:
         raise NotFoundError(f"Пользователь не найден: {tg_id}")
+    tg_id = UserId(owner.id)
 
-    key_name = await generate_random_email(session=session)
-    client_id = str(uuid.uuid4())
+    key_name = forced_email or await generate_random_email(session=session)
+    client_id = forced_client_id or str(uuid.uuid4())
     email = key_name.lower()
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
@@ -846,6 +880,7 @@ async def create_vpn_key_headless(
         hwid_limit=device_limit,
         traffic_limit_bytes=traffic_limit_bytes,
         is_trial=is_trial,
+        reuse_existing=bool(forced_client_id and forced_email),
     )
     logger.info(f"[Key Creation] Ключ создан на кластере {cluster_id} для пользователя {tg_id}")
 
@@ -859,7 +894,7 @@ async def create_vpn_key_headless(
     )
 
     key_record = await get_key_details(session, email)
-    if not key_record:
+    if not key_record or key_record.get("user_id") != owner.id:
         raise ValidationError(f"Ключ не найден после создания: {email}")
     final_link = key_record.get("link", "") or ""
 

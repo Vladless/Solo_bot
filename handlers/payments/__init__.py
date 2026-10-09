@@ -23,6 +23,7 @@ from .freekassa.freekassa_pay import router as freekassa_router
 from .gifts import router as gift_router
 from .heleket import router as heleket_router
 from .kassai import router as kassai_router
+from .kassa2328 import router as kassa2328_router
 from .overpay import router as overpay_router
 from .paritypay import router as paritypay_router
 from .pay import router as pay_router
@@ -32,6 +33,7 @@ from .stars import router as stars_router
 from .tribute import router as tribute_router
 from .wata import router as wata_router
 from .yookassa import router as yookassa_router
+from .yookassa_autopay import router as yookassa_autopay_router
 from .yoomoney import router as yoomoney_router
 
 
@@ -39,8 +41,10 @@ router = Router(name="payments_main_router")
 
 PROVIDERS = get_providers(PROVIDERS_ENABLED)
 
-if PROVIDERS.get("YOOKASSA", {}).get("enabled"):
-    router.include_router(yookassa_router)
+router.include_router(yookassa_autopay_router)
+router.include_router(kassa2328_router)
+router.include_router(yookassa_router)
+
 if PROVIDERS.get("YOOMONEY", {}).get("enabled"):
     router.include_router(yoomoney_router)
 if PROVIDERS.get("ROBOKASSA", {}).get("enabled"):
@@ -74,4 +78,4 @@ router.include_router(gift_router)
 router.include_router(pay_router)
 router.include_router(fast_payment_flow_router)
 
-from .gifts import runtime as _gifts_runtime  # noqa: E402,F401
+from .gifts import runtime as _gifts_runtime

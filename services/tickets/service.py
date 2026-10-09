@@ -4,6 +4,7 @@ from sqlalchemy import Text, and_, case, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Identity, Ticket, TicketMessage
+from database.users import get_billing_user_id_for_identity
 
 from .events import publish_tickets_changed
 
@@ -260,11 +261,7 @@ async def delete_ticket(session: AsyncSession, ticket_id: str) -> bool:
 
 
 async def delete_stale(session: AsyncSession, *, answered_days: int = 2, closed_days: int = 1) -> int:
-    """Гигиена: удаляет протухшие тикеты вместе с их форум-темами.
-
-    - «Отвечен» без ответа клиента дольше answered_days → удалить.
-    - «Закрыт» без реакции клиента дольше closed_days → удалить.
-    Сообщения удаляются каскадно (FK ondelete=CASCADE)."""
+    """Удаляет устаревшие тикеты вместе с форумными темами."""
     now = _now()
     answered_cut = now - timedelta(days=answered_days)
     closed_cut = now - timedelta(days=closed_days)
@@ -294,15 +291,8 @@ async def delete_stale(session: AsyncSession, *, answered_days: int = 2, closed_
 
 
 async def resolve_billing_user_ref(session: AsyncSession, identity) -> int | None:
-    """users.id для админ-карточки клиента."""
-    from database.models import User
-
-    user = (await session.execute(select(User).where(User.identity_id == identity.id))).scalar_one_or_none()
-    if user is None:
-        tg = getattr(identity, "tg_id", None)
-        if tg and int(tg) != 0:
-            user = (await session.execute(select(User).where(User.tg_id == int(tg)))).scalar_one_or_none()
-    return int(user.id) if user is not None else None
+    """Возвращает внутренний ID для карточки клиента."""
+    return await get_billing_user_id_for_identity(session, identity.id, getattr(identity, "tg_id", None))
 
 
 async def build_client_context(session: AsyncSession, identity) -> dict | None:

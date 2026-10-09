@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from sqlalchemy import exists, or_, select
@@ -11,14 +12,17 @@ from database import (
     delete_notification,
     get_last_notification_times_bulk,
 )
+from database.access.resolution import UserId
+from database.keys import lock_owned_key_for_operation, resolve_key_operation_owner
 from database.models import Key
 from database.models.users import BlockedUser, ManualBan
 from database.web_notifications import notify_web
 from handlers.notifications.context import NotificationContext
 from handlers.notifications.keyboards import build_notification_expired_kb, build_notification_kb
 from handlers.notifications.renewal import RenewalStatus, try_auto_renew
-from handlers.notifications.sender import send_messages_with_limit
+from handlers.notifications.sender import chat_ids_for_user_ids, send_messages_with_limit
 from logger import logger
+from middlewares.session import operation_session
 from services.formatting import format_hours, format_minutes
 from services.operations import delete_key_from_cluster
 from settings.texts import KEY_DELETED_MSG, KEY_EXPIRED_DELAY_MSG, KEY_EXPIRED_NO_DELAY_MSG
@@ -44,7 +48,7 @@ async def _notify_web_expired(ctx: NotificationContext, key) -> None:
     email = key.email or ""
     await notify_web(
         ctx.session,
-        user_ref=key.tg_id,
+        user_ref=UserId(key.user_id),
         type="key_expired",
         template_vars={"email": email},
         data={"email": email, "client_id": getattr(key, "client_id", None)},
@@ -59,6 +63,7 @@ def _build_grace_message(key, remaining_minutes: int) -> dict:
     )
     return {
         "tg_id": key.tg_id,
+        "user_id": UserId(key.user_id),
         "text": text,
         "photo": _EXPIRED_PHOTO,
         "keyboard": build_notification_kb(email, getattr(key, "client_id", None)),
@@ -76,6 +81,7 @@ def _build_expired_message(key, delete_delay_minutes: int) -> dict:
         text = KEY_EXPIRED_NO_DELAY_MSG.format(email=email)
     return {
         "tg_id": key.tg_id,
+        "user_id": UserId(key.user_id),
         "text": text,
         "photo": _EXPIRED_PHOTO,
         "keyboard": build_notification_kb(email, getattr(key, "client_id", None)),
@@ -86,6 +92,7 @@ def _build_deleted_message(key) -> dict:
     email = key.email or ""
     return {
         "tg_id": key.tg_id,
+        "user_id": UserId(key.user_id),
         "text": KEY_DELETED_MSG.format(email=email),
         "photo": _EXPIRED_PHOTO,
         "keyboard": build_notification_expired_kb(),
@@ -117,79 +124,107 @@ async def process_expired_keys(
 
     logger.info(f"[Expired] Найдено {len(expired_keys)} истекших ключей")
 
-    tg_ids = [k.tg_id for k in expired_keys]
+    user_ids = [UserId(k.user_id) for k in expired_keys]
     emails = [k.email or "" for k in expired_keys]
-    users = await check_notifications_bulk(ctx.session, "key_expired", 0, tg_ids=tg_ids, emails=emails)
-    users_set = {(u["tg_id"], u["email"]) for u in users}
+    users = await check_notifications_bulk(ctx.session, "key_expired", 0, user_ids=user_ids, emails=emails)
+    users_set = {(u["user_id"], u["email"]) for u in users}
 
-    notification_pairs = [(k.tg_id, f"{k.email or ''}_key_expired") for k in expired_keys]
+    notification_pairs = [(UserId(k.user_id), f"{k.email or ''}_key_expired") for k in expired_keys]
     last_times = await get_last_notification_times_bulk(ctx.session, notification_pairs)
 
     messages: list[dict] = []
+    renewed_notifications: list[tuple] = []
     pending_notifications: list[tuple[int, str]] = []
 
     for key in expired_keys:
-        tg_id = key.tg_id
-        email = key.email or ""
-        client_id = key.client_id
-        server_id = key.server_id
-        notification_id = f"{email}_key_expired"
-        last_notification_time = last_times.get((tg_id, notification_id))
+        async with operation_session(ctx.session) as session:
+            one_ctx = replace(ctx, session=session)
+            key = await lock_owned_key_for_operation(one_ctx.session, key.user_id, key.client_id, key.email or "")
+            if key is None or key.is_frozen or not key.expiry_time or key.expiry_time >= one_ctx.current_time:
+                continue
+            tg_id = key.tg_id
+            owner_ref = UserId(key.user_id)
+            email = key.email or ""
+            client_id = key.client_id
+            server_id = key.server_id
+            notification_id = f"{email}_key_expired"
+            last_notification_time = last_times.get((owner_ref, notification_id))
 
-        expired_ms = ctx.current_time - key.expiry_time
-        delay_ms = delete_delay_minutes * 60 * 1000
-        is_grace = notify_delete_key and delete_delay_minutes > 0 and expired_ms < delay_ms
-        is_delete = not is_grace
+            expired_ms = one_ctx.current_time - key.expiry_time
+            delay_ms = delete_delay_minutes * 60 * 1000
+            is_grace = notify_delete_key and delete_delay_minutes > 0 and expired_ms < delay_ms
+            is_delete = not is_grace
 
-        if notify_renew_expired:
-            try:
-                result = await try_auto_renew(ctx, key)
-
-                if result.status == RenewalStatus.SUCCESS:
-                    await _send_renewed(ctx, key, result.tariff, result.new_expiry_time)
-                    if ctx.bulk_updates:
-                        ctx.bulk_updates["notifications_to_delete"].append((tg_id, notification_id))
-                    else:
-                        await delete_notification(ctx.session, tg_id, notification_id)
+            if notify_renew_expired:
+                try:
+                    result = await try_auto_renew(one_ctx, key)
+                except Exception as e:
+                    await one_ctx.session.rollback()
+                    logger.error(f"Ошибка продления для {tg_id}: {e}")
                     continue
 
-            except Exception as e:
-                logger.error(f"Ошибка продления для {tg_id}: {e}")
+                if result.status == RenewalStatus.SUCCESS:
+                    if one_ctx.bulk_updates:
+                        one_ctx.bulk_updates["notifications_to_delete"].append((owner_ref, notification_id))
+                    else:
+                        await delete_notification(one_ctx.session, owner_ref, notification_id)
+                    renewed_notifications.append((key, result.tariff, result.new_expiry_time))
+                    continue
+
+                key = await lock_owned_key_for_operation(one_ctx.session, owner_ref, client_id, email)
+                if key is None or key.is_frozen or not key.expiry_time or key.expiry_time >= one_ctx.current_time:
+                    continue
+                server_id = key.server_id
+                expired_ms = one_ctx.current_time - key.expiry_time
+                is_grace = notify_delete_key and delete_delay_minutes > 0 and expired_ms < delay_ms
+                is_delete = not is_grace
+
+            if is_grace:
+                if last_notification_time is None and (owner_ref, email) in users_set:
+                    remaining_ms = delay_ms - expired_ms
+                    remaining_minutes = max(1, int(remaining_ms / (60 * 1000)))
+                    messages.append(_build_grace_message(key, remaining_minutes))
+                    pending_notifications.append((owner_ref, notification_id))
+                    await _notify_web_expired(one_ctx, key)
                 continue
 
-        if is_grace:
-            if last_notification_time is None and (tg_id, email) in users_set:
-                remaining_ms = delay_ms - expired_ms
-                remaining_minutes = max(1, int(remaining_ms / (60 * 1000)))
-                messages.append(_build_grace_message(key, remaining_minutes))
-                pending_notifications.append((tg_id, notification_id))
-                await _notify_web_expired(ctx, key)
-            continue
+            if is_delete and notify_delete_key:
+                should_delete = False
+                if delete_delay_minutes == 0:
+                    should_delete = True
+                elif last_notification_time is not None:
+                    minutes_passed = expired_ms / (60 * 1000)
+                    should_delete = minutes_passed >= delete_delay_minutes
 
-        if is_delete and notify_delete_key:
-            should_delete = False
-            if delete_delay_minutes == 0:
-                should_delete = True
-            elif last_notification_time is not None:
-                minutes_passed = expired_ms / (60 * 1000)
-                should_delete = minutes_passed >= delete_delay_minutes
+                if should_delete:
+                    try:
+                        await delete_key_from_cluster(server_id, email, client_id, one_ctx.session)
+                        current_owner = await resolve_key_operation_owner(one_ctx.session, owner_ref, client_id, email)
+                        if current_owner is None:
+                            raise ValueError("Владелец удаляемого ключа изменился")
+                        await delete_key(one_ctx.session, client_id, user_id=current_owner)
+                        logger.info(f"Ключ {client_id} для {tg_id} удалён")
+                        messages.append(_build_deleted_message(key))
+                    except Exception as e:
+                        await one_ctx.session.rollback()
+                        logger.error(f"Ошибка удаления ключа {client_id}: {e}")
+                    continue
 
-            if should_delete:
-                try:
-                    await delete_key_from_cluster(server_id, email, client_id, ctx.session)
-                    await delete_key(ctx.session, client_id)
-                    logger.info(f"Ключ {client_id} для {tg_id} удалён")
-                    messages.append(_build_deleted_message(key))
-                except Exception as e:
-                    logger.error(f"Ошибка удаления ключа {client_id}: {e}")
-                continue
+            if last_notification_time is None and (owner_ref, email) in users_set:
+                messages.append(_build_expired_message(key, delete_delay_minutes))
+                pending_notifications.append((owner_ref, notification_id))
+                await _notify_web_expired(one_ctx, key)
 
-        if last_notification_time is None and (tg_id, email) in users_set:
-            messages.append(_build_expired_message(key, delete_delay_minutes))
-            pending_notifications.append((tg_id, notification_id))
-            await _notify_web_expired(ctx, key)
+    for key, tariff, new_expiry_time in renewed_notifications:
+        try:
+            async with operation_session(ctx.session) as session:
+                await _send_renewed(replace(ctx, session=session), key, tariff, new_expiry_time)
+        except Exception as exc:
+            logger.warning(f"Не удалось отправить уведомление о продлении {key.client_id}: {exc}")
 
     if messages:
+        chat_ids = await chat_ids_for_user_ids(ctx.session, [msg["user_id"] for msg in messages])
+        messages = [{**msg, "tg_id": chat_ids.get(msg["user_id"])} for msg in messages]
         await send_messages_with_limit(ctx.bot, messages)
 
     for tg_id, notification_id in pending_notifications:
@@ -204,7 +239,7 @@ async def _get_blocked_expired_keys(session, current_time: int) -> list:
         Key.expiry_time.isnot(None),
         Key.expiry_time < current_time,
         or_(
-            exists().where(BlockedUser.tg_id == Key.tg_id),
+            exists().where(BlockedUser.user_id == Key.user_id),
             exists().where(
                 ManualBan.user_id == Key.user_id,
                 or_(ManualBan.until.is_(None), ManualBan.until > datetime.now(timezone.utc)),

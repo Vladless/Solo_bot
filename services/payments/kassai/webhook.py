@@ -8,6 +8,7 @@ from core.webhook_abuse import (
     record_webhook_signature_failure,
 )
 from logger import logger
+from services.payments.owner_refs import parse_payment_owner
 from services.payments.pipeline import ParsedPayment, process_success_payment
 from settings.config import KASSAI_SECRET_KEY, KASSAI_SHOP_ID, KASSAI_WEBHOOK_RESPONSE
 
@@ -16,7 +17,7 @@ _PROVIDER = "kassai"
 
 
 def verify_kassai_signature(data: dict, signature: str) -> bool:
-    """Проверяет MD5-подпись webhook от KassaAI."""
+    """Проверяет подпись уведомления KassaAI."""
     try:
         if not KASSAI_SECRET_KEY or not KASSAI_SHOP_ID:
             logger.error("KassaAI webhook: KASSAI_SECRET_KEY/KASSAI_SHOP_ID не настроены, webhook отклонён")
@@ -43,7 +44,7 @@ def _parse_kassai(data) -> ParsedPayment | None:
     if not amount_raw or not order_id:
         return None
     try:
-        tg_id = int(str(order_id).split("_")[1])
+        tg_id = parse_payment_owner(str(order_id).split("_")[1])
         amount = float(amount_raw)
     except (IndexError, ValueError) as e:
         logger.error(f"KassaAI webhook: не удалось извлечь tg_id/amount из order_id={order_id}: {e}")

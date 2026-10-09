@@ -1,6 +1,7 @@
 import json
 import time
 import uuid
+
 from urllib.parse import urlsplit
 
 import aiohttp
@@ -10,11 +11,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import register_pending_payment
-from database.models import User
+from database.access.resolution import TelegramId
+from database.payments import resolve_payment_creation_owner
+from services.payments.checkout_snapshot import capture_payment_checkout
+from database.users import get_user_language
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -25,6 +28,7 @@ from handlers.payments.keyboards import (
 from handlers.utils import edit_or_send_message
 from logger import logger
 from services.payments.currency_rates import format_for_user
+from services.payments.owner_refs import payment_owner_token
 from services.payments.payment_links import register_payment_creator
 from settings.buttons import BACK, PARITYPAY_SBP, PAY_2
 from settings.config import (
@@ -43,11 +47,6 @@ from settings.texts import (
 
 
 router = Router()
-
-
-async def get_user_language(session: AsyncSession, tg_id: int) -> str | None:
-    result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
-    return result.scalar_one_or_none()
 
 
 class ReplenishBalanceParityPay(StatesGroup):
@@ -69,17 +68,13 @@ PARITYPAY_METHODS = {
 
 
 def _new_paritypay_order_id(tg_id: int) -> str:
-    # Keep the Telegram ID as the second component for webhook lookup, and make
-    # every invoice unique even if the user starts multiple payments per second.
-    return f"{int(time.time())}_{int(tg_id)}_{uuid.uuid4().hex}"
+    return f"{int(time.time())}_{payment_owner_token(tg_id)}_{uuid.uuid4().hex}"
 
 
 def _paritypay_invoice_create_url() -> str:
     configured_url = (PARITYPAY_API_URL or "").strip().rstrip("/")
     configured_host = (urlsplit(configured_url).hostname or "").casefold()
     if configured_host in {"api.paritypay.ru", "api.paritypay.net"}:
-        # Existing user configs can still have the v1 host. v2 has one
-        # documented production host, so migrate those configs transparently.
         return "https://api.paritypay.net/v2/invoice/create"
     if not configured_url:
         configured_url = "https://api.paritypay.net"
@@ -93,7 +88,7 @@ async def process_callback_pay_paritypay(
     method_name: str | None = None,
 ):
     try:
-        tg_id = callback_query.from_user.id
+        tg_id = TelegramId(callback_query.from_user.id)
         logger.info(f"User {tg_id} initiated ParityPay payment.")
         await state.clear()
 
@@ -164,7 +159,7 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(paritypay_method=method_name)
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
     language_code = await get_user_language(session, tg_id)
     opts = await payment_options_for_user(session, tg_id, language_code, force_currency="RUB")
     builder = build_amounts_keyboard(
@@ -233,7 +228,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         return
 
     await state.update_data(amount=user_amount)
-    payment_url = await generate_paritypay_payment_link(user_amount, message.from_user.id, method, session)
+    payment_url = await generate_paritypay_payment_link(user_amount, TelegramId(message.from_user.id), method, session)
     if not payment_url:
         await edit_or_send_message(
             target_message=message,
@@ -243,7 +238,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         return
 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
-    tg_id = message.from_user.id
+    tg_id = TelegramId(message.from_user.id)
     language_code = await get_user_language(session, tg_id)
     amount_text = await format_for_user(session, tg_id, float(user_amount), language_code, force_currency="RUB")
     await edit_or_send_message(
@@ -292,7 +287,7 @@ async def _process_amount_selection(
         return
 
     await state.update_data(amount=amount)
-    payment_url = await generate_paritypay_payment_link(amount, callback_query.from_user.id, method, session)
+    payment_url = await generate_paritypay_payment_link(amount, TelegramId(callback_query.from_user.id), method, session)
     if not payment_url:
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -302,7 +297,7 @@ async def _process_amount_selection(
         return
 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
     language_code = await get_user_language(session, tg_id)
     amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
     await edit_or_send_message(
@@ -324,6 +319,8 @@ async def generate_paritypay_payment_link(
     fail_url: str | None = None,
     metadata: dict | None = None,
 ) -> str | None:
+    tg_id = await resolve_payment_creation_owner(session, tg_id)
+    metadata = await capture_payment_checkout(session, tg_id, metadata)
     unique_order_id = order_id or _new_paritypay_order_id(tg_id)
     payload = {
         "amount": int(amount),
@@ -386,6 +383,7 @@ def _create_link_factory(method_name: str):
         failure_url: str | None,
         metadata: dict | None,
     ) -> tuple[str, str | None]:
+        tg_id = await resolve_payment_creation_owner(session, tg_id)
         if currency != "RUB":
             raise ValueError("ParityPay поддерживает только RUB")
         method = PARITYPAY_METHODS.get(method_name)

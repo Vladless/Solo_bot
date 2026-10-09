@@ -4,6 +4,7 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import NOTIFICATIONS_CONFIG
+from database.access.resolution import UserId
 from database.notifications import bulk_add_notifications
 from database.returning import RETURNING_NOTIFICATION_TYPE, get_returning_targets
 from handlers.notifications.keyboards import build_cold_lead_kb
@@ -18,8 +19,7 @@ _MESSAGES_PER_SECOND = 30
 
 
 async def process_returning(bot: Bot, session: AsyncSession):
-    """Возврат давно ушедших («второй эшелон» после горячих лидов): тем, кто ушёл
-    давно (60–180 дней назад) и не вернулся, — мягкое напоминание без скидки."""
+    """Напоминает неактивным клиентам о подписке."""
     logger.info("[Returning] Запуск")
     min_days = int(NOTIFICATIONS_CONFIG.get("RETURNING_MIN_DAYS", _DEFAULT_MIN_DAYS))
     max_days = int(NOTIFICATIONS_CONFIG.get("RETURNING_MAX_DAYS", _DEFAULT_MAX_DAYS))
@@ -34,16 +34,20 @@ async def process_returning(bot: Bot, session: AsyncSession):
         if not deliverable:
             return
 
-        await bulk_add_notifications(
-            session,
-            [(uid, RETURNING_NOTIFICATION_TYPE) for uid in deliverable],
-            commit=True,
-        )
-
         keyboard = build_cold_lead_kb()
-        outbound = [{"tg_id": chat_ids[uid], "text": RETURNING_MESSAGE, "keyboard": keyboard} for uid in deliverable]
+        outbound = [
+            {"user_id": uid, "tg_id": chat_ids[uid], "text": RETURNING_MESSAGE, "keyboard": keyboard}
+            for uid in deliverable
+        ]
         results = await send_messages_with_limit(bot, outbound, messages_per_second=_MESSAGES_PER_SECOND)
-        notified = sum(1 for r in results if r)
+        delivered = [UserId(msg["user_id"]) for msg, sent in zip(outbound, results, strict=True) if sent]
+        if delivered:
+            await bulk_add_notifications(
+                session,
+                [(uid, RETURNING_NOTIFICATION_TYPE) for uid in delivered],
+                commit=True,
+            )
+        notified = len(delivered)
 
         logger.info(f"[Returning] Отправлено: {notified}")
 

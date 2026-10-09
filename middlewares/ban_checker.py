@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
 from database import async_session_maker
-from database.models import ManualBan, User
+from database.access.resolution import TelegramId, resolve_uid_cached
+from database.models import ManualBan
 from logger import logger
 from settings.cache_config import BAN_CACHE_TTL_SEC
 from settings.config import ADMIN_ID, SUPPORT_CHAT_URL
@@ -29,12 +30,15 @@ async def invalidate_ban_cache(tg_id: int) -> None:
 class BanCheckerMiddleware(BaseMiddleware):
     """Проверка банов."""
 
-    async def _load_ban_info(self, session: AsyncSession, tg_id: int) -> dict[str, Any] | None:
+    async def _load_ban_info(
+        self, session: AsyncSession, tg_id: int, *, owner_uid: int | None = None
+    ) -> dict[str, Any] | None:
+        if owner_uid is None:
+            owner_uid = await resolve_uid_cached(session, TelegramId(tg_id))
         query = (
             select(ManualBan.reason, ManualBan.until)
-            .join(User, ManualBan.user_id == User.id)
             .where(
-                User.tg_id == tg_id,
+                ManualBan.user_id == owner_uid,
                 (ManualBan.until.is_(None)) | (ManualBan.until > datetime.now(timezone.utc)),
             )
             .limit(1)
@@ -45,13 +49,39 @@ class BanCheckerMiddleware(BaseMiddleware):
             reason, until = row
             await cache_set(
                 cache_key("ban_status", tg_id),
-                {"has_ban": True, "reason": reason or "не указана", "until": until.isoformat() if until else None},
+                {
+                    "user_id": owner_uid,
+                    "has_ban": True,
+                    "reason": reason or "не указана",
+                    "until": until.isoformat() if until else None,
+                },
                 _BAN_CACHE_TTL,
             )
             return {"reason": reason or "не указана", "until": until}
 
-        await cache_set(cache_key("ban_status", tg_id), {"has_ban": False}, _BAN_CACHE_TTL)
+        await cache_set(cache_key("ban_status", tg_id), {"user_id": owner_uid, "has_ban": False}, _BAN_CACHE_TTL)
         return None
+
+    async def _cached_ban_info(self, session: AsyncSession, tg_id: int) -> dict[str, Any] | None:
+        owner_uid = await resolve_uid_cached(session, TelegramId(tg_id))
+        if owner_uid is None:
+            return None
+        cached = await cache_get(cache_key("ban_status", tg_id))
+        if not isinstance(cached, dict) or cached.get("user_id") != owner_uid:
+            return await self._load_ban_info(session, tg_id, owner_uid=owner_uid)
+        if not cached.get("has_ban"):
+            return None
+        until_raw = cached.get("until")
+        until_parsed = None
+        if isinstance(until_raw, str):
+            try:
+                until_parsed = datetime.fromisoformat(until_raw)
+            except ValueError:
+                until_parsed = None
+        if until_parsed is not None and until_parsed < datetime.now(timezone.utc):
+            await cache_delete(cache_key("ban_status", tg_id))
+            return None
+        return {"reason": cached.get("reason") or "не указана", "until": until_parsed}
 
     async def __call__(
         self,
@@ -76,34 +106,13 @@ class BanCheckerMiddleware(BaseMiddleware):
         if tg_id is None:
             return await handler(event, data)
 
-        cached = await cache_get(cache_key("ban_status", tg_id))
-        if isinstance(cached, dict):
-            if not cached.get("has_ban"):
-                ban_info = None
-            else:
-                until_raw = cached.get("until")
-                until_parsed = None
-                if isinstance(until_raw, str):
-                    try:
-                        until_parsed = datetime.fromisoformat(until_raw)
-                    except ValueError:
-                        until_parsed = None
-                if until_parsed is not None and until_parsed < datetime.now(timezone.utc):
-                    ban_info = None
-                    await cache_delete(cache_key("ban_status", tg_id))
-                else:
-                    ban_info = {
-                        "reason": cached.get("reason") or "не указана",
-                        "until": until_parsed,
-                    }
+        session = data.get("session")
+        if session is not None and getattr(session, "execute", None) is not None:
+            ban_info = await self._cached_ban_info(session, tg_id)
         else:
-            session = data.get("session")
-            if session is not None and getattr(session, "execute", None) is not None:
-                ban_info = await self._load_ban_info(session, tg_id)
-            else:
-                async with async_session_maker() as short_session:
-                    ban_info = await self._load_ban_info(short_session, tg_id)
-                    await short_session.commit()
+            async with async_session_maker() as short_session:
+                ban_info = await self._cached_ban_info(short_session, tg_id)
+                await short_session.commit()
 
         if not ban_info:
             return await handler(event, data)

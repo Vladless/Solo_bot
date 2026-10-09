@@ -7,11 +7,13 @@ import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor"
 import { hexToRgba } from "@/components/constructor/utils";
 import { resolveButtonAction } from "@/lib/button-action";
 import { useAppInfo } from "@/app/AppInfoProvider";
-import { isTrialCtaHidden } from "@/lib/feature-flags";
+import { useTrialAvailability } from "../../../_shared/trialAvailability";
 
-export function DefaultHeroBlockView({ block, context }: TypedBlockViewProps<"defaultHero">) {
+export function DefaultHeroBlockView({ block, context, editMode }: TypedBlockViewProps<"defaultHero">) {
   const d = block.data as Record<string, unknown>;
   const appInfo = useAppInfo();
+  const isPreview = context.previewMode === true || editMode === true;
+  const trial = useTrialAvailability(isPreview);
   const wrap = context.wrap;
   const t = useDefaultTheme(d);
   const decor = usePanelDecor(t.panel);
@@ -28,7 +30,8 @@ export function DefaultHeroBlockView({ block, context }: TypedBlockViewProps<"de
   const secondaryLabel = typeof d.secondaryLabel === "string" ? d.secondaryLabel : "Смотреть тарифы";
   const primaryActionType = typeof d.primaryActionType === "string" ? d.primaryActionType : "flow";
   const primaryFlowId = typeof d.primaryFlowId === "string" ? d.primaryFlowId : "trial";
-  const primaryHidden = isTrialCtaHidden(appInfo, primaryActionType, primaryFlowId);
+  const primaryTrial = primaryActionType === "flow" && appInfo.features.trialFlowIds.includes(primaryFlowId.trim());
+  const primaryHidden = !isPreview && primaryTrial && !trial.available;
   const primaryAction = resolveButtonAction({
     actionType: primaryActionType,
     flowId: primaryFlowId,
@@ -114,7 +117,7 @@ export function DefaultHeroBlockView({ block, context }: TypedBlockViewProps<"de
         {!primaryHidden ? (
         <a
           href={primaryAction.href ?? "#"}
-          onClick={primaryAction.onClick ? (e) => { e.preventDefault(); primaryAction.onClick?.(); } : undefined}
+          onClick={primaryAction.onClick ? (e) => { e.preventDefault(); if (primaryTrial && (isPreview || !trial.available)) return; primaryAction.onClick?.(); } : undefined}
           onMouseEnter={() => setHovered("primary")}
           onMouseLeave={() => setHovered(null)}
           style={{

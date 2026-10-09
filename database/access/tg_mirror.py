@@ -13,9 +13,11 @@ from database.models import (
     Notification,
     Payment,
     Referral,
+    SubscriptionEvent,
     TemporaryData,
     User,
 )
+from database.partners import freeze_partner_owners, refresh_partner_tg_mirrors
 
 
 TG_FOREIGN_KEY_MIRRORS: tuple[tuple[type, str], ...] = (
@@ -26,10 +28,31 @@ TG_FOREIGN_KEY_MIRRORS: tuple[tuple[type, str], ...] = (
 )
 
 
+async def freeze_legacy_tg_owner(session: AsyncSession, user_id: int) -> None:
+    """Закрепляет владельца старых записей перед сменой Telegram."""
+    tg_id = await session.scalar(select(User.tg_id).where(User.id == user_id).with_for_update())
+    if tg_id is None:
+        return
+    await freeze_partner_owners(session, user_id)
+    for model, owner_column, tg_column in (
+        (Key, "user_id", "tg_id"),
+        (Payment, "user_id", "tg_id"),
+        (Gift, "sender_user_id", "sender_tg_id"),
+        (Gift, "recipient_user_id", "recipient_tg_id"),
+        (SubscriptionEvent, "user_id", "tg_id"),
+    ):
+        await session.execute(
+            update(model)
+            .where(getattr(model, owner_column).is_(None), getattr(model, tg_column) == tg_id)
+            .values({owner_column: user_id})
+        )
+
+
 async def release_tg_mirrors(session: AsyncSession, tg_id: int) -> None:
-    """Снимает ссылки на tg_id перед его обнулением в users. Внешние ключи этих
-    колонок смотрят на users.tg_id без ON UPDATE, поэтому обнулить родителя,
-    пока на него ссылаются, база не даст."""
+    """Освобождает ссылки на Telegram перед его отвязкой."""
+    owner_id = await session.scalar(select(User.id).where(User.tg_id == tg_id).with_for_update())
+    if owner_id is not None:
+        await freeze_legacy_tg_owner(session, owner_id)
     for model, column in TG_FOREIGN_KEY_MIRRORS:
         await session.execute(update(model).where(getattr(model, column) == tg_id).values({column: None}))
 
@@ -52,3 +75,4 @@ async def refresh_tg_mirrors_for_user(session: AsyncSession, user_id: int) -> No
 
     await session.execute(update(Gift).where(Gift.sender_user_id == user_id).values(sender_tg_id=tg))
     await session.execute(update(Gift).where(Gift.recipient_user_id == user_id).values(recipient_tg_id=tg))
+    await refresh_partner_tg_mirrors(session, user_id)

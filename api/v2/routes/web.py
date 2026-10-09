@@ -403,11 +403,7 @@ async def get_block_locations(
     types: str = Query(..., max_length=512),
     session: AsyncSession = Depends(get_session),
 ):
-    """Где на сайте стоят блоки указанных типов: страница и вкладка кабинета.
-
-    Нужен клиенту, чтобы вести по ссылке в блок, который админ мог поставить куда угодно
-    (например, переписку тикета — в блок поддержки).
-    """
+    """Возвращает страницы и вкладки кабинета, на которых размещены указанные типы блоков."""
     wanted = [item.strip() for item in types.split(",") if item.strip()][:20]
     if not wanted:
         return BlockLocationsResponse(locations=[])
@@ -1240,7 +1236,7 @@ async def upload_media(
     file: UploadFile = File(...),
     identity=Depends(verify_identity_designer),
 ):
-    """Upload image or video for landing blocks and return same-origin URL."""
+    """Загружает изображение или видео для блоков сайта и возвращает локальный адрес."""
     if not file.filename or "." not in file.filename:
         raise HTTPException(400, "Файл должен иметь расширение")
     ext = Path(file.filename).suffix.lower()
@@ -1693,10 +1689,7 @@ async def reset_analytics_page_views(
     session: AsyncSession = Depends(get_session),
     _identity=Depends(verify_identity_designer),
 ):
-    """Очищает накопленные просмотры страниц (тестовые/девелоперские данные).
-
-    Удаляет только web_page_views — реальные регистрации/платежи не трогаются.
-    """
+    """Очищает накопленные просмотры страниц."""
     result = await session.execute(delete(WebPageView))
     await _audit_web_admin(
         session,
@@ -2250,8 +2243,7 @@ _NEW_ERROR_ALERTS_PER_HOUR = 6
 
 
 async def _alert_web_error(name: str, message: str, url: str | None, count: int, is_new: bool) -> None:
-    """Отправляет админам уведомление о новой ошибке сайта или о всплеске по счётчику.
-    Новые ошибки троттлятся глобально, чтобы не заспамить при запуске."""
+    """Уведомляет администраторов о новой ошибке сайта или росте числа повторов."""
     try:
         if is_new:
             try:
@@ -2620,8 +2612,7 @@ async def uninstall_pack_route(
     session: AsyncSession = Depends(get_session),
     _identity=Depends(verify_identity_designer),
 ):
-    """Удаляет установленный набор. Пока его блоки стоят на страницах, удаление требует подтверждения:
-    без блоков набора страницы покажут заглушку «Неизвестный тип»."""
+    """Удаляет установленный набор с подтверждением, если его блоки используются."""
     from database.web_default_seed import pack_block_usage
     from services.web_packs import list_installed_packs, remove_pack
 
@@ -2744,8 +2735,7 @@ async def design_rollback(
 
 @router.get("/api/web/packs/installed")
 async def list_installed_packs_route():
-    """Манифесты паков, установленных на этом боте — веб-апп грузит по ним блоки.
-    Открыт без авторизации: манифест не секрет, а кабинет читают и гости."""
+    """Возвращает публичные манифесты установленных наборов."""
     from services.web_packs import list_installed_packs
 
     return {"packs": list_installed_packs()}
@@ -2843,8 +2833,7 @@ async def import_blocks_pack(
     session: AsyncSession = Depends(get_session),
     _identity=Depends(verify_identity_designer),
 ):
-    """Добавляет новые блоки в конструктор из файла набора (бандл blueprints
-    пользовательских элементов). Блоки сливаются в глобальную тему (страница landing)."""
+    """Добавляет блоки из файла набора в глобальную тему конструктора."""
     try:
         body = await request.json()
     except Exception:
@@ -3218,8 +3207,7 @@ async def import_pack_file(
     session: AsyncSession = Depends(get_session),
     _identity=Depends(verify_identity_designer),
 ):
-    """Импорт расшариваемого набора из файла: добавляет блоки (blueprints) в конструктор
-    и регистрирует дизайн как устанавливаемый свой набор (кнопка «Установить»)."""
+    """Импортирует блоки и дизайн из файла как устанавливаемый пользовательский набор."""
     from uuid import uuid4
 
     from database.web_default_seed import store_pack_design
@@ -3539,8 +3527,7 @@ async def get_logs_health(_identity=Depends(verify_identity_designer)):
 
 @router.get("/api/web/node-status")
 async def web_node_status(request: Request, session: AsyncSession = Depends(get_session)):
-    """Статусы серверов для блока в кабинете — только серверы из тарифа юзера (его сквады
-    в Remnawave). Гостю/без подписки отдаём пусто. host:port — для браузерной пробы пинга."""
+    """Возвращает статусы серверов, доступных по подпискам текущего клиента."""
     from api.depends import (
         _identity_from_auth_cache,
         _read_auth_cookie,

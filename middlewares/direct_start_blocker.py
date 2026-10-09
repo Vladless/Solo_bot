@@ -7,6 +7,7 @@ from aiogram.types import Message, Update
 from core.bootstrap import MODES_CONFIG
 from core.redis_cache import cache_get, cache_key, cache_set
 from database import check_user_exists
+from database.access.resolution import TelegramId
 from logger import logger
 from settings.cache_config import DIRECT_START_USER_EXISTS_CACHE_TTL_SEC
 from settings.config import ADMIN_ID, DISABLE_DIRECT_START
@@ -59,12 +60,12 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
             if user_in_data:
                 return True
 
-            cached = await cache_get(cache_key("direct_start_user_exists", tg_id))
+            cached = await cache_get(cache_key("direct_start_user_exists", "tg", tg_id))
             if isinstance(cached, bool):
                 return cached
 
-            exists = await check_user_exists(session, tg_id)
-            await cache_set(cache_key("direct_start_user_exists", tg_id), bool(exists), _TTL)
+            exists = await check_user_exists(session, TelegramId(tg_id))
+            await cache_set(cache_key("direct_start_user_exists", "tg", tg_id), bool(exists), _TTL)
             return exists
 
         if not text.startswith("/"):

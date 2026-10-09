@@ -409,7 +409,7 @@ def _esc(value: object) -> str:
 @router.get("/me/payments/{payment_id}/invoice", response_class=HTMLResponse)
 async def get_my_payment_invoice(
     payment_id: int = Path(..., ge=1),
-    request: Request = None,  # type: ignore[assignment]
+    request: Request = None,
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):

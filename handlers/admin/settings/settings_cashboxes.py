@@ -6,6 +6,7 @@ from core.bootstrap import PAYMENTS_CONFIG, update_payments_config
 from core.settings.providers_order_config import update_providers_order
 from filters.admin import IsAdminFilter
 from services.payments.providers import PROVIDERS_BASE, _get_effective_order
+from settings.texts import YOOKASSA_METHODS_HINT
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
@@ -37,6 +38,7 @@ async def open_settings_cashboxes_menu(callback: CallbackQuery, session: AsyncSe
         "Кассы",
         "Чем клиент может платить.",
         quote("Нажмите на кассу, чтобы включить или выключить её в боте и на сайте."),
+        quote(YOOKASSA_METHODS_HINT),
     )
     await callback.message.edit_text(text=text, reply_markup=build_settings_cashboxes_kb(providers_state))
     await callback.answer()

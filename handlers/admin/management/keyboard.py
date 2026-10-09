@@ -4,8 +4,9 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.bootstrap import MANAGEMENT_CONFIG
-from filters.permissions import PERM_ADMINS, PERM_MANAGEMENT
-from settings.buttons import BACK
+from filters.admin_actions import granular_permissions_enabled
+from filters.permissions import ACTION_PERMISSION_LABELS, PERMISSION_LABELS, PERM_ADMINS, PERM_MANAGEMENT
+from settings.buttons import ADMIN_ACTION_PERMISSIONS, ADMIN_ACTION_PERMISSIONS_SAVE, BACK
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
@@ -151,8 +152,6 @@ def build_single_admin_menu(tg_id: int, role: str = "moderator") -> InlineKeyboa
 
 
 def build_admin_permissions_kb(tg_id: int, current: set[str]) -> InlineKeyboardMarkup:
-    from filters.permissions import PERMISSION_LABELS
-
     builder = InlineKeyboardBuilder()
     for perm_id, label in PERMISSION_LABELS.items():
         mark = "✅" if perm_id in current else "⬜"
@@ -160,7 +159,28 @@ def build_admin_permissions_kb(tg_id: int, current: set[str]) -> InlineKeyboardM
             text=f"{mark} {label}",
             callback_data=AdminPanelCallback(action=f"toggle_perm|{tg_id}|{perm_id}").pack(),
         )
+    if granular_permissions_enabled():
+        builder.button(
+            text=ADMIN_ACTION_PERMISSIONS, callback_data=AdminPanelCallback(action=f"action_perms|{tg_id}").pack()
+        )
     builder.button(text=BACK, callback_data=AdminPanelCallback(action=f"admin_menu|{tg_id}").pack())
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_admin_action_permissions_kb(tg_id: int, current: set[str]) -> InlineKeyboardMarkup:
+    """Показывает отдельные действия модератора."""
+    builder = InlineKeyboardBuilder()
+    for permission, label in ACTION_PERMISSION_LABELS.items():
+        mark = "✅" if permission in current else "⬜"
+        builder.button(
+            text=f"{mark} {label}",
+            callback_data=AdminPanelCallback(action=f"action_toggle|{tg_id}|{permission}").pack(),
+        )
+    builder.button(
+        text=ADMIN_ACTION_PERMISSIONS_SAVE, callback_data=AdminPanelCallback(action=f"action_save|{tg_id}").pack()
+    )
+    builder.button(text=BACK, callback_data=AdminPanelCallback(action=f"edit_perms|{tg_id}").pack())
     builder.adjust(1)
     return builder.as_markup()
 

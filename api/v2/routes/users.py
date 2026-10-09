@@ -4,12 +4,20 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import Text, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.admin_permissions import require_admin_action
 from api.depends import get_session, verify_identity_admin
 from api.v2.base_crud import generate_crud_router
 from api.v2.schemas import UserBase, UserResponse, UserUpdate
+from core.redis_cache import cache_key
 from database import async_session_maker, delete_user_data, get_servers
-from database.access.resolution import public_tg_id, resolve_user_optional
-from database.models import Gift, Key, ManualBan, Payment, Referral, Tariff, User
+from database.access.resolution import UserId, get_user_by_id, get_user_by_tg_id, public_tg_id
+from database.cache_purge import defer_purge
+from database.models import Gift, Identity, Key, ManualBan, Payment, Referral, Tariff, User
+from filters.permissions import (
+    PERM_KEY_DELETE,
+    PERM_KEY_VIEW,
+    PERM_USER_BAN,
+)
 from logger import logger
 from services.operations import delete_key_from_cluster
 
@@ -52,6 +60,7 @@ async def search_users(
             cast(User.tg_id, Text).like(num),
             cast(User.id, Text).like(num),
             User.id.in_(email_uids),
+            User.identity_id.in_(select(Identity.id).where(Identity.email.ilike(like))),
         ]
         stmt = stmt.where(or_(*conds))
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
@@ -61,42 +70,50 @@ async def search_users(
 
 @router.post("/{user_ref}/ban")
 async def ban_user(
-    user_ref: int = Path(..., description="users.id клиента (или legacy tg_id)"),
+    user_ref: int = Path(..., description="users.id клиента"),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Ставит ручной бан пользователю (блокирует доступ к боту)."""
-    u = await resolve_user_optional(session, user_ref)
+    await require_admin_action(session, identity, PERM_USER_BAN)
+    u = await get_user_by_id(session, UserId(user_ref))
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     existing = (await session.execute(select(ManualBan).where(ManualBan.user_id == u.id))).scalar_one_or_none()
     if existing is None:
         session.add(ManualBan(user_id=u.id, tg_id=u.tg_id, reason="manual", banned_by=None))
+    if public_tg_id(u.tg_id) is not None:
+        defer_purge(session, cache_key("ban_status", u.tg_id))
     return {"banned": True}
 
 
 @router.post("/{user_ref}/unban")
 async def unban_user(
-    user_ref: int = Path(..., description="users.id клиента (или legacy tg_id)"),
+    user_ref: int = Path(..., description="users.id клиента"),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Снимает ручной бан пользователя."""
-    u = await resolve_user_optional(session, user_ref)
+    await require_admin_action(session, identity, PERM_USER_BAN)
+    u = await get_user_by_id(session, UserId(user_ref))
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     await session.execute(ManualBan.__table__.delete().where(ManualBan.user_id == u.id))
+    if public_tg_id(u.tg_id) is not None:
+        defer_purge(session, cache_key("ban_status", u.tg_id))
     return {"banned": False}
 
 
 @router.get("/{user_ref}/card")
 async def user_card(
-    user_ref: int = Path(..., description="users.id клиента (или legacy tg_id)"),
+    user_ref: int = Path(..., description="users.id клиента или Telegram ID при by_tg=true"),
+    by_tg: bool = Query(False, description="Ссылка содержит именно Telegram ID"),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Агрегированная карточка клиента: профиль, ключи, платежи, подарки, бан."""
-    u = await resolve_user_optional(session, user_ref)
+    await require_admin_action(session, identity, PERM_KEY_VIEW)
+    u = await get_user_by_tg_id(session, user_ref) if by_tg else await get_user_by_id(session, UserId(user_ref))
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -126,7 +143,12 @@ async def user_card(
         (
             await session.execute(
                 select(Payment)
-                .where(or_(Payment.user_id == u.id, and_(Payment.tg_id.is_not(None), Payment.tg_id == u.tg_id)))
+                .where(
+                    or_(
+                        Payment.user_id == u.id,
+                        and_(Payment.user_id.is_(None), Payment.tg_id.is_not(None), Payment.tg_id == u.tg_id),
+                    )
+                )
                 .order_by(Payment.created_at.desc())
                 .limit(20)
             )
@@ -173,13 +195,14 @@ async def user_card(
 
 @router.delete("/{user_ref}", response_model=dict)
 async def delete_user(
-    user_ref: int = Path(..., description="users.id клиента (или legacy tg_id)"),
+    user_ref: int = Path(..., description="users.id клиента"),
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Удаляет пользователя и его ключи на серверах."""
+    await require_admin_action(session, identity, PERM_KEY_DELETE)
     try:
-        u = await resolve_user_optional(session, user_ref)
+        u = await get_user_by_id(session, UserId(user_ref))
         if u is None:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         result = await session.execute(select(Key.email, Key.client_id).where(Key.user_id == u.id))
@@ -191,20 +214,25 @@ async def delete_user(
 
         async def _delete_one(cluster_id: str, email: str, client_id: str):
             async with async_session_maker() as s:
-                await delete_key_from_cluster(cluster_id, email, client_id, s)
+                return await delete_key_from_cluster(cluster_id, email, client_id, s)
 
-        try:
-            tasks = [
-                _delete_one(cluster_id, email, client_id)
-                for email, client_id in key_records
-                for cluster_id in cluster_ids
-            ]
-            await asyncio.gather(*tasks, return_exceptions=True)
-        except Exception as e:
-            logger.error(f"[Site:Clients] Не удалось снести подписки с серверов при удалении клиента {user_ref}: {e}")
+        tasks = [
+            _delete_one(cluster_id, email, client_id) for email, client_id in key_records for cluster_id in cluster_ids
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        if (key_records and not cluster_ids) or any(
+            isinstance(result, BaseException) or result is False for result in results
+        ):
+            logger.error(f"[Site:Clients] Не подтверждено удаление подписок клиента {user_ref}: {results}")
+            raise HTTPException(
+                status_code=502,
+                detail="Не удалось удалить все подписки с серверов. Клиент сохранён; повторите удаление.",
+            )
 
-        await delete_user_data(session, user_ref)
+        await delete_user_data(session, UserId(u.id))
         return {"detail": f"Клиент {user_ref} и его ключи успешно удалены."}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[Site:Clients] Не удалось удалить клиента {user_ref}: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при удалении пользователя") from None
@@ -215,7 +243,7 @@ crud_router = generate_crud_router(
     schema_response=UserResponse,
     schema_create=UserBase,
     schema_update=UserUpdate,
-    identifier_field="tg_id",
-    legacy_user_ref=True,
+    identifier_field="id",
+    parameter_name="user_ref",
     enabled_methods=["get_all", "get_one", "create", "update"],
 )
