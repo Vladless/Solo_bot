@@ -167,7 +167,7 @@ async def process_expired_keys(
                     if one_ctx.bulk_updates:
                         one_ctx.bulk_updates["notifications_to_delete"].append((owner_ref, notification_id))
                     else:
-                        await delete_notification(one_ctx.session, owner_ref, notification_id)
+                        await delete_notification(one_ctx.session, owner_ref, notification_id, commit=False)
                     renewed_notifications.append((key, result.tariff, result.new_expiry_time))
                     continue
 

@@ -17,6 +17,7 @@ from .settings_config import (
     PAYMENT_CASHBOX_GROUPS,
     PAYMENT_CASHBOX_TITLES,
     PAYMENT_PROVIDER_TITLES,
+    SINGLE_SUBSCRIPTION_TITLES,
 )
 
 
@@ -31,17 +32,22 @@ def build_toggle_section_keyboard(
     columns: int,
     back_action: str = "settings",
     extra_rows: list[list[InlineKeyboardButton]] | None = None,
+    hidden_keys: frozenset[str] = frozenset(),
+    submenu_actions: dict[str, str] | None = None,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for index, key in enumerate(titles.keys(), start=1):
+        if key in hidden_keys:
+            continue
         title = titles[key]
         current_state = bool(state.get(key, False))
         prefix = "✅" if current_state else "❌"
+        submenu_action = (submenu_actions or {}).get(key)
         builder.button(
-            text=f"{prefix} {title}",
+            text=f"{prefix} {title}{' ›' if submenu_action else ''}",
             callback_data=AdminPanelCallback(
-                action=action,
+                action=submenu_action or action,
                 page=index,
             ).pack(),
         )
@@ -279,6 +285,19 @@ def build_settings_modes_kb(modes_state: dict[str, bool]) -> InlineKeyboardMarku
         action="settings_modes_toggle",
         columns=2,
         back_action="settings",
+        hidden_keys=frozenset({"SINGLE_SUBSCRIPTION_OPEN_PROFILE"}),
+        submenu_actions={"SINGLE_SUBSCRIPTION_MODE": "settings_single_sub"},
+    )
+
+
+def build_settings_single_subscription_kb(modes_state: dict[str, bool]) -> InlineKeyboardMarkup:
+    """Собирает настройки режима одной подписки."""
+    return build_toggle_section_keyboard(
+        titles=SINGLE_SUBSCRIPTION_TITLES,
+        state=modes_state,
+        action="settings_single_toggle",
+        columns=1,
+        back_action="settings_modes",
     )
 
 

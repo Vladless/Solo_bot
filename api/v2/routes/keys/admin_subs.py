@@ -24,7 +24,12 @@ from filters.permissions import (
     PERM_KEY_VIEW,
 )
 from logger import logger
-from settings.texts import TRAFFIC_RESET_FAILED, TRAFFIC_RESET_PARTIAL_TEXT
+from settings.texts import (
+    MY_DEVICES_UNAVAILABLE_TEXT,
+    MY_DEVICES_UPDATE_FAILED_TEXT,
+    TRAFFIC_RESET_FAILED,
+    TRAFFIC_RESET_PARTIAL_TEXT,
+)
 
 
 subs_router = APIRouter()
@@ -465,15 +470,18 @@ async def sub_hwid_devices(
         return {"devices": [], "supported": False}
     try:
         async with remnawave_api(remna_node["api_url"]) as api:
+            api.bind_subscription(client_id, key.email, key.remnawave_link or key.key)
             if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                 raise HTTPException(status_code=502, detail="Remnawave недоступен")
-            devices = await api.get_user_hwid_devices(client_id, username=key.email) or []
+            devices = await api.get_user_hwid_devices(client_id, username=key.email)
+            if devices is None:
+                raise HTTPException(status_code=502, detail=MY_DEVICES_UNAVAILABLE_TEXT)
             return {"devices": devices, "supported": True}
     except HTTPException:
         raise
     except Exception as e:
         logger.debug(f"[Site:Subs] Не удалось получить устройства подписки {client_id}: {e}")
-        return {"devices": [], "supported": True}
+        raise HTTPException(status_code=502, detail=MY_DEVICES_UNAVAILABLE_TEXT) from e
 
 
 @subs_router.post("/{client_id}/hwid/unbind")
@@ -502,9 +510,11 @@ async def sub_hwid_unbind(
     if not remna_node:
         raise HTTPException(status_code=400, detail="Не Remnawave-подписка")
     async with remnawave_api(remna_node["api_url"]) as api:
+        api.bind_subscription(client_id, key.email, key.remnawave_link or key.key)
         if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
             raise HTTPException(status_code=502, detail="Remnawave недоступен")
-        await api.delete_user_hwid_device(client_id, hwid, username=key.email)
+        if await api.delete_user_hwid_device(client_id, hwid, username=key.email) is not True:
+            raise HTTPException(status_code=502, detail=MY_DEVICES_UPDATE_FAILED_TEXT)
         return {"message": "Устройство отвязано"}
 
 
@@ -530,12 +540,17 @@ async def sub_hwid_reset(
     if not remna_node:
         raise HTTPException(status_code=400, detail="Не Remnawave-подписка")
     async with remnawave_api(remna_node["api_url"]) as api:
+        api.bind_subscription(client_id, key.email, key.remnawave_link or key.key)
         if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
             raise HTTPException(status_code=502, detail="Remnawave недоступен")
-        devices = await api.get_user_hwid_devices(client_id, username=key.email) or []
+        devices = await api.get_user_hwid_devices(client_id, username=key.email)
+        if devices is None:
+            raise HTTPException(status_code=502, detail=MY_DEVICES_UNAVAILABLE_TEXT)
         removed = 0
         for d in devices:
             h = d.get("hwid") if isinstance(d, dict) else None
-            if h and await api.delete_user_hwid_device(client_id, h, username=key.email):
+            if h and await api.delete_user_hwid_device(client_id, h, username=key.email) is True:
                 removed += 1
+        if devices and removed == 0:
+            raise HTTPException(status_code=502, detail=MY_DEVICES_UPDATE_FAILED_TEXT)
         return {"message": f"Сброшено устройств: {removed}", "removed": removed}

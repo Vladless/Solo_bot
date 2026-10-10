@@ -56,6 +56,9 @@ async def user_key_reset_hwid(
         server_id,
         _reset_devices,
         timeout_sec=12.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=getattr(db_key, "remnawave_link", None) or getattr(db_key, "key", None),
     )
     if reset_result is None:
         raise HTTPException(status_code=502, detail="Не удалось выполнить сброс устройств")
@@ -113,6 +116,9 @@ async def user_key_devices(
         server_id,
         _list,
         timeout_sec=12.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=getattr(db_key, "remnawave_link", None) or getattr(db_key, "key", None),
     )
     if devices is None:
         raise HTTPException(status_code=502, detail=MY_DEVICES_UNAVAILABLE_TEXT)
@@ -179,6 +185,9 @@ async def user_key_delete_device(
         server_id,
         _delete,
         timeout_sec=12.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=getattr(db_key, "remnawave_link", None) or getattr(db_key, "key", None),
     )
     if not ok:
         raise HTTPException(status_code=502, detail="Не удалось отвязать устройство")

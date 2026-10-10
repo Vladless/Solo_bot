@@ -90,8 +90,17 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
         user_traffic_data[server] = result
 
     if remnawave_client_id and remnawave_server_ref:
+        key = await get_key_details(session, email)
+        subscription_url = None
+        if key and key.get("user_id") == u.id and key.get("client_id") == remnawave_client_id:
+            subscription_url = key.get("remnawave_link") or key.get("link")
         profile = await get_remnawave_profile(
-            session, str(remnawave_server_ref), remnawave_client_id, fallback_any=True, username=email
+            session,
+            str(remnawave_server_ref),
+            remnawave_client_id,
+            fallback_any=True,
+            username=email,
+            subscription_url=subscription_url,
         )
         if not profile:
             user_traffic_data["Remnawave (общий)"] = "Данные недоступны"
@@ -159,7 +168,17 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
                 async def _reset(api):
                     return await api.reset_user_traffic(client_id, username=email)
 
-                tasks.append(with_remnawave_api(session, server_name or cluster_id, _reset, fallback_any=False))
+                tasks.append(
+                    with_remnawave_api(
+                        session,
+                        server_name or cluster_id,
+                        _reset,
+                        fallback_any=False,
+                        client_id=client_id,
+                        username=email,
+                        subscription_url=key.get("remnawave_link") or key.get("link"),
+                    )
+                )
                 resources.append((panel_type, traffic_resource_id(panel_type, api_url or ""), server_name))
                 remnawave_done.add(api_url)
                 continue

@@ -29,6 +29,7 @@ async def ensure_on_remnawave(
     external_squad_uuid: str | None = None,
     session=None,
     billing_user_id: int | None = None,
+    subscription_url: str | None = None,
 ) -> tuple[str | None, str | None]:
     from panels.remnawave_runtime import remnawave_api
     from services.operations.utils import bytes_from_gb
@@ -55,6 +56,8 @@ async def ensure_on_remnawave(
     inbounds = [s.get("inbound_id") for s in servers if s.get("inbound_id")]
 
     async with remnawave_api(servers[0]["api_url"]) as api:
+        if subscription_url:
+            api.bind_subscription(client_id, email, subscription_url)
         ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
         if not ok:
             logger.error(f"{PANEL_REMNA} API недоступен при создании/обновлении")
@@ -275,6 +278,7 @@ async def migrate_between_subgroups(
     external_squad_uuid: str | None = None,
     tariff_id: int | None = None,
     billing_user_id: int | None = None,
+    subscription_url: str | None = None,
 ) -> tuple[str, str | None]:
     from services.operations.deletion import delete_on_3xui, delete_on_remnawave
     from services.operations.utils import norm_name, split_by_panel
@@ -318,7 +322,7 @@ async def migrate_between_subgroups(
         if xui_old_non:
             await delete_on_3xui(xui_old_non, email, client_id)
         if remna_old_non:
-            await delete_on_remnawave(remna_old_non, client_id)
+            await delete_on_remnawave(remna_old_non, client_id, username=email, subscription_url=subscription_url)
         return client_id, None
 
     if remna_tgt and not xui_tgt:
@@ -335,13 +339,14 @@ async def migrate_between_subgroups(
             external_squad_uuid=external_squad_uuid,
             session=session,
             billing_user_id=billing_user_id,
+            subscription_url=subscription_url,
         )
         if not new_remna_id:
             raise ValueError("Перенос подписки не подтверждён на серверах целевой подгруппы")
         if xui_old_non:
             await delete_on_3xui(xui_old_non, email, client_id)
         if remna_old_non:
-            await delete_on_remnawave(remna_old_non, client_id)
+            await delete_on_remnawave(remna_old_non, client_id, username=email, subscription_url=subscription_url)
         if new_remna_id and new_remna_id != client_id:
             await update_key_client_id(session, email, new_remna_id)
             client_id = new_remna_id
@@ -361,6 +366,7 @@ async def migrate_between_subgroups(
         external_squad_uuid=external_squad_uuid,
         session=session,
         billing_user_id=billing_user_id,
+        subscription_url=subscription_url,
     )
 
     if new_remna_id and new_remna_id != old_id:
@@ -382,7 +388,7 @@ async def migrate_between_subgroups(
         if xui_old_non:
             await delete_on_3xui(xui_old_non, email, old_id)
         if remna_old_non:
-            await delete_on_remnawave(remna_old_non, old_id)
+            await delete_on_remnawave(remna_old_non, old_id, username=email, subscription_url=subscription_url)
         return client_id, remna_link
 
     xui_confirmed = await ensure_on_3xui(
@@ -402,5 +408,5 @@ async def migrate_between_subgroups(
     if xui_old_non:
         await delete_on_3xui(xui_old_non, email, old_id)
     if remna_old_non:
-        await delete_on_remnawave(remna_old_non, old_id)
+        await delete_on_remnawave(remna_old_non, old_id, username=email, subscription_url=subscription_url)
     return client_id, remna_link

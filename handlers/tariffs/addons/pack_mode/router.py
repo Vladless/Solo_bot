@@ -19,7 +19,7 @@ from database import (
 from database.access.resolution import TelegramId, UserId
 from database.keys import lock_owned_key_for_operation, resolve_key_operation_owner
 from database.users import get_locked_balance
-from handlers.keys.view.payload import render_key_info
+from handlers.keys.view.payload import render_key_info, send_key_info
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.utils import edit_or_send_message
 from hooks.processors import process_addon_purchase_complete
@@ -38,7 +38,6 @@ from settings.buttons import PAYMENT
 from settings.config import USE_NEW_PAYMENT_FLOW
 from settings.texts import (
     ADDONS_NO_EXTRA_PAYMENT_TEXT,
-    ADDONS_PACK_SUCCESS_TEXT,
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
 )
 
@@ -555,6 +554,7 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                     )
 
             financial_applied = True
+            await state.clear()
 
             logger.info(
                 "[ADDONS] PACK_MODE успешная покупка пакета: "
@@ -564,8 +564,6 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                 f"recalc_enabled={recalc_enabled} pack_mode={pack_mode!r}"
             )
 
-            await state.clear()
-
             intercepted = await process_addon_purchase_complete(
                 chat_id=callback.from_user.id,
                 session=session,
@@ -573,14 +571,14 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                 message=callback.message,
             )
             if not intercepted:
-                await render_key_info(callback.message, session, email, "img/pic_view.jpg")
-
-            await callback.answer(ADDONS_PACK_SUCCESS_TEXT, show_alert=True)
+                await send_key_info(callback.bot, session, TelegramId(callback.from_user.id), email)
 
         except Exception as error:
+            if financial_applied:
+                logger.warning("[ADDONS] PACK_MODE: докупка {} сохранена, но экран не обновлён: {}", email, error)
+                return
             logger.error(f"[ADDONS] PACK_MODE ошибка при покупке пакета для {email}: {error}")
-            if not financial_applied:
-                await session.rollback()
+            await session.rollback()
             await callback.message.answer("❌ Ошибка при обновлении подписки. Попробуйте позже.")
             await state.clear()
 

@@ -19,7 +19,7 @@ from database.kassa2328 import load_order
 from database.keys import get_key_by_email, get_key_by_server
 from database.payments import resolve_payment_creation_owner
 from database.temporary_data import get_temporary_data
-from handlers.keys.view.payload import build_key_view_message
+from handlers.keys.view.payload import build_key_view_message, send_key_info
 from handlers.notifications.webapp_only import webapp_only_markup
 from handlers.payments.constants import ALLOWED_TEMP_PAYMENT_STATES
 from handlers.payments.keyboards import (
@@ -400,6 +400,9 @@ async def notify_checkout_completed(session: AsyncSession, owner: int, intent: d
         key = await get_key_by_email(session, str(data["created_email"]), owner_id)
     if key is None:
         logger.warning("[2328] Подписка оплаченного заказа не найдена у владельца {}", int(owner_id))
+        return
+    if intent.get("state") == "waiting_for_addons_payment":
+        await send_key_info(bot, session, owner_id, key.email)
         return
     text, keyboard = await build_key_view_message(session=session, email=key.email)
     await bot.send_message(chat_id=chat_id, text=text, reply_markup=webapp_only_markup() or keyboard)

@@ -5,13 +5,13 @@ from datetime import datetime, timezone
 
 import pytz
 
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import get_key_by_email, get_key_details, get_keys, get_vless_enabled_batch
-from database.access.resolution import UserId
+from database.access.resolution import UserId, notify_telegram_chat_id
 from database.models import Key
 from handlers.keys.utils import build_key_callback, build_key_ref, key_owned_by_user, resolve_key
 from handlers.keys.view.screens import (
@@ -20,9 +20,12 @@ from handlers.keys.view.screens import (
     build_single_subscription_text,
 )
 from handlers.menu_layout import KEY_MENU, arrange_menu, split_hook_buttons
+from handlers.notifications.webapp_only import webapp_only_markup
 from handlers.utils import (
     edit_or_send_message,
     fill_text,
+    find_media_file,
+    get_media_type,
     get_russian_month,
     is_full_remnawave_cluster,
     render_screen,
@@ -267,6 +270,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
             str(server_name),
             client_id,
             username=str(record.get("email") or "") or None,
+            subscription_url=record.get("remnawave_link") or record.get("link"),
         )
         if profile:
             hwid_count = profile.get("hwid_count")
@@ -404,6 +408,34 @@ async def build_key_view_message(session: AsyncSession, email: str):
     return text, reply_markup
 
 
+async def send_key_info(bot, session: AsyncSession, user_ref: int, key_ref_or_email: str) -> None:
+    """Отправляет владельцу актуальную карточку подписки."""
+    key = await resolve_key(session, user_ref, key_ref_or_email)
+    if key is None:
+        return
+    owner = UserId(key.user_id)
+    chat_id = await notify_telegram_chat_id(session, owner)
+    if chat_id is None:
+        return
+    text, reply_markup, _ = await build_key_view_payload(session, owner, key.client_id)
+    reply_markup = webapp_only_markup() or reply_markup
+    media_path = find_media_file("img/pic_view.jpg")
+    if media_path:
+        try:
+            media = FSInputFile(media_path)
+            media_type = get_media_type(media_path)
+            if media_type == "video":
+                await bot.send_video(chat_id=chat_id, video=media, caption=text, reply_markup=reply_markup)
+            elif media_type == "animation":
+                await bot.send_animation(chat_id=chat_id, animation=media, caption=text, reply_markup=reply_markup)
+            else:
+                await bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=reply_markup)
+            return
+        except Exception as error:
+            logger.warning("Не удалось отправить изображение карточки подписки {}: {}", key.email, error)
+    await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+
+
 async def render_key_info(message: Message, session: AsyncSession, key_ref_or_email: str, image_path: str):
     text, reply_markup, _ = await build_key_view_payload(session, message.chat.id, key_ref_or_email)
     await edit_or_send_message(
@@ -460,7 +492,13 @@ async def _build_single_subscription_text(
     if getattr(key, "client_id", None):
         try:
             if await is_full_remnawave_cluster(key.server_id, session):
-                profile = await get_remnawave_profile(session, str(key.server_id), key.client_id, username=key.email)
+                profile = await get_remnawave_profile(
+                    session,
+                    str(key.server_id),
+                    key.client_id,
+                    username=key.email,
+                    subscription_url=key.remnawave_link or key.key,
+                )
                 if isinstance(profile, dict):
                     hwid_count = profile.get("hwid_count")
                     used_traffic_gb = profile.get("used_gb")
@@ -584,7 +622,15 @@ async def _render_my_devices(
     async def _fetch(api):
         return await api.get_user_hwid_devices(client_id, username=key_email)
 
-    devices = await with_remnawave_api(session, server_id, _fetch, timeout_sec=10.0)
+    devices = await with_remnawave_api(
+        session,
+        server_id,
+        _fetch,
+        timeout_sec=10.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=record.get("remnawave_link") or record.get("link"),
+    )
     if devices is None:
         await safe_answer_callback(callback_query, MY_DEVICES_UNAVAILABLE_TEXT, show_alert=True)
         return

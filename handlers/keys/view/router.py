@@ -236,7 +236,15 @@ async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSess
             return False
         return await api.delete_user_hwid_device(client_id, target_hwid, username=key_email)
 
-    result = await with_remnawave_api(session, server_id, _delete, timeout_sec=10.0)
+    result = await with_remnawave_api(
+        session,
+        server_id,
+        _delete,
+        timeout_sec=10.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=record.get("remnawave_link") or record.get("link"),
+    )
     if result is None:
         await safe_answer_callback(callback_query, "❌ Устройство не найдено.", show_alert=True)
     elif result is False:

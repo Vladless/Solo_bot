@@ -73,7 +73,15 @@ async def _render_admin_devices(
         devices = await api.get_user_hwid_devices(client_id, username=key_email)
         return user_info, devices
 
-    result = await with_remnawave_api(session, server_id, _fetch, timeout_sec=8.0)
+    result = await with_remnawave_api(
+        session,
+        server_id,
+        _fetch,
+        timeout_sec=8.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=key_obj.remnawave_link or key_obj.key,
+    )
     if result is None:
         await callback_query.message.edit_text(menu_text("Устройства", "❌ Ошибка авторизации в Remnawave."))
         return
@@ -213,7 +221,15 @@ async def handle_hwid_unbind(
             return False
         return await api.delete_user_hwid_device(client_id, target_hwid, username=key_email)
 
-    result = await with_remnawave_api(session, server_id, _delete, timeout_sec=10.0)
+    result = await with_remnawave_api(
+        session,
+        server_id,
+        _delete,
+        timeout_sec=10.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=key_obj.remnawave_link or key_obj.key,
+    )
     if result is None:
         await callback_query.answer("Устройство не найдено", show_alert=True)
     elif result is False:

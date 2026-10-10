@@ -150,6 +150,10 @@ MODES_TITLES: Final[dict[str, str]] = {
     "SINGLE_SUBSCRIPTION_OPEN_PROFILE": SETTING_SINGLE_SUBSCRIPTION_SCREEN,
 }
 
+SINGLE_SUBSCRIPTION_TITLES: Final[dict[str, str]] = {
+    key: MODES_TITLES[key] for key in ("SINGLE_SUBSCRIPTION_MODE", "SINGLE_SUBSCRIPTION_OPEN_PROFILE")
+}
+
 MONEY_FIELDS: Final[dict[str, str]] = {
     "FX_MARKUP": "Наценка FX (%)",
     "RUB_TO_USD": "Курс USD/RUB",

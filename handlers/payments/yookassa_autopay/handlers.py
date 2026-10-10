@@ -41,23 +41,26 @@ from database.yookassa_autopay import (
 )
 from filters.admin import IsAdminFilter
 from handlers.admin.users.keyboard import AdminUserEditorCallback
+from handlers.keys.view.payload import send_key_info
 from handlers.utils import edit_or_send_message
 from hooks.hooks import register_hook
 from logger import logger
 from services.payments.checkout_intent import preview_checkout_autopay_terms
 from services.payments.currency_rates import format_for_user
+from services.payments.yookassa.amounts import precise_yookassa_amount, quote_yookassa_amount
 from services.payments.yookassa_autopay.service import (
     create_checkout_payment,
     enable_autopay_for_key,
     quote_autopay_for_key,
+    register_addons_notifier,
     resolve_unknown_attempt,
 )
-from services.payments.yookassa.amounts import precise_yookassa_amount, quote_yookassa_amount
 from settings import buttons, texts
 from settings.buttons import APPLY, BACK, CANCEL, CUSTOM_AMOUNT, MAIN_MENU, PAY_2
 
 
 router = Router(name="core_yookassa_autopay")
+register_addons_notifier(send_key_info)
 _PAGE_SIZE = 8
 _FLOW_BY_STATE = {
     "waiting_for_payment": "tariff_purchase",

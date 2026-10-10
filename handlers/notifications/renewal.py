@@ -154,7 +154,7 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
             selected_price_rub=renewal_cost,
         )
     )
-    await add_notification(ctx.session, owner_ref, renew_notification_id)
+    await add_notification(ctx.session, owner_ref, renew_notification_id, commit=False)
 
     try:
         renewed = await renew_key_in_cluster(
@@ -232,7 +232,7 @@ async def _revert_renewal(
         await ctx.session.execute(
             update(Key).where(Key.user_id == user_id, Key.client_id == client_id).values(**original_config)
         )
-        await delete_notification(ctx.session, user_id, notification_id)
+        await delete_notification(ctx.session, user_id, notification_id, commit=False)
         logger.warning(f"[RENEW] {email}: продление отменено, {renewal_cost} возвращены на баланс")
     except Exception as error:
         logger.error(f"[RENEW] {email}: не удалось откатить продление ({renewal_cost}): {error}")

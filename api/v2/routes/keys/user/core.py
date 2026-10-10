@@ -115,6 +115,7 @@ async def user_key_connection(
                 client_id,
                 fallback_any=True,
                 username=str(getattr(db_key, "email", "") or "") or None,
+                subscription_url=getattr(db_key, "remnawave_link", None) or getattr(db_key, "key", None),
             )
             if profile:
                 is_online = bool(profile.get("is_online"))
@@ -228,6 +229,7 @@ async def user_key_details(
             client_id,
             fallback_any=True,
             username=str(getattr(db_key, "email", "") or "") or None,
+            subscription_url=getattr(db_key, "remnawave_link", None) or getattr(db_key, "key", None),
         )
         if profile:
             connected_devices = int(profile.get("hwid_count") or 0)

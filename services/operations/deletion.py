@@ -2,7 +2,7 @@ import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_servers
+from database import get_key_details, get_servers
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -34,9 +34,14 @@ async def delete_key_from_cluster(cluster_id: str, email: str, client_id: str, s
         xui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
         if len(remna_servers) + len(xui_servers) != len(cluster):
             raise ValueError("Неизвестный тип панели при удалении подписки")
+        subscription_url = None
+        if remna_servers:
+            key = await get_key_details(session, email)
+            if key and key.get("client_id") == client_id:
+                subscription_url = key.get("remnawave_link") or key.get("link")
         results = await asyncio.gather(
             delete_on_3xui(xui_servers, email, client_id),
-            delete_on_remnawave(remna_servers, client_id, email),
+            delete_on_remnawave(remna_servers, client_id, email, subscription_url=subscription_url),
             return_exceptions=True,
         )
         if any(result is not True for result in results):
@@ -72,7 +77,12 @@ async def delete_on_3xui(servers: list, email: str, client_id: str) -> bool:
     return True
 
 
-async def delete_on_remnawave(servers: list, client_id: str, username: str | None = None) -> bool:
+async def delete_on_remnawave(
+    servers: list,
+    client_id: str,
+    username: str | None = None,
+    subscription_url: str | None = None,
+) -> bool:
     """Подтверждает удаление на каждой отдельной панели Remnawave."""
     if any(not str(server.get("api_url") or "").strip().rstrip("/") for server in servers):
         raise ValueError("Не задан адрес панели Remnawave")
@@ -81,6 +91,8 @@ async def delete_on_remnawave(servers: list, client_id: str, username: str | Non
         name = server.get("server_name", "remna")
         try:
             async with remnawave_api(server["api_url"]) as api:
+                if subscription_url:
+                    api.bind_subscription(client_id, username, subscription_url)
                 if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
                     if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                         raise ValueError("Авторизация не удалась")

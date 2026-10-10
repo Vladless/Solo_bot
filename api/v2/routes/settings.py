@@ -51,6 +51,7 @@ from handlers.admin.settings.settings_config import (
     PAYMENT_CASHBOX_TITLES,
     PAYMENT_PROVIDER_TITLES,
     REMNAWAVE_TITLES,
+    SINGLE_SUBSCRIPTION_TITLES,
     TARIFFS_TITLES,
     WEB_TITLES,
     YOOKASSA_AUTOPAY_OPTIONS,
@@ -218,6 +219,7 @@ async def get_settings_schema(identity=Depends(verify_identity_admin)):
             "fields": fields,
         }
         if scope == "payments":
+            section["fields"] = []
             children = []
             for cashbox, providers in PAYMENT_CASHBOX_GROUPS.items():
                 cashbox_fields = _schema_fields(
@@ -239,6 +241,21 @@ async def get_settings_schema(identity=Depends(verify_identity_admin)):
                     "fields": cashbox_fields,
                 })
             section["children"] = children
+        elif scope == "modes":
+            section["fields"] = [field for field in fields if field["key"] not in SINGLE_SUBSCRIPTION_TITLES]
+            section["children"] = [
+                {
+                    "scope": "single_subscription",
+                    "title": MODES_TITLES["SINGLE_SUBSCRIPTION_MODE"],
+                    "description": SETTING_HINTS["SINGLE_SUBSCRIPTION_OPEN_PROFILE"],
+                    "enabledKey": "SINGLE_SUBSCRIPTION_MODE",
+                    "fields": _schema_fields(
+                        {key: MODES_CONFIG[key] for key in SINGLE_SUBSCRIPTION_TITLES if key in MODES_CONFIG},
+                        SINGLE_SUBSCRIPTION_TITLES,
+                        "modes",
+                    ),
+                }
+            ]
         sections.append(section)
     return {"sections": sections}
 

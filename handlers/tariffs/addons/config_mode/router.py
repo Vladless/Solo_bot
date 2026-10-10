@@ -12,7 +12,7 @@ from database import get_balance, get_key_details, get_tariff_by_id, save_key_co
 from database.access.resolution import TelegramId, UserId
 from database.keys import lock_owned_key_for_operation, resolve_key_operation_owner
 from database.users import get_locked_balance
-from handlers.keys.view.payload import render_key_info
+from handlers.keys.view.payload import render_key_info, send_key_info
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.utils import edit_or_send_message
 from hooks.processors import process_addon_purchase_complete
@@ -30,7 +30,6 @@ from settings.buttons import (
 )
 from settings.config import USE_NEW_PAYMENT_FLOW
 from settings.texts import (
-    ADDONS_APPLIED_TEXT,
     DOWNGRADE_SAVED_TEXT,
     DOWNGRADE_WARNING_TEXT,
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
@@ -664,13 +663,12 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                     user_id=billing_uid,
                 )
         financial_applied = True
+        await state.clear()
 
         logger.info(
             "[ADDONS] Успешное применение расширения: "
             f"tg_id={tg_id} email={email} total_price={total_price} extra_price={extra_price}"
         )
-
-        await state.clear()
 
         intercepted = await process_addon_purchase_complete(
             chat_id=callback.from_user.id,
@@ -679,13 +677,13 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
             message=callback.message,
         )
         if not intercepted:
-            await render_key_info(callback.message, session, email, "img/pic_view.jpg")
-
-        await callback.answer(ADDONS_APPLIED_TEXT, show_alert=True)
+            await send_key_info(callback.bot, session, TelegramId(callback.from_user.id), email)
 
     except Exception as error:
+        if financial_applied:
+            logger.warning("[ADDONS] Докупка {} сохранена, но экран не обновлён: {}", email, error)
+            return
         logger.error(f"[ADDONS] Ошибка при применении расширения подписки для {email}: {error}")
-        if not financial_applied:
-            await session.rollback()
+        await session.rollback()
         await callback.message.answer("❌ Ошибка при обновлении подписки. Попробуйте позже.")
         await state.clear()

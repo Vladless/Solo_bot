@@ -252,6 +252,25 @@ def get_media_type(media_path: str) -> str:
     return "photo"
 
 
+def find_media_file(original_path: str) -> str | None:
+    """Находит медиафайл с учётом доступного расширения."""
+    if not original_path:
+        return None
+
+    if os.path.isfile(original_path):
+        return original_path
+
+    base_name = os.path.splitext(original_path)[0]
+    supported_extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".avi"]
+
+    for ext in supported_extensions:
+        fallback_path = base_name + ext
+        if os.path.isfile(fallback_path):
+            return fallback_path
+
+    return None
+
+
 async def edit_or_send_message(
     target_message: Message,
     text: str,
@@ -269,23 +288,6 @@ async def edit_or_send_message(
         edit_or_send_message.cache = OrderedDict()
         edit_or_send_message.lock = asyncio.Lock()
         edit_or_send_message.max = 256
-
-    def find_media_file(original_path: str) -> str | None:
-        if not original_path:
-            return None
-
-        if os.path.isfile(original_path):
-            return original_path
-
-        base_name = os.path.splitext(original_path)[0]
-        supported_extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".avi"]
-
-        for ext in supported_extensions:
-            fallback_path = base_name + ext
-            if os.path.isfile(fallback_path):
-                return fallback_path
-
-        return None
 
     if media_path:
         actual_media_path = find_media_file(media_path)

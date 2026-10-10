@@ -472,13 +472,7 @@ async def process_addon_purchase_complete(
     admin: bool = False,
     **kwargs,
 ) -> bool:
-    """Открывает кабинет или передаёт хукам показ результата покупки дополнения."""
-    from .single_subscription import is_single_sub_enabled, open_single_sub_profile
-
-    if is_single_sub_enabled():
-        if await open_single_sub_profile(message, session, admin=admin):
-            return True
-
+    """Передаёт хукам показ результата докупки."""
     results = await run_hooks(
         "addon_purchase_complete",
         chat_id=chat_id,

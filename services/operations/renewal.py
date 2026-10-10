@@ -64,6 +64,7 @@ async def renew_on_remnawave(
     external_squad_uuid: str | None = None,
     old_device_limit: int | None = None,
     billing_user_id: int | None = None,
+    subscription_url: str | None = None,
 ) -> bool:
     remnawave_nodes = [
         s for s in cluster if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
@@ -130,6 +131,9 @@ async def renew_on_remnawave(
         _renew,
         fallback_any=True,
         timeout_sec=12.0,
+        client_id=client_id,
+        username=email,
+        subscription_url=subscription_url,
     )
     if updated:
         try:
@@ -339,6 +343,7 @@ async def renew_key_in_cluster(
                 external_squad_uuid=external_squad_uuid,
                 tariff_id=plan,
                 billing_user_id=billing_user_id,
+                subscription_url=kd.get("remnawave_link") or kd.get("link"),
             )
 
             billing_user_id = await resolve_key_operation_owner(
@@ -348,7 +353,7 @@ async def renew_key_in_cluster(
                 return False
             await update_key_expiry(session, new_client_id or client_id, new_expiry_time, user_id=billing_user_id)
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
-                await delete_notification(session, billing_user_id, f"{email}_{prefix}")
+                await delete_notification(session, billing_user_id, f"{email}_{prefix}", commit=False)
 
             try:
                 key_link = await make_aggregated_link(
@@ -417,6 +422,7 @@ async def renew_key_in_cluster(
             external_squad_uuid=external_squad_uuid,
             old_device_limit=old_device_limit,
             billing_user_id=billing_user_id,
+            subscription_url=kd.get("remnawave_link") or kd.get("link"),
         )
 
         succeeded, _ = await renew_on_3xui(
@@ -439,7 +445,7 @@ async def renew_key_in_cluster(
                 return False
             await update_key_expiry(session, client_id, new_expiry_time, user_id=billing_user_id)
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
-                await delete_notification(session, billing_user_id, f"{email}_{prefix}")
+                await delete_notification(session, billing_user_id, f"{email}_{prefix}", commit=False)
 
             try:
                 remna_link_override = None

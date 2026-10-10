@@ -2914,15 +2914,13 @@ async def _merge_blueprints_into_landing(session: AsyncSession, blueprints: list
 
 
 async def _merge_wiring_into_landing(session: AsyncSession, wiring: dict) -> tuple[int, int]:
-    """Экраны и слоты обвязки из файла набора: экраны добавляются по адресу, слоты — если элемент приехал."""
+    """Добавляет экраны набора, сохраняя шапку и подвал сайта."""
     screens = wiring.get("screens")
     screens = (
         [s for s in screens if isinstance(s, dict) and str(s.get("id") or "").strip()]
         if isinstance(screens, list)
         else []
     )
-    chrome = wiring.get("chrome") if isinstance(wiring.get("chrome"), dict) else {}
-
     current, _ = await _resolve_variant(session, "landing", None)
     tokens = dict(current.theme_tokens or {})
     stored = tokens.get("customPackWiring")
@@ -2939,26 +2937,13 @@ async def _merge_wiring_into_landing(session: AsyncSession, wiring: dict) -> tup
             added += 1
         by_id[key] = item
 
-    known = {
-        str(b.get("slug") or "").strip()
-        for b in (
-            tokens.get("customElementBlueprints") if isinstance(tokens.get("customElementBlueprints"), list) else []
-        )
-        if isinstance(b, dict)
-    }
     slots = stored.get("chrome") if isinstance(stored.get("chrome"), dict) else {}
     next_chrome = {"header": str(slots.get("header") or ""), "footer": str(slots.get("footer") or "")}
-    linked = 0
-    for slot in ("header", "footer"):
-        wanted = str(chrome.get(slot) or "").strip()
-        if wanted and wanted in known:
-            next_chrome[slot] = wanted
-            linked += 1
 
     tokens["customPackWiring"] = {"screens": list(by_id.values()), "chrome": next_chrome}
     current.theme_tokens = tokens
     await session.flush()
-    return added, linked
+    return added, 0
 
 
 def _reject_supplied_pack_blocks(design: dict) -> None:

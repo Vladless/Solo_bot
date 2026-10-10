@@ -6,6 +6,7 @@ import hashlib
 import json
 import uuid
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlparse
@@ -53,6 +54,13 @@ from .client import client, money
 
 
 _IDEMPOTENCE_WINDOW = timedelta(hours=23, minutes=50)
+_addons_notifier: Callable[..., Awaitable[None]] | None = None
+
+
+def register_addons_notifier(notifier: Callable[..., Awaitable[None]]) -> None:
+    """Подключает отправку карточки после докупки."""
+    global _addons_notifier
+    _addons_notifier = notifier
 
 
 async def _commit(session: AsyncSession) -> None:
@@ -878,6 +886,15 @@ async def _emit_notices(attempt_id: str, bot=None) -> None:
         elif attempt.status == "applied" and attempt.intent.get("balance_only") and config.get("NOTIFY_SUCCESS", True):
             kind = "balance_success"
             message = texts.YOOKASSA_AUTOPAY_SERVICE_BALANCE_SUCCESS_NOTICE
+        elif (
+            attempt.status == "applied"
+            and config.get("NOTIFY_SUCCESS", True)
+            and isinstance(attempt.intent.get("checkout"), dict)
+            and attempt.intent["checkout"].get("state") == "waiting_for_addons_payment"
+        ):
+            kind = "addons_success"
+            checkout_data = attempt.intent["checkout"].get("data") or {}
+            message = texts.ADDONS_PACK_SUCCESS_TEXT if checkout_data.get("pack_mode") else texts.ADDONS_APPLIED_TEXT
         elif attempt.status == "canceled" and attempt.subscription_id is not None:
             sub = await dal.get_subscription(session, attempt.subscription_id)
             exhausted = sub and int(sub.retry_count or 0) >= int(config.get("MAX_RETRY_ATTEMPTS", 30))
@@ -904,7 +921,16 @@ async def _emit_notices(attempt_id: str, bot=None) -> None:
                 },
             )
         chat_id = int(user.tg_id) if user and user.tg_id and int(user.tg_id) > 0 else None
+        owner_id = UserId(user.id) if user is not None else None
         await _commit(session)
+    if kind == "addons_success":
+        if bot is not None and chat_id is not None and owner_id is not None and _addons_notifier is not None:
+            try:
+                async with async_session_maker() as session:
+                    await _addons_notifier(bot, session, owner_id, str(checkout_data.get("client_id") or ""))
+            except Exception as exc:
+                logger.warning("[Autopay] Не удалось отправить карточку после докупки {}: {}", attempt_id, exc)
+        return
     if kind in {"manual_review", "paid_review"}:
         details = (
             texts.YOOKASSA_AUTOPAY_SERVICE_PAID_REVIEW_DETAILS
