@@ -225,7 +225,9 @@ async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSess
     key_email = str(record.get("email") or "") or None
 
     async def _delete(api):
-        devices = await api.get_user_hwid_devices(client_id, username=key_email) or []
+        devices = await api.get_user_hwid_devices(client_id, username=key_email)
+        if devices is None:
+            return False
         target_idx = page * DEVICES_PER_PAGE + idx
         if target_idx >= len(devices):
             return None
@@ -234,13 +236,13 @@ async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSess
             return False
         return await api.delete_user_hwid_device(client_id, target_hwid, username=key_email)
 
-    result = await with_remnawave_api(session, server_id, _delete, fallback_any=True, timeout_sec=10.0)
+    result = await with_remnawave_api(session, server_id, _delete, timeout_sec=10.0)
     if result is None:
         await safe_answer_callback(callback_query, "❌ Устройство не найдено.", show_alert=True)
     elif result is False:
         await safe_answer_callback(callback_query, "❌ Не удалось отвязать устройство.", show_alert=True)
     else:
-        await invalidate_remnawave_profile(session, server_id, str(client_id), fallback_any=True)
+        await invalidate_remnawave_profile(session, server_id, str(client_id))
         await register_deletion(client_id)
         await safe_answer_callback(callback_query, "✅ Устройство отвязано.")
 

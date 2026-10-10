@@ -75,6 +75,7 @@ from settings.texts import (
     MY_DEVICES_EMPTY_TEXT,
     MY_DEVICES_HINT,
     MY_DEVICES_TEXT,
+    MY_DEVICES_UNAVAILABLE_TEXT,
     NO_SUBSCRIPTIONS_MSG,
 )
 
@@ -258,7 +259,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
 
     is_full_remnawave = await is_full_task
 
-    hwid_count = 0
+    hwid_count = None
     remna_used_gb = None
     if is_full_remnawave and client_id:
         profile = await get_remnawave_profile(
@@ -268,7 +269,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
             username=str(record.get("email") or "") or None,
         )
         if profile:
-            hwid_count = int(profile.get("hwid_count") or 0)
+            hwid_count = profile.get("hwid_count")
             remna_used_gb = profile.get("used_gb")
             traffic_limit_bytes_actual = profile.get("traffic_limit_bytes")
             if traffic_limit_bytes_actual is not None:
@@ -294,7 +295,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
         formatted_expiry_date=formatted_expiry_date,
         days_left_message=days_left_message,
         country=server_name if country_selection_enabled else None,
-        hwid_count=hwid_count if device_limit is not None else 0,
+        hwid_count=hwid_count,
         tariff_name=tariff_name,
         traffic_limit=traffic_limit_gb,
         device_limit=device_limit,
@@ -371,7 +372,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
             text=MY_DEVICES,
             callback_data=build_key_callback("my_devices", client_id, key_name) + "|0",
         )
-        if hwid_reset_enabled and hwid_count > 0
+        if hwid_reset_enabled and is_full_remnawave
         else None,
         "qr": InlineKeyboardButton(text=QR, callback_data=build_key_callback("show_qr", client_id, key_name))
         if qrcode_enabled
@@ -425,7 +426,7 @@ async def _build_single_subscription_text(
     device_limit = 0
     base_device_limit = 0
     used_traffic_gb = None
-    hwid_count = 0
+    hwid_count = None
 
     key_record = await get_key_details(session, key.email)
 
@@ -456,13 +457,12 @@ async def _build_single_subscription_text(
         except Exception as e:
             logger.error(f"[single_sub] Ошибка тарифа для {key.email}: {e}")
 
-    hwid_reset_enabled = bool(BUTTONS_CONFIG.get("HWID_RESET_BUTTON_ENABLE", HWID_RESET_BUTTON))
     if getattr(key, "client_id", None):
         try:
             if await is_full_remnawave_cluster(key.server_id, session):
                 profile = await get_remnawave_profile(session, str(key.server_id), key.client_id, username=key.email)
                 if isinstance(profile, dict):
-                    hwid_count = int(profile.get("hwid_count") or 0)
+                    hwid_count = profile.get("hwid_count")
                     used_traffic_gb = profile.get("used_gb")
         except Exception as e:
             logger.error(f"[single_sub] Ошибка профиля Remnawave для {key.email}: {e}")
@@ -495,7 +495,7 @@ async def _build_single_subscription_text(
         used_traffic_gb=used_traffic_gb,
         device_limit=device_limit,
         base_device_limit=base_device_limit,
-        hwid_count=hwid_count if hwid_reset_enabled else 0,
+        hwid_count=hwid_count,
         expiry_date=expiry_date,
         is_expired=is_expired,
     )
@@ -584,9 +584,10 @@ async def _render_my_devices(
     async def _fetch(api):
         return await api.get_user_hwid_devices(client_id, username=key_email)
 
-    devices = await with_remnawave_api(session, server_id, _fetch, fallback_any=True, timeout_sec=10.0)
+    devices = await with_remnawave_api(session, server_id, _fetch, timeout_sec=10.0)
     if devices is None:
-        devices = []
+        await safe_answer_callback(callback_query, MY_DEVICES_UNAVAILABLE_TEXT, show_alert=True)
+        return
 
     total = len(devices)
     if total == 0:

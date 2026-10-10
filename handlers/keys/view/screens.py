@@ -29,7 +29,7 @@ def build_key_view_text(
     formatted_expiry_date: str,
     days_left_message: str,
     country: str | None = None,
-    hwid_count: int = 0,
+    hwid_count: int | None = None,
     tariff_name: str = "",
     traffic_limit: int = 0,
     device_limit: int = 0,
@@ -53,7 +53,7 @@ def build_key_view_text(
         traffic=f"{traffic} ГБ" if traffic > 0 else UNLIMITED_ROW_VALUE,
         used=f"{remna_used_gb} ГБ" if is_remnawave and traffic > 0 and remna_used_gb is not None else "",
         devices=devices if devices > 0 else UNLIMITED_ROW_VALUE,
-        connected=hwid_count if devices > 0 and hwid_count > 0 else "",
+        connected=hwid_count if hwid_count is not None else "",
         country=country or "",
     )
 
@@ -68,7 +68,7 @@ def build_single_subscription_text(
     used_traffic_gb: float | None = None,
     device_limit: int = 0,
     base_device_limit: int = 0,
-    hwid_count: int = 0,
+    hwid_count: int | None = None,
     expiry_date: str = "",
     is_expired: bool = False,
 ) -> str:
@@ -95,7 +95,7 @@ def build_single_subscription_text(
         tariff_name=plain_tariff_name(tariff_name),
         traffic=traffic,
         devices=devices,
-        connected=hwid_count if hwid_count and not is_expired else "",
+        connected=hwid_count if hwid_count is not None and not is_expired else "",
         footer=SINGLE_SUB_FOOTER_EXPIRED if is_expired else SINGLE_SUB_FOOTER,
     )
 

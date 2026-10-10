@@ -22,6 +22,7 @@ from .settings import router as settings_router
 from .stats import router as stats_router
 from .tariffs import router as tariffs_router
 from .users import router as users_router
+from .users.users_manage import quick_search_router
 
 
 router = Router(name="admins_main_router")
@@ -47,4 +48,5 @@ router.include_routers(
     gifts_router,
     settings_router,
     bulk_router,
+    quick_search_router,
 )

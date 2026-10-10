@@ -8,6 +8,7 @@ from aiogram import Router
 from core.executor import run_io
 from hooks.hooks import unregister_module_hooks
 from logger import logger
+from settings.texts import MODULE_MOVED_TO_CORE
 from utils.core_features import is_core_replaced_module
 
 
@@ -71,7 +72,7 @@ class ModulesManager:
     async def start(self, name: str) -> None:
         name = _normalize_module_name(name)
         if is_core_replaced_module(name):
-            raise ValueError("Эта платёжная система перенесена в ядро: управление в настройках касс.")
+            raise ValueError(MODULE_MOVED_TO_CORE)
         if not self._is_safe_module_name(name):
             raise ValueError(f"[Modules] Недопустимое имя модуля: {name!r}")
         rec = self.registry.get(name) or ModuleRecord(name, self.pkg(name))

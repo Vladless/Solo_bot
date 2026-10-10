@@ -156,16 +156,8 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
                     skipped_servers.add(server_name)
                     continue
 
-                async def _reset(api, server_ref=server_name):
-                    done = await api.reset_user_traffic(client_id, username=email)
-                    if done:
-                        await invalidate_remnawave_profile(
-                            session,
-                            str(server_ref or cluster_id),
-                            str(client_id),
-                            fallback_any=True,
-                        )
-                    return done
+                async def _reset(api):
+                    return await api.reset_user_traffic(client_id, username=email)
 
                 tasks.append(with_remnawave_api(session, server_name or cluster_id, _reset, fallback_any=False))
                 resources.append((panel_type, traffic_resource_id(panel_type, api_url or ""), server_name))
@@ -190,6 +182,17 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
                 skipped_servers.add(server_name)
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        for (panel, _resource_id, server_name), result in zip(resources, results, strict=True):
+            if panel == "remnawave" and result is True:
+                try:
+                    await invalidate_remnawave_profile(
+                        session,
+                        str(server_name or cluster_id),
+                        str(client_id),
+                        fallback_any=True,
+                    )
+                except Exception as e:
+                    logger.warning(f"[Remnawave Reset] Не удалось сбросить кэш профиля {client_id}: {e}")
         reset_resources = {
             resource_id
             for (panel, resource_id, _server_name), result in zip(resources, results, strict=True)

@@ -178,12 +178,15 @@ async def update_key_on_cluster(
             ):
                 remnawave_client_id = remna_result.get("vlessUuid") or remna_result.get("uuid")
                 remnawave_link_value = remna_result.get("subscriptionUrl")
-                await invalidate_remnawave_profile(
-                    session,
-                    str(remnawave_servers[0].get("server_name") or cluster_id),
-                    str(remnawave_client_id or client_id),
-                    fallback_any=True,
-                )
+                try:
+                    await invalidate_remnawave_profile(
+                        session,
+                        str(remnawave_servers[0].get("server_name") or cluster_id),
+                        str(remnawave_client_id or client_id),
+                        fallback_any=True,
+                    )
+                except Exception as e:
+                    logger.warning(f"{PANEL_REMNA} Не удалось сбросить кэш профиля {client_id}: {e}")
                 logger.info(f"{PANEL_REMNA} Клиент заново создан, uuid={remnawave_client_id}")
             else:
                 logger.error(f"{PANEL_REMNA} Не удалось авторизоваться/создать клиента")

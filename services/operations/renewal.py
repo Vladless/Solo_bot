@@ -122,13 +122,6 @@ async def renew_on_remnawave(
                 traffic_was_reset = bool(await api.reset_user_traffic(client_id, username=email))
             except Exception as e:
                 logger.warning(f"{PANEL_REMNA} reset_user_traffic: {e}")
-        if updated_local:
-            await invalidate_remnawave_profile(
-                session,
-                str(server_ref),
-                str(client_id),
-                fallback_any=True,
-            )
         return bool(updated_local)
 
     updated = await with_remnawave_api(
@@ -139,6 +132,15 @@ async def renew_on_remnawave(
         timeout_sec=12.0,
     )
     if updated:
+        try:
+            await invalidate_remnawave_profile(
+                session,
+                str(server_ref),
+                str(client_id),
+                fallback_any=True,
+            )
+        except Exception as e:
+            logger.warning(f"{PANEL_REMNA} Не удалось сбросить кэш профиля {client_id}: {e}")
         if traffic_was_reset and session is not None and billing_user_id is not None:
             current_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
             if current_owner is not None:

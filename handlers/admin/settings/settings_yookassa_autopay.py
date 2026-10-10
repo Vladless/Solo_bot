@@ -16,7 +16,6 @@ from core.settings.yookassa_autopay_config import (
 )
 from database.settings import get_setting
 from filters.admin import get_admin_context
-from settings import texts
 from settings.buttons import BACK
 from settings.texts import (
     SETTING_INVALID_VALUE,
@@ -25,6 +24,7 @@ from settings.texts import (
     YOOKASSA_AUTOPAY_SETTINGS_INVALID,
     YOOKASSA_AUTOPAY_SETTINGS_TITLE,
     YOOKASSA_AUTOPAY_SETTING_HINTS,
+    YOOKASSA_AUTOPAY_SETTING_PROMPT,
 )
 
 from ..panel.headers import menu_text, quote
@@ -141,11 +141,7 @@ async def edit_autopay_setting(
     if key in YOOKASSA_AUTOPAY_OPTIONS:
         prompt = quote(hint)
     else:
-        value = escape(_display_value(key, current, 1000))
-        template = getattr(texts, "YOOKASSA_AUTOPAY_SETTING_PROMPT", None)
-        prompt = (
-            template.format(value=value, hint=hint) if template else f"<b>{value}</b>\n{quote(hint) if hint else ''}"
-        )
+        prompt = YOOKASSA_AUTOPAY_SETTING_PROMPT.format(value=escape(_display_value(key, current, 1000)), hint=hint)
         await state.set_state(YookassaAutopaySettingsState.waiting_value)
         await state.update_data(yookassa_autopay_field=key)
     await callback.message.edit_text(

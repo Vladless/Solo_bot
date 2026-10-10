@@ -148,7 +148,6 @@ YOOKASSA_SETTINGS = "⚙️ ЮКасса: наценка"
 YOOKASSA_MARKUP_ENABLED = "Наценка ЮКассы"
 YOOKASSA_MARKUP_PERCENT = "Наценка ЮКассы (%)"
 YOOKASSA_AUTOPAY_SETTINGS = "⚙️ Параметры автоплатежей"
-PAYMENT_CASHBOXES = "Кассы"
 PAYMENT_CASHBOX_ENABLED = "Приём платежей"
 PAYMENT_CASHBOX_TITLES = {
     "YOOKASSA": "ЮКасса",

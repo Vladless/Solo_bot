@@ -415,24 +415,25 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
             selected_price=selected_price,
         )
 
-        await state.clear()
-        await callback_query.answer("Конфигурация сохранена", show_alert=True)
-
-        callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, user_id=user_id)
-        await handle_key_edit(
-            callback_query=callback_query,
-            callback_data=callback_data_back,
-            session=session,
-            update=False,
-        )
-
     except Exception as e:
-        logger.error(f"[EditConfig] Ошибка при сохранении конфигурации: {e}")
+        logger.exception(f"[EditConfig] Ошибка при сохранении конфигурации: {e}")
         await callback_query.message.edit_text(
             menu_text("Подписка", "❌ Не удалось сохранить конфигурацию. Попробуйте позже."),
             reply_markup=build_editor_kb(user_id),
         )
         await state.clear()
+        return
+
+    await state.clear()
+    await callback_query.answer("Конфигурация сохранена", show_alert=True)
+
+    callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, user_id=user_id)
+    await handle_key_edit(
+        callback_query=callback_query,
+        callback_data=callback_data_back,
+        session=session,
+        update=False,
+    )
 
 
 @router.callback_query(F.data == "cfg_back_menu", IsAdminFilter())

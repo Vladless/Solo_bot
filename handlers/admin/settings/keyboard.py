@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.money_config import get_currency_mode
-from settings.buttons import ADMIN_ACCESS_SETTINGS, BACK, PAYMENT_CASHBOXES, PAYMENT_CASHBOX_ENABLED
+from settings.buttons import ADMIN_ACCESS_SETTINGS, BACK, PAYMENT_CASHBOX_ENABLED
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from .settings_config import (
@@ -66,7 +66,7 @@ def build_settings_kb(*, show_access: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.button(
-        text=PAYMENT_CASHBOXES,
+        text="Кассы",
         callback_data=AdminPanelCallback(action="settings_cashboxes").pack(),
     )
     builder.button(

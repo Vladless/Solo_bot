@@ -91,7 +91,7 @@ async def _fetch_profile_http_only(
             api.get_user_by_uuid(client_id, username=username),
             timeout=REMNAWAVE_PROFILE_TIMEOUT_SEC,
         )
-        hwid_count = len(devices or [])
+        hwid_count = len(devices) if devices is not None else None
         used_gb = None
         traffic_limit_bytes = None
         hwid_device_limit = None
@@ -248,7 +248,8 @@ async def get_remnawave_profile(
             profile = None
 
     ttl = REMNAWAVE_PROFILE_CACHE_TTL_SEC if profile else REMNAWAVE_PROFILE_ERROR_CACHE_TTL_SEC
-    await cache_set(pkey, profile, ttl)
+    if profile is None or profile.get("hwid_count") is not None:
+        await cache_set(pkey, profile, ttl)
     return profile
 
 

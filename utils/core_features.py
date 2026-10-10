@@ -1,4 +1,4 @@
-CORE_REPLACED_MODULES = frozenset({"yookassa_autopay", "2328_modules", "kassa2328"})
+CORE_REPLACED_MODULES = frozenset({"yookassa_autopay", "2328_modules", "kassa2328", "search_user"})
 
 
 def is_core_replaced_module(name: str) -> bool:

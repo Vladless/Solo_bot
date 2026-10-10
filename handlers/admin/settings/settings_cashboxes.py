@@ -7,9 +7,13 @@ from core.bootstrap import PAYMENTS_CONFIG, update_payments_config
 from core.settings.providers_order_config import update_providers_order
 from filters.admin import IsAdminFilter
 from services.payments.providers import PROVIDERS_BASE, _get_effective_order
-from settings import texts
-from settings.buttons import PAYMENT_CASHBOXES
-from settings.texts import SETTING_UPDATED
+from settings.texts import (
+    PAYMENT_CASHBOXES_SETTINGS_HINT,
+    PAYMENT_CASHBOXES_SETTINGS_TITLE,
+    PAYMENT_CASHBOX_NOT_FOUND,
+    PAYMENT_CASHBOX_SETTINGS_HINT,
+    SETTING_UPDATED,
+)
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
@@ -46,10 +50,9 @@ async def open_settings_cashboxes_menu(callback: CallbackQuery, state: FSMContex
     """Открывает список касс и сбрасывает ввод параметров."""
     await state.clear()
     providers_state = await load_payment_providers_settings()
-    hint = getattr(texts, "PAYMENT_CASHBOXES_SETTINGS_HINT", "")
     text = menu_text(
-        getattr(texts, "PAYMENT_CASHBOXES_SETTINGS_TITLE", PAYMENT_CASHBOXES),
-        quote(hint) if hint else "",
+        PAYMENT_CASHBOXES_SETTINGS_TITLE,
+        quote(PAYMENT_CASHBOXES_SETTINGS_HINT),
     )
     await callback.message.edit_text(text=text, reply_markup=build_settings_cashboxes_kb(providers_state))
     await callback.answer()
@@ -60,8 +63,7 @@ async def show_cashbox_settings(callback: CallbackQuery, cashbox: str) -> None:
     if cashbox == "YOOKASSA":
         await show_yookassa_settings(callback)
         return
-    hint = getattr(texts, "PAYMENT_CASHBOX_SETTINGS_HINT", "")
-    text = menu_text(PAYMENT_CASHBOX_TITLES[cashbox], quote(hint) if hint else "")
+    text = menu_text(PAYMENT_CASHBOX_TITLES[cashbox], quote(PAYMENT_CASHBOX_SETTINGS_HINT))
     keyboard = build_settings_cashbox_kb(cashbox, await load_payment_providers_settings())
     await callback.message.edit_text(text=text, reply_markup=keyboard)
 
@@ -71,7 +73,7 @@ async def open_cashbox_settings(callback: CallbackQuery, callback_data: AdminPan
     """Открывает настройки кассы без изменения её состояния."""
     cashboxes = list(PAYMENT_CASHBOX_GROUPS)
     if not 1 <= callback_data.page <= len(cashboxes):
-        await callback.answer(getattr(texts, "PAYMENT_CASHBOX_NOT_FOUND", texts.SETTING_INVALID_VALUE), show_alert=True)
+        await callback.answer(PAYMENT_CASHBOX_NOT_FOUND, show_alert=True)
         return
     await state.clear()
     await show_cashbox_settings(callback, cashboxes[callback_data.page - 1])
@@ -89,7 +91,7 @@ async def toggle_cashbox_setting(
     index = callback_data.page
 
     if not 1 <= index <= len(keys):
-        await callback.answer(getattr(texts, "PAYMENT_CASHBOX_NOT_FOUND", texts.SETTING_INVALID_VALUE), show_alert=True)
+        await callback.answer(PAYMENT_CASHBOX_NOT_FOUND, show_alert=True)
         return
 
     provider_code = keys[index - 1]
