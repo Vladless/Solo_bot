@@ -408,8 +408,15 @@ async def build_key_view_message(session: AsyncSession, email: str):
     return text, reply_markup
 
 
-async def send_key_info(bot, session: AsyncSession, user_ref: int, key_ref_or_email: str) -> None:
-    """Отправляет владельцу актуальную карточку подписки."""
+async def send_key_info(
+    bot,
+    session: AsyncSession,
+    user_ref: int,
+    key_ref_or_email: str,
+    *,
+    target_message: Message | None = None,
+) -> None:
+    """Показывает владельцу актуальную карточку подписки."""
     key = await resolve_key(session, user_ref, key_ref_or_email)
     if key is None:
         return
@@ -420,6 +427,17 @@ async def send_key_info(bot, session: AsyncSession, user_ref: int, key_ref_or_em
     text, reply_markup, _ = await build_key_view_payload(session, owner, key.client_id)
     reply_markup = webapp_only_markup() or reply_markup
     media_path = find_media_file("img/pic_view.jpg")
+    if target_message is not None:
+        if target_message.chat.id != chat_id:
+            raise ValueError("Сообщение карточки не принадлежит владельцу подписки")
+        await edit_or_send_message(
+            target_message=target_message,
+            text=text,
+            reply_markup=reply_markup,
+            media_path=media_path,
+            edit_only=True,
+        )
+        return
     if media_path:
         try:
             media = FSInputFile(media_path)

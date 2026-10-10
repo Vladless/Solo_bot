@@ -571,7 +571,9 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                 message=callback.message,
             )
             if not intercepted:
-                await send_key_info(callback.bot, session, TelegramId(callback.from_user.id), email)
+                await send_key_info(
+                    callback.bot, session, TelegramId(callback.from_user.id), email, target_message=callback.message
+                )
 
         except Exception as error:
             if financial_applied:

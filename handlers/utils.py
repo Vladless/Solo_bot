@@ -279,6 +279,7 @@ async def edit_or_send_message(
     disable_web_page_preview: bool = False,
     force_text: bool = False,
     disable_cache: bool = False,
+    edit_only: bool = False,
 ):
     if not hasattr(edit_or_send_message, "cache"):
         import asyncio
@@ -319,31 +320,32 @@ async def edit_or_send_message(
                 except Exception as e:
                     if _is_message_not_modified(e):
                         return
-                    try:
-                        if media_type == "photo":
-                            await target_message.answer_photo(
-                                photo=cached_id,
-                                caption=text,
-                                reply_markup=reply_markup,
-                                disable_web_page_preview=disable_web_page_preview,
-                            )
-                        elif media_type == "video":
-                            await target_message.answer_video(
-                                video=cached_id,
-                                caption=text,
-                                reply_markup=reply_markup,
-                                disable_web_page_preview=disable_web_page_preview,
-                            )
-                        elif media_type == "animation":
-                            await target_message.answer_animation(
-                                animation=cached_id,
-                                caption=text,
-                                reply_markup=reply_markup,
-                                disable_web_page_preview=disable_web_page_preview,
-                            )
-                        return
-                    except Exception:
-                        pass
+                    if not edit_only:
+                        try:
+                            if media_type == "photo":
+                                await target_message.answer_photo(
+                                    photo=cached_id,
+                                    caption=text,
+                                    reply_markup=reply_markup,
+                                    disable_web_page_preview=disable_web_page_preview,
+                                )
+                            elif media_type == "video":
+                                await target_message.answer_video(
+                                    video=cached_id,
+                                    caption=text,
+                                    reply_markup=reply_markup,
+                                    disable_web_page_preview=disable_web_page_preview,
+                                )
+                            elif media_type == "animation":
+                                await target_message.answer_animation(
+                                    animation=cached_id,
+                                    caption=text,
+                                    reply_markup=reply_markup,
+                                    disable_web_page_preview=disable_web_page_preview,
+                                )
+                            return
+                        except Exception:
+                            pass
 
             async with aiofiles.open(actual_media_path, "rb") as f:
                 data = await f.read()
@@ -365,6 +367,8 @@ async def edit_or_send_message(
             except Exception as e:
                 if _is_message_not_modified(e):
                     return
+                if edit_only:
+                    raise
                 if media_type == "photo":
                     msg = await target_message.answer_photo(
                         photo=upload,
@@ -415,6 +419,8 @@ async def edit_or_send_message(
         except Exception as e:
             if _is_message_not_modified(e):
                 return
+            if edit_only:
+                raise
     try:
         await target_message.edit_text(
             text=text,
@@ -425,6 +431,8 @@ async def edit_or_send_message(
     except Exception as e:
         if _is_message_not_modified(e):
             return
+        if edit_only:
+            raise
         await target_message.answer(
             text=text,
             reply_markup=reply_markup,

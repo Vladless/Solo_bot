@@ -504,14 +504,23 @@ async def fastflow_coupon(callback_query: CallbackQuery, state: FSMContext):
         await callback_query.answer(amount_not_found_text, show_alert=True)
         return
 
-    await state.set_state(FastFlowCouponState.waiting_for_coupon_code)
     await edit_or_send_message(
         target_message=callback_query.message,
         text=input_text,
         reply_markup=InlineKeyboardBuilder()
         .row(InlineKeyboardButton(text=btn.BACK, callback_data="fastflow_coupon_back"))
         .as_markup(),
+        edit_only=True,
     )
+    await state.update_data(
+        fastflow_coupon_prompt={
+            "chat_id": callback_query.message.chat.id,
+            "message_id": callback_query.message.message_id,
+            "has_caption": callback_query.message.caption is not None
+            or callback_query.message.content_type in {"photo", "video", "animation", "audio", "document", "voice"},
+        }
+    )
+    await state.set_state(FastFlowCouponState.waiting_for_coupon_code)
 
 
 @router.callback_query(F.data == "buy_confirm_balance")
@@ -534,6 +543,7 @@ async def _finish_from_balance(
     message, session, temp_key: str, payload: dict, user_ref: int, *, state: FSMContext | None = None
 ) -> bool:
     """Закрывает покупку с баланса без экрана касс."""
+    from handlers.keys.view.payload import send_key_info
     from handlers.payments.utils import _handle_temp_state
 
     class CheckoutNotApplied(Exception):
@@ -558,14 +568,44 @@ async def _finish_from_balance(
                     or payload.get("required_amount") != 0
                 ):
                     raise CheckoutNotApplied
-                done = await _handle_temp_state(checkout_session, owner, temp_key, payload, 0)
+                done = await _handle_temp_state(checkout_session, owner, temp_key, payload, 0, notify_addons=False)
                 if not done:
                     raise CheckoutNotApplied
         except CheckoutNotApplied:
             done = False
+    if done and temp_key == "waiting_for_addons_payment":
+        try:
+            target_message = message if message.from_user is not None and message.from_user.is_bot else None
+            if target_message is None and state is not None:
+                prompt = (await state.get_data()).get("fastflow_coupon_prompt")
+                if (
+                    isinstance(prompt, dict)
+                    and prompt.get("chat_id") == message.chat.id
+                    and type(prompt.get("message_id")) is int
+                    and prompt["message_id"] > 0
+                ):
+                    target_message = Message(
+                        message_id=prompt["message_id"],
+                        date=message.date,
+                        chat=message.chat,
+                        message_thread_id=message.message_thread_id,
+                        business_connection_id=message.business_connection_id,
+                        caption="" if prompt.get("has_caption") else None,
+                    ).as_(message.bot)
+            if target_message is None:
+                logger.warning("[ADDONS] Дополнения применены, но сообщение для обновления карточки не найдено")
+            else:
+                await send_key_info(message.bot, session, owner, payload["email"], target_message=target_message)
+        except Exception as error:
+            logger.warning("[ADDONS] Дополнения применены, но карточка не обновлена: {}", error)
     if done and state is not None:
         await state.update_data(
-            temp_key=None, temp_payload=None, required_amount=None, fastflow_providers=[], chosen_currency=None
+            temp_key=None,
+            temp_payload=None,
+            required_amount=None,
+            fastflow_providers=[],
+            chosen_currency=None,
+            fastflow_coupon_prompt=None,
         )
     if not done:
         try:
