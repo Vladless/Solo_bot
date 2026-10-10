@@ -457,7 +457,7 @@ DEFAULT_SERVICE_NAME = "bot.service"
 VENV_PYTHON = os.path.join(PROJECT_DIR, "venv", "bin", "python")
 SOLOBOT_CMD_PATH = "/usr/local/bin/solobot"
 SETTINGS_DIR = os.path.join(PROJECT_DIR, "settings")
-CLI_VERSION = "v1.3.2"
+CLI_VERSION = "v1.3.3"
 
 
 def _ensure_solobot_command() -> None:
@@ -1168,8 +1168,63 @@ def _ensure_redis_service(creds: dict) -> bool:
     return False
 
 
+def _system_redis_is_available() -> bool:
+    """Проверяет Redis по настройкам системной службы."""
+    script = """
+import runpy
+import sys
+
+from redis import Redis
+
+try:
+    value = runpy.run_path(sys.argv[1]).get("REDIS_URL")
+    if not value:
+        sys.exit(1)
+    with Redis.from_url(value, socket_connect_timeout=2, socket_timeout=2) as client:
+        sys.exit(0 if client.ping() else 1)
+except Exception:
+    sys.exit(1)
+"""
+    env = dict(os.environ)
+    env.pop("REDIS_URL", None)
+    if shutil.which("systemctl"):
+        try:
+            service = subprocess.run(
+                ["systemctl", "show", SERVICE_NAME, "--property=MainPID", "--value"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+            pid = (service.stdout or "").strip()
+            if service.returncode == 0 and pid.isdigit() and int(pid) > 0:
+                with open(f"/proc/{pid}/environ", "rb") as process_env:
+                    for value in process_env.read().split(b"\0"):
+                        if value.startswith(b"REDIS_URL="):
+                            env["REDIS_URL"] = os.fsdecode(value.split(b"=", 1)[1])
+                            break
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    try:
+        result = subprocess.run(
+            [VENV_PYTHON, "-c", script, resolve_config_path(PROJECT_DIR)],
+            cwd=PROJECT_DIR,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def _install_redis_for_system_update(version: str | None) -> None:
     if (_version_major(version) or 0) < 6:
+        return
+    if _system_redis_is_available():
+        step_ok("Redis из настроек бота уже доступен. Повторная установка не нужна.")
         return
     step_info("Отдельный шаг Redis: в версии 6 он используется для кеша и межпроцессной синхронизации.")
     if not safe_confirm(
@@ -1341,17 +1396,20 @@ def install_bot():
             )
 
         step_rule(7, total, "Redis")
-        console.print(
-            "[faint]Redis будет запущен отдельным Docker-контейнером. Порт 6379 привязан только к localhost "
-            "для системной службы бота и не доступен из внешней сети.[/faint]"
-        )
-        if safe_confirm("Установить и запустить Redis?", default=True):
-            if _ensure_redis_service(db_creds):
-                step_ok("Redis установлен и запущен.")
-            else:
-                step_warn("Redis не удалось запустить автоматически. Проверьте порт 6379 и повторите позже.")
+        if _system_redis_is_available():
+            step_ok("Redis из настроек бота уже доступен. Повторная установка не нужна.")
         else:
-            step_warn("Redis пропущен; бот продолжит работу с резервным режимом без кеша.")
+            console.print(
+                "[faint]Redis будет запущен отдельным Docker-контейнером. Порт 6379 привязан только к localhost "
+                "для системной службы бота и не доступен из внешней сети.[/faint]"
+            )
+            if safe_confirm("Установить и запустить Redis?", default=True):
+                if _ensure_redis_service(db_creds):
+                    step_ok("Redis установлен и запущен.")
+                else:
+                    step_warn("Redis не удалось запустить автоматически. Проверьте порт 6379 и повторите позже.")
+            else:
+                step_warn("Redis пропущен; бот продолжит работу с резервным режимом без кеша.")
 
         step_rule(8, total, "База данных")
         console.print(
@@ -2707,8 +2765,8 @@ def update_from_beta():
 
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
-        _install_redis_for_system_update(local_version(PROJECT_DIR))
         install_dependencies()
+        _install_redis_for_system_update(local_version(PROJECT_DIR))
         fix_permissions()
         restart_service()
         step_ok("Обновление с ветки dev завершено. Проверяю запуск бота...")
@@ -2771,8 +2829,8 @@ def _do_update_to_tag(tag_name: str, update_buttons: bool, update_img: bool, upd
 
     subprocess.run(["rm", "-rf", TEMP_DIR])
 
-    _install_redis_for_system_update(tag_name)
     install_dependencies()
+    _install_redis_for_system_update(tag_name)
     fix_permissions()
     restart_service()
     step_ok(f"Обновление до {tag_name} завершено. Проверяю запуск бота...")
