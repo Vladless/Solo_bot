@@ -21,7 +21,7 @@ from handlers.payments.tribute.handlers import process_callback_pay_tribute
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from services.payments.currency_rates import format_for_user
-from services.payments.providers import get_providers_with_hooks
+from services.payments.providers import get_provider_menu_currency, get_providers_with_hooks
 from settings import buttons as btn
 from settings.config import DONATIONS_ENABLE, TRIBUTE_LINK
 from settings.texts import (
@@ -59,7 +59,7 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         allowed_currency = "RUB" if mode == "RUB" else "USD"
         filtered: dict[str, dict[str, Any]] = {}
         for key, cfg in providers_with_hooks.items():
-            currency = str(cfg.get("currency") or "").upper()
+            currency = get_provider_menu_currency(cfg)
             if currency in (allowed_currency, "RUB+USD"):
                 filtered[key] = cfg
         providers_with_hooks = filtered
@@ -145,7 +145,7 @@ async def _build_pay_menu_for_currency(currency: str) -> InlineKeyboardBuilder:
             continue
         if not cfg.get("enabled"):
             continue
-        if cfg.get("currency") != currency:
+        if get_provider_menu_currency(cfg) != currency:
             continue
         text = getattr(btn, key, key)
         builder.row(InlineKeyboardButton(text=text, callback_data=cfg["value"]))

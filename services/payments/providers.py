@@ -146,6 +146,7 @@ PROVIDERS_BASE: dict[str, dict[str, Any]] = {
     },
     "KASSA2328": {
         "currency": KASSA2328_INVOICE_CURRENCY,
+        "menu_currency": "USD",
         "value": "pay_2328",
         "fast": "handle_custom_amount_input_kassa2328",
         "module": "kassa2328",
@@ -212,6 +213,11 @@ def _sort_providers(providers: dict[str, dict[str, Any]]) -> dict[str, dict[str,
 def sort_provider_names(names: list[str], providers_map: dict[str, dict[str, Any]]) -> list[str]:
     """Сортирует платёжные кассы по настроенному порядку."""
     return sorted(names, key=lambda n: _get_effective_order(n, providers_map.get(n) or {}))
+
+
+def get_provider_menu_currency(provider: dict[str, Any]) -> str:
+    """Возвращает раздел меню для платёжной кассы."""
+    return str(provider.get("menu_currency") or provider.get("currency") or "").upper()
 
 
 def get_providers(flags: dict[str, bool]) -> dict[str, dict[str, Any]]:

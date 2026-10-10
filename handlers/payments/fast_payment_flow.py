@@ -28,7 +28,7 @@ from logger import logger
 from middlewares.session import operation_session
 from services.coupons import apply_fixed_coupon
 from services.errors import ServiceError
-from services.payments.providers import get_providers_with_hooks, sort_provider_names
+from services.payments.providers import get_provider_menu_currency, get_providers_with_hooks, sort_provider_names
 from settings import buttons as btn
 from settings.cache_config import COUPON_ATTEMPTS_PER_MINUTE
 from settings.config import TRIBUTE_LINK, USE_NEW_PAYMENT_FLOW
@@ -248,7 +248,7 @@ async def try_fast_payment_flow(
         filtered: list[str] = []
         for p_up in providers:
             cfg = providers_map.get(p_up) or {}
-            curr = str(cfg.get("currency") or "").upper()
+            curr = get_provider_menu_currency(cfg)
             if curr in (allowed_currency, "RUB+USD"):
                 filtered.append(p_up)
         providers = filtered
@@ -321,7 +321,7 @@ async def try_fast_payment_flow(
     if len(providers) == 1 and total_options == 1 and not coupon_offer:
         single_provider = providers[0]
         cfg = providers_map.get(single_provider) or {}
-        currency = cfg.get("currency")
+        currency = get_provider_menu_currency(cfg)
         if currency:
             await state.update_data(chosen_currency=currency)
         await state.update_data(temp_key=temp_key, temp_payload=temp_payload, required_amount=required_amount)
@@ -334,7 +334,7 @@ async def try_fast_payment_flow(
         button_text = getattr(btn, provider_upper, provider_upper)
         if one_screen:
             cfg = providers_map.get(provider_upper) or {}
-            curr = cfg.get("currency")
+            curr = get_provider_menu_currency(cfg)
             if curr and curr != "RUB+USD":
                 button_text = f"{button_text} ({currency_label(curr)})"
         keyboard.row(
@@ -758,7 +758,7 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         filtered: list[str] = []
         for p_up in providers:
             cfg = providers_map.get(p_up) or {}
-            curr = str(cfg.get("currency") or "").upper()
+            curr = get_provider_menu_currency(cfg)
             if curr in (allowed_currency, "RUB+USD"):
                 filtered.append(p_up)
         providers = filtered
@@ -818,7 +818,7 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         button_text = getattr(btn, provider_upper, provider_upper)
         if one_screen:
             cfg = providers_map.get(provider_upper) or {}
-            curr = cfg.get("currency")
+            curr = get_provider_menu_currency(cfg)
             if curr and curr != "RUB+USD":
                 button_text = f"{button_text} ({currency_label(curr)})"
         keyboard.row(
@@ -862,7 +862,7 @@ async def choose_payment_currency(callback_query: CallbackQuery, state: FSMConte
         [
             provider_upper
             for provider_upper in (p.upper() for p in providers)
-            if (providers_map.get(provider_upper) or {}).get("currency") == currency
+            if get_provider_menu_currency(providers_map.get(provider_upper) or {}) == currency
             and (providers_map.get(provider_upper) or {}).get("fast")
             and (providers_map.get(provider_upper) or {}).get("enabled", True)
         ],
@@ -938,7 +938,7 @@ async def choose_payment_provider(callback_query: CallbackQuery, state: FSMConte
         )
         return
 
-    currency = cfg.get("currency")
+    currency = get_provider_menu_currency(cfg)
     if currency:
         await state.update_data(chosen_currency=currency)
 

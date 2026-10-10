@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from traceback import format_exc
 from urllib.parse import urlparse
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -1309,5 +1310,10 @@ async def autopay_loop(bot, sessionmaker=async_session_maker) -> None:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error("[Autopay] Ошибка фоновой проверки: {}", exc)
+            logger.error(
+                "[Autopay] Ошибка фоновой проверки: {}: {!r}\n{}",
+                type(exc).__name__,
+                exc,
+                format_exc(),
+            )
         await asyncio.sleep(60)
