@@ -47,13 +47,14 @@ from logger import logger
 
 
 UPLOAD_DIR = Path("static/web_uploads")
-ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".webm"})
+ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".mp4", ".webm"})
 MAX_FILE_SIZE = 100 * 1024 * 1024
 _IMAGE_RESIZE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]*$")
 
 EXTENSION_CONTENT_TYPES: dict[str, frozenset[str]] = {
+    ".ico": frozenset({"image/x-icon", "image/vnd.microsoft.icon", "application/octet-stream"}),
     ".png": frozenset({"image/png"}),
     ".jpg": frozenset({"image/jpeg"}),
     ".jpeg": frozenset({"image/jpeg"}),
@@ -923,7 +924,7 @@ async def update_web_page_title(
         entity_id=slug,
         metadata={"variant": current.variant_key, "set": bool(title)},
     )
-    return {"slug": slug, "title": title or None}
+    return {"slug": slug, "title": title or None, "variant_key": current.variant_key}
 
 
 class PwaIconUpdate(BaseModel):

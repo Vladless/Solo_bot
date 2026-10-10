@@ -87,7 +87,7 @@ async def process_success_payment(
     credit_amount_override: float | None = None,
     update_currency: str | None = None,
     update_original_amount: float | None = None,
-    completion: Callable[..., Awaitable[None]] | None = None,
+    completion: Callable[..., Awaitable[str | None]] | None = None,
     use_temporary_checkout: bool = True,
 ) -> PipelineResult:
     """Подтверждает платёж, зачисляет баланс и завершает покупку."""
@@ -196,10 +196,13 @@ async def process_success_payment(
                 credited_balance = await update_balance(session, tg_id, credit_amount)
                 if credited_balance is None:
                     raise ValueError("Paid payment owner disappeared")
+            notification_kwargs = {}
             if completion is not None:
                 if tg_id is None:
                     raise ValueError("Paid payment has no owner")
-                await completion(session, tg_id, credit_amount, row)
+                completed_checkout_flow = await completion(session, tg_id, credit_amount, row)
+                if isinstance(completed_checkout_flow, str) and completed_checkout_flow:
+                    notification_kwargs["completed_checkout_flow"] = completed_checkout_flow
             if credit_amount > 0:
                 if use_temporary_checkout and row is not None:
                     use_temporary_checkout = await payment_checkout_matches(session, tg_id, row.metadata_)
@@ -211,6 +214,7 @@ async def process_success_payment(
                     checkout_operation=(row.metadata_ or {}).get(PAYMENT_CHECKOUT_OPERATION)
                     if row is not None
                     else None,
+                    **notification_kwargs,
                 )
 
             await session.commit()

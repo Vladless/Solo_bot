@@ -229,7 +229,7 @@ async def create_link(
     return response["url"], order["order_id"]
 
 
-async def _complete_checkout(session: AsyncSession, owner: UserId, amount: float, row) -> None:
+async def _complete_checkout(session: AsyncSession, owner: UserId, amount: float, row) -> str | None:
     """Выполняет сохранённую покупку один раз у актуального владельца."""
     metadata = row.metadata_ or {}
     if metadata.get("kassa2328_checkout_result"):
@@ -256,6 +256,9 @@ async def _complete_checkout(session: AsyncSession, owner: UserId, amount: float
             await _checkout_notifier(session, owner, intent, result)
         except Exception as exc:
             logger.warning("[2328] Не удалось отправить результат покупки {}: {}", row.payment_id, type(exc).__name__)
+    if intent.get("state") != "balance_topup":
+        return (intent.get("data") or {}).get("payment_flow")
+    return None
 
 
 async def settle_payment(data: dict) -> PipelineResult:

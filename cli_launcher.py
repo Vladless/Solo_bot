@@ -2381,9 +2381,11 @@ _STARTUP_SUCCESS_MARKERS = (
     "Run polling for bot",
     "Start polling",
     "Application startup complete",
+    "Webhook URL:",
+    "[Core] Telegram отключён, только backend",
 )
 
-_STARTUP_FATAL_MARKERS = (
+_STARTUP_ERROR_MARKERS = (
     "Traceback (most recent call last)",
     "ModuleNotFoundError",
     "ImportError:",
@@ -2495,7 +2497,7 @@ def _journal_tail(lines: int = 30) -> list[str]:
 
 
 def wait_for_bot_startup(timeout: int = 300) -> None:
-    """Читает журнал службы до запуска бота или ошибки."""
+    """Следит за запуском бота по журналу и состоянию службы."""
     if not is_service_exists(SERVICE_NAME):
         return
     console.print(f"[title]Слежу за логами запуска бота (до {timeout} сек)...[/title]")
@@ -2518,20 +2520,24 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
             step_fail(f"Служба не активна ({state or 'нет статуса'}). Проверьте логи (пункт 5 меню).")
         return
 
-    started_at = time_mod.time()
+    started_at = time_mod.monotonic()
     last_state_check = 0.0
     error_lines: list[str] = []
-    fatal_seen_at: float | None = None
+    error_seen = False
     verdict: str | None = None
 
     try:
         while True:
-            now = time_mod.time()
+            now = time_mod.monotonic()
             if now - started_at > timeout:
                 break
-            if fatal_seen_at is not None and now - fatal_seen_at > 10:
-                verdict = "fail"
-                break
+            if now - last_state_check > 5:
+                last_state_check = now
+                if _service_state() in ("failed", "inactive"):
+                    verdict = "fail"
+                    if not error_lines:
+                        error_lines = _journal_tail(80)
+                    break
 
             ready, _, _ = select.select([proc.stdout], [], [], 1.0)
             if ready:
@@ -2539,26 +2545,16 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
                 if not line:
                     break
                 line = line.rstrip("\n")
-                if not _is_noise_line(line) and fatal_seen_at is None:
+                if not _is_noise_line(line):
                     console.print(line, markup=False, highlight=False, style="dim")
-                if fatal_seen_at is not None:
+                if any(marker in line for marker in _STARTUP_ERROR_MARKERS):
+                    error_seen = True
+                if error_seen:
                     error_lines.append(line)
-                    if _ERROR_LINE_RE.match(line.strip()):
-                        verdict = "fail"
+                if any(marker in line for marker in _STARTUP_SUCCESS_MARKERS):
+                    if _service_state() == "active":
+                        verdict = "ok"
                         break
-                elif any(marker in line for marker in _STARTUP_SUCCESS_MARKERS):
-                    verdict = "ok"
-                    break
-                elif any(marker in line for marker in _STARTUP_FATAL_MARKERS):
-                    fatal_seen_at = time_mod.time()
-                    error_lines.append(line)
-            elif now - last_state_check > 5:
-                last_state_check = now
-                if _service_state() in ("failed", "inactive"):
-                    verdict = "fail"
-                    if not error_lines:
-                        error_lines = _journal_tail(80)
-                    break
     finally:
         try:
             proc.terminate()
