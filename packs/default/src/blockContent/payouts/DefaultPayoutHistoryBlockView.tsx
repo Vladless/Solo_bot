@@ -45,6 +45,7 @@ export function DefaultPayoutHistoryBlockView({ block, context }: TypedBlockView
   const statusPill = (status: string) => {
     const kind = payoutStatusKind(status);
     const label =
+      kind === "processing" ? history.statusLabels.processing ?? status :
       kind === "pending" ? cfg.statusPendingLabel :
       kind === "approved" ? cfg.statusApprovedLabel :
       kind === "rejected" ? cfg.statusRejectedLabel :
@@ -53,7 +54,7 @@ export function DefaultPayoutHistoryBlockView({ block, context }: TypedBlockView
     const color =
       kind === "paid" || kind === "approved" ? t.success :
       kind === "rejected" ? t.error :
-      kind === "pending" ? t.warn :
+      kind === "pending" || kind === "processing" ? t.warn :
       t.inkDim;
     return <span style={pillStyle(t, color)}>{label}</span>;
   };

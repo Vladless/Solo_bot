@@ -1,8 +1,10 @@
 import csv
+import json
 import re
 
 from base64 import b64encode
 from io import BytesIO, StringIO
+from uuid import UUID
 
 import qrcode
 
@@ -36,6 +38,7 @@ from database import (
 )
 from database.access.resolution import UserId, public_tg_id
 from database.web_notifications import notify_web
+from settings import texts as partner_texts
 from utils.referral_codes import encode_partner_code
 
 
@@ -282,6 +285,7 @@ async def partner_payouts_me(
     total, rows = await pdb.list_partner_payouts(session, user_id=user_id, limit=limit, offset=offset)
     return PartnerPayoutHistoryResponse(
         total=total,
+        status_labels={"processing": partner_texts.PARTNER_PAYHOT_STATUS_PROCESSING},
         items=[
             PartnerPayoutEntryResponse(
                 id=row["id"],
@@ -323,14 +327,89 @@ def _payout_method_options() -> list[PartnerPayoutMethodOption]:
     return [PartnerPayoutMethodOption(key=key, label=label, hint=hint) for key, label, enabled, hint in defs if enabled]
 
 
+def _recipient_error() -> str:
+    """Возвращает понятную ошибку реквизитов."""
+    return partner_texts.PARTNER_PAYHOT_RECIPIENT_INVALID
+
+
+def _recipient_labels() -> dict[str, str]:
+    """Возвращает подписи формы получателя выплаты."""
+    return {
+        "first_name": partner_texts.PARTNER_PAYHOT_FIRST_NAME,
+        "last_name": partner_texts.PARTNER_PAYHOT_LAST_NAME,
+        "phone": partner_texts.PARTNER_PAYHOT_PHONE,
+        "card_number": partner_texts.PARTNER_PAYHOT_CARD_NUMBER,
+        "email": partner_texts.PARTNER_PAYHOT_EMAIL,
+        "bank": partner_texts.PARTNER_PAYHOT_BANK,
+        "choose_bank": partner_texts.PARTNER_PAYHOT_CHOOSE_BANK,
+        "loading_banks": partner_texts.PARTNER_PAYHOT_LOADING_BANKS,
+        "retry": partner_texts.PARTNER_PAYHOT_RETRY,
+        "invalid": partner_texts.PARTNER_PAYHOT_RECIPIENT_INVALID,
+        "banks_unavailable": partner_texts.PARTNER_PAYHOT_BANKS_UNAVAILABLE,
+        "save_failed": partner_texts.PARTNER_PAYHOT_SAVE_FAILED,
+    }
+
+
+def _stored_payout_recipient(profile: dict, method: str) -> dict | None:
+    """Читает сохранённые структурированные реквизиты."""
+    from services.payments.payhot.payout_api import normalize_recipient
+
+    raw = profile.get("payout_recipient")
+    try:
+        value = json.loads(raw) if isinstance(raw, str) else raw
+        return normalize_recipient(method, value) if isinstance(value, dict) else None
+    except (ValueError, TypeError):
+        return None
+
+
+async def _validate_payout_recipient(method: str, recipient: dict | None) -> tuple[dict, str]:
+    """Проверяет получателя и банк по справочнику провайдера."""
+    from services.payments.payhot.payout_api import list_sbp_banks, normalize_recipient
+
+    try:
+        normalized = normalize_recipient(method, recipient or {})
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=_recipient_error()) from exc
+    if method == "card":
+        return normalized, normalized["card_number"]
+    try:
+        banks = await list_sbp_banks()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=partner_texts.PARTNER_PAYHOT_BANKS_UNAVAILABLE) from exc
+    bank = next((item for item in banks if str(item["bank_id"]) == normalized["bank_id"]), None)
+    if bank is None:
+        raise HTTPException(status_code=400, detail=_recipient_error())
+    return normalized, f"{normalized['phone']} {bank['name']}"[:128]
+
+
+@router.get("/payout-banks")
+async def partner_payout_banks(identity=Depends(verify_identity_token)):
+    """Возвращает доступные банки для выплаты через СБП."""
+    from services.payments.payhot.partner_payouts import payouts_enabled
+    from services.payments.payhot.payout_api import list_sbp_banks
+
+    if not payouts_enabled():
+        raise HTTPException(status_code=404, detail=partner_texts.PARTNER_PAYHOT_BANKS_DISABLED)
+    try:
+        return {"items": await list_sbp_banks()}
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=partner_texts.PARTNER_PAYHOT_BANKS_UNAVAILABLE) from exc
+
+
 @router.get("/payout-method/me", response_model=PartnerPayoutMethodState)
 async def partner_payout_method_me(
     request: Request, session: AsyncSession = Depends(get_session), identity=Depends(verify_identity_token)
 ):
     user_id, _ = await _resolve_partner_user(session, request, identity)
     profile = await pdb.get_partner_profile(session, user_id)
+    from services.payments.payhot.partner_payouts import payouts_enabled
+
     method, card = profile["payout_method"], profile["card_number"]
+    automation_enabled = payouts_enabled()
+    recipient = _stored_payout_recipient(profile, method) if method in {"card", "sbp"} else None
     configured = bool(card and str(card).strip())
+    if automation_enabled and method in {"card", "sbp"}:
+        configured = configured and recipient is not None
     from modules.partner_program.handlers.utils import mask_requisites, method_label
 
     return PartnerPayoutMethodState(
@@ -339,6 +418,9 @@ async def partner_payout_method_me(
         method_label=method_label(method) if configured else None,
         masked=mask_requisites(method, card) if configured else None,
         methods=_payout_method_options(),
+        automation_enabled=automation_enabled,
+        recipient=recipient,
+        recipient_labels=_recipient_labels(),
     )
 
 
@@ -358,17 +440,32 @@ async def partner_set_payout_method(
     )
 
     method, requisites = body.method.strip(), body.requisites.strip()
+    from services.payments.payhot.partner_payouts import payouts_enabled
+
+    automation_enabled = payouts_enabled()
     if not _method_enabled(method):
         raise HTTPException(status_code=400, detail="Способ вывода недоступен")
-    if not validate_requisites(method, requisites):
+    recipient = None
+    values = {"payout_method": method, "card_number": requisites}
+    if automation_enabled and method in {"card", "sbp"}:
+        recipient, requisites = await _validate_payout_recipient(method, body.recipient)
+        values.update(card_number=requisites, payout_recipient=json.dumps(recipient, ensure_ascii=False))
+    elif not validate_requisites(method, requisites):
         raise HTTPException(status_code=400, detail="Некорректные реквизиты для выбранного способа")
-    await pdb.update_partner_profile(session, user_id, payout_method=method, card_number=requisites)
+    else:
+        profile = await pdb.get_partner_profile(session, user_id)
+        if profile and profile.get("payout_recipient") is not None:
+            values["payout_recipient"] = None
+    await pdb.update_partner_profile(session, user_id, **values)
     return PartnerPayoutMethodState(
         configured=True,
         method=method,
         method_label=method_label(method),
         masked=mask_requisites(method, requisites),
         methods=_payout_method_options(),
+        automation_enabled=automation_enabled,
+        recipient=recipient,
+        recipient_labels=_recipient_labels(),
     )
 
 
@@ -405,11 +502,18 @@ async def partner_create_payout_request(
     if method not in {option.key for option in _payout_method_options()}:
         raise HTTPException(status_code=400, detail="Способ вывода недоступен")
     destination = profile["card_number"]
+    from services.payments.payhot.partner_payouts import payouts_enabled
+
+    if payouts_enabled() and method in {"card", "sbp"}:
+        recipient = _stored_payout_recipient(profile, method)
+        if recipient is None:
+            raise HTTPException(status_code=400, detail=partner_texts.PARTNER_PAYHOT_REQUISITES_REQUIRED)
+        await _validate_payout_recipient(method, recipient)
     if not (destination and str(destination).strip()):
         raise HTTPException(status_code=400, detail="Сначала укажите способ вывода и реквизиты")
     fee_rate = float(PARTNER_PAYOUT_FEE_RATE or 0.0)
     fee = round(requested * fee_rate, 2) if fee_rate > 0 else 0.0
-    net_amount = requested - fee
+    net_amount = round(requested - fee, 2)
     if not 0 < net_amount <= requested:
         raise HTTPException(status_code=400, detail="Недостаточно средств для заявки")
     try:
@@ -608,6 +712,7 @@ def _payout_entry(row: dict) -> dict:
         "tg_id": public_tg_id(row["owner_tg_id"]),
         "amount": float(row["amount"]),
         "status": row["status"],
+        "status_label": partner_texts.PARTNER_PAYHOT_STATUS_PROCESSING if row["status"] == "processing" else None,
         "created_at": row_dt_iso(row["created_at"]),
         "method": row["payout_method"],
         "destination": row["payout_destination"],
@@ -629,7 +734,7 @@ async def get_partner_payouts_pending(
     total, rows = await pdb.list_partner_payouts(
         session,
         user_id=partner_user_id if partner_user_id is not None else profile["id"] if profile else None,
-        statuses=("pending",),
+        statuses=("pending", "processing"),
         limit=limit,
         offset=offset,
         ascending=True,
@@ -663,11 +768,23 @@ async def get_partner_payouts_history(
 async def approve_partner_payout(
     payout_id: int = Path(...), identity=Depends(verify_identity_admin), session: AsyncSession = Depends(get_session)
 ):
-    changed = await pdb.decide_partner_payout(session, payout_id, True)
+    from services.payments.payhot.partner_payouts import approve_payout
+
+    try:
+        payout = await approve_payout(session, payout_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    changed = payout is not None
+    processing = changed and payout["status"] == "processing"
     return ORJSONResponse(
         content={
             "success": changed,
-            "message": "Заявка одобрена" if changed else "Заявка не найдена или уже обработана",
+            "status": payout["status"] if changed else None,
+            "message": partner_texts.PARTNER_PAYHOT_PROCESSING
+            if processing
+            else "Заявка одобрена"
+            if changed
+            else "Заявка не найдена или уже обработана",
         },
         status_code=200 if changed else 404,
     )
@@ -685,6 +802,29 @@ async def reject_partner_payout(
         },
         status_code=200 if changed else 404,
     )
+
+
+@router.post("/payouts/{payout_id}/payhot/reconcile")
+async def reconcile_partner_payhot_payout(
+    payout_id: int = Path(...),
+    provider_payout_id: UUID | None = Query(None),
+    identity=Depends(verify_identity_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Сверяет существующую выплату без повторной отправки денег."""
+    from services.payments.payhot.partner_payouts import verify_payout
+
+    try:
+        payout = await verify_payout(session, payout_id, str(provider_payout_id) if provider_payout_id else None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if payout is None:
+        raise HTTPException(status_code=404, detail="Заявка не найдена или уже обработана")
+    return {
+        "id": payout["id"],
+        "status": payout["status"],
+        "message": partner_texts.PARTNER_PAYHOT_VERIFIED,
+    }
 
 
 @router.patch("/{tg_id}/percent/reset")

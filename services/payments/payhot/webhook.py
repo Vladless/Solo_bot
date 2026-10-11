@@ -43,6 +43,26 @@ async def payhot_webhook(request: web.Request) -> web.Response:
             return web.Response(status=400, text="invalid event")
         if event.get("environment") == "sandbox" or event_type.startswith("sandbox."):
             return web.Response(status=200)
+        header_id = request.headers.get("PayHot-Event-Id")
+        if header_id and header_id != event_id:
+            return web.Response(status=400, text="invalid event id")
+        if event_type.startswith("payout."):
+            from uuid import UUID
+
+            from database import async_session_maker
+            from services.payments.payhot.partner_payouts import reconcile_webhook
+
+            data = event.get("data")
+            if not isinstance(data, dict):
+                return web.Response(status=400, text="invalid payout")
+            if data.get("environment") == "sandbox":
+                return web.Response(status=200)
+            try:
+                payout_id = str(UUID(data.get("id", "")))
+            except (ValueError, TypeError, AttributeError):
+                return web.Response(status=400, text="invalid payout id")
+            await reconcile_webhook(payout_id, async_session_maker)
+            return web.Response(status=200)
         if not event_type.startswith("payment."):
             return web.Response(status=200)
         data = event.get("data")
@@ -52,9 +72,6 @@ async def payhot_webhook(request: web.Request) -> web.Response:
             return web.Response(status=200)
         if not str(data.get("merchant_order_reference") or "").startswith("payhot_"):
             return web.Response(status=200)
-        header_id = request.headers.get("PayHot-Event-Id")
-        if header_id and header_id != event_id:
-            return web.Response(status=400, text="invalid event id")
         result = await settle_payment(data, event_id=event_id)
         return web.Response(status=200 if result.ok else 500)
     except PaymentError as exc:

@@ -123,3 +123,10 @@ async def remnawave_monitor_loop(bot, sessionmaker) -> None:
     from services.remnawave_monitor import remnawave_monitor_loop as run_loop
 
     await run_loop(bot, sessionmaker)
+
+
+async def payhot_payout_loop(bot, sessionmaker) -> None:
+    """Обрабатывает очередь и сверку партнёрских выплат PayHOT."""
+    from services.payments.payhot.partner_payouts import payout_loop
+
+    await payout_loop(bot, sessionmaker)
