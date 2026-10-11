@@ -232,6 +232,8 @@ async def create_link(
     billing_user_ref = await idb.ensure_billing_user_for_identity(session, identity)
     web_metadata = dict(body.metadata or {})
     web_metadata.setdefault("payment_flow", "balance_topup")
+    if body.payhot_customer_phone is not None:
+        web_metadata["payhot_customer_phone"] = body.payhot_customer_phone
     await _validate_payment_intent(session, billing_user_ref, web_metadata)
     payment_request = PaymentLinkRequest(
         legacy_user_ref=billing_user_ref,
@@ -353,14 +355,21 @@ async def get_link_status(
     if owner_ref is None or int(owner_ref) != int(billing_user_ref):
         raise HTTPException(status_code=404, detail="Payment not found")
     status = str(payment.get("status") or "").lower() or None
-    provider_manages_expiry = str(payment.get("payment_system") or "").upper() in {
+    provider = str(payment.get("payment_system") or "").upper()
+    payhot_provider = provider in {"PAYHOT", "PAYHOT_CARDS", "PAYHOT_SBP", "PAYHOT_SBERPAY"}
+    provider_manages_expiry = provider in {
         "YOOKASSA_AUTOPAY",
         "YOOKASSA_AUTOPAY_WEB",
         "2328",
+        "PAYHOT",
+        "PAYHOT_CARDS",
+        "PAYHOT_SBP",
+        "PAYHOT_SBERPAY",
     }
-    if status not in {"success", "failed", "cancelled", "refunded", "chargebacked"} and (
-        provider_manages_expiry or not _payment_link_expired(payment.get("created_at"))
-    ):
+    can_reconcile = status not in {"success", "failed", "cancelled", "refunded", "chargebacked"} or (
+        payhot_provider and status in {"failed", "cancelled"}
+    )
+    if can_reconcile and (provider_manages_expiry or not _payment_link_expired(payment.get("created_at"))):
         from services.payments.reconcile import reconcile_pending_payment
 
         try:

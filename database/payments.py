@@ -40,6 +40,7 @@ def canonical_payment_provider(provider: str) -> str:
         "platega": ("cards", "sbp", "crypto"),
         "overpay": ("cards", "sbp"),
         "paritypay": ("sbp",),
+        "payhot": ("cards", "sbp", "sberpay"),
     }.items():
         aliases.update({f"{base}_{suffix}": base for suffix in suffixes})
     return aliases.get(name, name)
@@ -645,6 +646,10 @@ async def cancel_expired_pending_payments(session: AsyncSession) -> int:
                     "YOOKASSA_AUTOPAY",
                     "YOOKASSA_AUTOPAY_WEB",
                     "2328",
+                    "PAYHOT",
+                    "PAYHOT_CARDS",
+                    "PAYHOT_SBP",
+                    "PAYHOT_SBERPAY",
                 )),
             )
         )

@@ -474,6 +474,7 @@ async def user_key_apply_addons(
             accepted_gross_amount=body.accepted_gross_amount,
             metadata={
                 "payment_flow": "key_addons",
+                "payhot_customer_phone": body.payhot_customer_phone,
                 "autopay_consent": body.autopay_consent,
                 "autopay_accepted_amount": body.autopay_accepted_amount,
                 "autopay_accepted_gross_amount": body.autopay_accepted_gross_amount,

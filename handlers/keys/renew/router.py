@@ -29,7 +29,6 @@ from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.utils import edit_or_send_message, format_discount_time_left, render_text
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import (
-    process_process_callback_renew_key,
     process_purchase_tariff_group_override,
     process_renew_tariffs,
     process_renewal_forbidden_groups,
@@ -37,7 +36,7 @@ from hooks.processors import (
 from logger import logger
 from services.payments.currency_rates import format_for_user
 from settings.buttons import BACK, MAIN_MENU, PAYMENT
-from settings.config import DISCOUNT_ACTIVE_HOURS, RENEW_BUTTON_BEFORE_DAYS, USE_NEW_PAYMENT_FLOW
+from settings.config import DISCOUNT_ACTIVE_HOURS, USE_NEW_PAYMENT_FLOW
 from settings.texts import (
     ADDON_RESET_PLAN_WARNING,
     DISCOUNT_OFFER_MESSAGE,
@@ -61,7 +60,7 @@ from ..utils import (
     resolve_key,
 )
 from .flow import _finalize_renewal, complete_key_renewal, normalize_expiry_ms, renewal_key_snapshot
-from .switch import _maybe_show_switch_confirm
+from .switch import _maybe_show_renewal_unavailable, _maybe_show_switch_confirm
 
 
 router = Router()
@@ -106,29 +105,6 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         expiry_time = normalize_expiry_ms(expiry_time_raw)
         server_id = record["server_id"]
         tariff_id = record.get("tariff_id")
-
-        renew_before_days = int(NOTIFICATIONS_CONFIG.get("RENEW_BUTTON_BEFORE_DAYS", RENEW_BUTTON_BEFORE_DAYS))
-        expiry_utc = datetime.utcfromtimestamp(expiry_time / 1000).replace(tzinfo=pytz.UTC)
-        available_from_utc = expiry_utc - timedelta(days=renew_before_days)
-        now_utc = datetime.now(timezone.utc)
-
-        if now_utc < available_from_utc:
-            dt_msk = available_from_utc.astimezone(moscow_tz).strftime("%d.%m.%Y %H:%M")
-            kb = InlineKeyboardBuilder()
-            kb.row(InlineKeyboardButton(text=BACK, callback_data=build_key_callback("view_key", client_id, key_name)))
-
-            hook_commands = await process_process_callback_renew_key(
-                callback_query=callback_query, state=state, session=session
-            )
-            if hook_commands:
-                kb = insert_hook_buttons(kb, hook_commands)
-
-            await edit_or_send_message(
-                target_message=callback_query.message,
-                text=f"Продление доступно с {dt_msk}",
-                reply_markup=kb.as_markup(),
-            )
-            return
 
         await state.update_data(renew_key_name=key_name, renew_client_id=client_id, renew_key_ref=key_ref)
 
@@ -631,25 +607,33 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             )
             return
 
-        if record.get("tariff_id") and int(record.get("tariff_id")) != int(tariff_id):
-            shown = await _maybe_show_switch_confirm(
-                callback_query,
-                state,
-                session,
-                tg_id=tg_id,
-                client_id=client_id,
-                email=email,
-                new_tariff_id=int(tariff_id),
-                record=record,
-                selected_device=None,
-                selected_traffic=None,
-            )
-            if shown:
-                return
+        shown = await _maybe_show_switch_confirm(
+            callback_query,
+            state,
+            session,
+            tg_id=tg_id,
+            client_id=client_id,
+            email=email,
+            new_tariff_id=int(tariff_id),
+            record=record,
+            selected_device=None,
+            selected_traffic=None,
+        )
+        if shown:
+            return
 
-        balance = round(await get_balance(session, tg_id), 2)
+        from services.keys import calculate_renewal_pricing
 
-        cost = round(tariff["price_rub"], 2)
+        pricing = await calculate_renewal_pricing(
+            session,
+            billing_user_id=tg_id,
+            key_email=email,
+            tariff_id=tariff_id,
+        )
+        balance = round(pricing.balance, 2)
+        cost = round(pricing.final_price_rub, 2)
+        duration_days = pricing.duration_days
+        total_gb = pricing.total_gb
 
         if balance < cost:
             required_amount = ceil(cost - balance)
@@ -670,6 +654,9 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
                         "selected_duration_days": duration_days,
                         "total_gb": total_gb,
                         "email": email,
+                        "selected_device_limit": pricing.selected_device_limit,
+                        "selected_traffic_limit": pricing.selected_traffic_limit,
+                        "selected_price_rub": int(pricing.final_price_rub),
                     },
                     required_amount=required_amount,
                 )
@@ -700,6 +687,9 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             cost,
             callback_query,
             tariff_id,
+            selected_device_limit=pricing.selected_device_limit,
+            selected_traffic_limit=pricing.selected_traffic_limit,
+            selected_price_rub=int(pricing.final_price_rub),
             state=state,
             expected_key_snapshot=renewal_key_snapshot(record),
         )
@@ -763,11 +753,18 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
 
         from services.addons import resolve_carried_addons
 
+        current_tariff_id = record.get("tariff_id")
+        current_tariff = (
+            await get_tariff_by_id(session, int(current_tariff_id))
+            if current_tariff_id and int(current_tariff_id) != int(tariff_id)
+            else tariff
+        )
         carried = resolve_carried_addons(
             tariff,
             record,
             int(selected_devices) if selected_devices is not None else None,
             int(selected_traffic_gb) if selected_traffic_gb is not None else None,
+            current_tariff=current_tariff,
         )
         final_price += carried.price_rub
 
@@ -886,12 +883,18 @@ async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMC
             current_tariff_id=record.get("tariff_id"),
             current_selected_device=record.get("selected_device_limit"),
             current_selected_traffic=record.get("selected_traffic_limit"),
+            current_device_limit=record.get("current_device_limit"),
+            current_traffic_limit=record.get("current_traffic_limit"),
             current_expiry_ms=normalize_expiry_ms(record.get("expiry_time")),
             now_ms=now_ms,
             new_tariff_id=int(tariff_id),
             new_selected_device=selected_device,
             new_selected_traffic=selected_traffic,
         )
+        if await _maybe_show_renewal_unavailable(
+            callback_query, state, session, record=record, is_switch=quote.is_switch
+        ):
+            return
 
         await _finalize_renewal(
             callback_query,

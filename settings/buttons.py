@@ -106,6 +106,9 @@ PLATEGA_INT = "🌍 Platega: Международные карты"
 PLATEGA_CRYPTO = "₿ Platega: Криптовалюта"
 OVERPAY_CARDS = "💳 Оплата картой"
 OVERPAY_SBP = "🏦 Оплата через СБП"
+PAYHOT_CARDS = "💳 PayHOT: Карты"
+PAYHOT_SBP = "🏦 PayHOT: СБП"
+PAYHOT_SBERPAY = "🟢 PayHOT: SberPay"
 TRIBUTE = "💳 Tribute"
 HELEKET = "Heleket Crypto"
 YOOKASSA_AUTOPAY = "💳 ЮKassa · автоплатёж"
@@ -164,6 +167,7 @@ PAYMENT_CASHBOX_TITLES = {
     "FREEKASSA": "FreeKassa",
     "STARS": "Telegram Stars",
     "KASSA2328": "2328 (криптовалюта)",
+    "PAYHOT": "PayHOT",
 }
 SETTING_SINGLE_SUBSCRIPTION_SCREEN = "После создания: кабинет"
 SETTING_EXPIRY_SKIP_TRIAL = "24ч: исключать пробные тарифы"

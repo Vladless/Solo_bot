@@ -85,6 +85,7 @@ class AccountKeyActionResponse(BaseModel):
 class AccountKeyRenewRequest(BaseModel):
     tariff_id: int | None = None
     provider_id: str | None = None
+    payhot_customer_phone: str | None = Field(None, max_length=32)
     autopay_consent: bool = False
     autopay_accepted_amount: float | None = Field(None, gt=0)
     autopay_accepted_gross_amount: float | None = Field(None, gt=0)
@@ -169,6 +170,7 @@ class AccountKeyAddonsPreviewRequest(BaseModel):
     include_device: bool | None = None
     include_traffic: bool | None = None
     provider_id: str | None = None
+    payhot_customer_phone: str | None = Field(None, max_length=32)
     autopay_consent: bool = False
     autopay_accepted_amount: float | None = Field(None, gt=0)
     autopay_accepted_gross_amount: float | None = Field(None, gt=0)
@@ -265,6 +267,7 @@ class TariffPurchaseRequest(BaseModel):
     selected_device_limit: int | None = None
     selected_traffic_gb: int | None = None
     provider_id: str | None = None
+    payhot_customer_phone: str | None = Field(None, max_length=32)
     autopay_consent: bool = False
     autopay_accepted_amount: float | None = Field(None, gt=0)
     autopay_accepted_gross_amount: float | None = Field(None, gt=0)
@@ -297,6 +300,7 @@ class GiftCreateRequest(BaseModel):
     selected_device_limit: int | None = None
     selected_traffic_gb: int | None = None
     provider_id: str | None = None
+    payhot_customer_phone: str | None = Field(None, max_length=32)
     autopay_consent: bool = False
     autopay_accepted_amount: float | None = Field(None, gt=0)
     autopay_accepted_gross_amount: float | None = Field(None, gt=0)

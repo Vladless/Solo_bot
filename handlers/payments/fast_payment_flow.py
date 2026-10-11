@@ -63,6 +63,10 @@ def _configured_fast_providers(providers_map: dict) -> list[str]:
         configured.append("YOOKASSA_AUTOPAY")
     if USE_NEW_PAYMENT_FLOW and (providers_map.get("KASSA2328") or {}).get("enabled") and "KASSA2328" not in configured:
         configured.append("KASSA2328")
+    if USE_NEW_PAYMENT_FLOW:
+        for provider in ("PAYHOT_CARDS", "PAYHOT_SBP", "PAYHOT_SBERPAY"):
+            if (providers_map.get(provider) or {}).get("enabled") and provider not in configured:
+                configured.append(provider)
     return configured
 
 
@@ -186,7 +190,7 @@ async def _run_provider_flow(
                 await callback_query.message.delete()
             except Exception as error:
                 logger.warning(f"[FAST_FLOW] Не удалось удалить меню перед STARS: {error}")
-        if provider_upper == "YOOKASSA_AUTOPAY":
+        if provider_upper in {"YOOKASSA_AUTOPAY", "PAYHOT_SBERPAY"}:
             await func(callback_query, session, state=state)
         else:
             await func(callback_query, session)

@@ -14,6 +14,7 @@ from logger import logger
 
 from .errors import InsufficientFundsError, NotFoundError, ValidationError
 from .keys import resolve_cluster_name
+from .tariffs.renewal_groups import is_same_renewal_family
 
 
 if TYPE_CHECKING:
@@ -111,23 +112,35 @@ def resolve_carried_addons(
     key_details: dict[str, Any],
     new_base_devices: int | None,
     new_base_traffic: int | None,
+    *,
+    current_tariff: dict[str, Any] | None = None,
 ) -> CarriedAddons:
     """Рассчитывает перенос докупленных опций и их стоимость при неизменной базе тарифа."""
     if not tariff or not key_details or not is_addons_carry_enabled():
         return CarriedAddons()
 
     current_tariff_id = key_details.get("tariff_id")
-    if current_tariff_id is None or int(current_tariff_id) != int(tariff.get("id") or 0):
+    if current_tariff_id is None:
+        return CarriedAddons()
+    same_tariff = int(current_tariff_id) == int(tariff.get("id") or 0)
+    if not same_tariff and not is_same_renewal_family(current_tariff, tariff):
         return CarriedAddons()
 
     has_device, has_traffic, _ = get_pack_flags()
+    old_tariff = tariff if same_tariff else current_tariff
     base_devices = key_details.get("selected_device_limit")
     base_traffic = key_details.get("selected_traffic_limit")
+    base_devices = int(base_devices) if base_devices is not None else int(old_tariff.get("device_limit") or 0)
+    base_traffic = int(base_traffic) if base_traffic is not None else int(old_tariff.get("traffic_limit") or 0)
+    new_base_devices = int(new_base_devices) if new_base_devices is not None else int(tariff.get("device_limit") or 0)
+    new_base_traffic = int(new_base_traffic) if new_base_traffic is not None else int(tariff.get("traffic_limit") or 0)
     if new_base_devices != base_devices or new_base_traffic != base_traffic:
         return CarriedAddons()
 
     current_devices = key_details.get("current_device_limit")
     current_traffic = key_details.get("current_traffic_limit")
+    current_devices = int(current_devices) if current_devices is not None else None
+    current_traffic = int(current_traffic) if current_traffic is not None else None
 
     carried_devices = current_devices if has_device and current_devices != base_devices else None
     carried_traffic = current_traffic if has_traffic and current_traffic != base_traffic else None
@@ -147,9 +160,14 @@ def calc_carried_addons_price_rub(
     base_traffic: int | None,
     current_devices: int | None,
     current_traffic: int | None,
+    *,
+    include_disabled: bool = False,
 ) -> int:
     """Цена докупленных сверх базы тарифа опций на новый срок."""
-    has_device, has_traffic, _ = get_pack_flags()
+    if include_disabled:
+        has_device, has_traffic = True, True
+    else:
+        has_device, has_traffic, _ = get_pack_flags()
     effective_devices = current_devices if has_device and current_devices is not None else base_devices
     effective_traffic = current_traffic if has_traffic and current_traffic is not None else base_traffic
     price = calc_pack_full_price_rub(

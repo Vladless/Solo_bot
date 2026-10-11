@@ -8,6 +8,7 @@ from services.keys import normalize_expiry_ms, renewal_key_snapshot
 from services.payments.checkout_intent import autopay_terms_for_tariff
 from services.tariffs import ConfigOptionRejected, ensure_allowed_config
 from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS, resolve_renewal_tariff_group
+from settings.texts import RENEWAL_AVAILABLE_FROM
 
 from .._common import *
 from .._common import (
@@ -51,16 +52,7 @@ async def user_key_renew(
     if bool(getattr(db_key, "is_frozen", False)):
         raise HTTPException(status_code=400, detail="Продление для замороженной подписки недоступно")
     tariff_id = getattr(db_key, "tariff_id", None)
-    is_tariff_switch = body.tariff_id is not None and int(body.tariff_id or 0) != int(tariff_id or 0)
     key_expiry_ms = _svc_normalize_expiry(getattr(db_key, "expiry_time", None))
-    if key_expiry_ms and not is_tariff_switch and not _is_renew_available(int(key_expiry_ms)):
-        available_msk = datetime.fromtimestamp(
-            _renew_available_from_ms(int(key_expiry_ms)) / 1000, tz=timezone(timedelta(hours=3))
-        )
-        raise HTTPException(
-            status_code=403,
-            detail=f"Продление доступно с {available_msk.strftime('%d.%m.%Y %H:%M')}",
-        )
     if not tariff_id:
         raise HTTPException(status_code=400, detail="Для подписки не назначен тариф")
     key_email = str(getattr(db_key, "email", "") or "")
@@ -138,6 +130,8 @@ async def user_key_renew(
         current_tariff_id=getattr(db_key, "tariff_id", None),
         current_selected_device=getattr(db_key, "selected_device_limit", None),
         current_selected_traffic=getattr(db_key, "selected_traffic_limit", None),
+        current_device_limit=getattr(db_key, "current_device_limit", None),
+        current_traffic_limit=getattr(db_key, "current_traffic_limit", None),
         current_expiry_ms=normalize_expiry_ms(getattr(db_key, "expiry_time", None)),
         now_ms=int(datetime.now(UTC).timestamp() * 1000),
         new_tariff_id=effective_tariff_id,
@@ -145,6 +139,14 @@ async def user_key_renew(
         new_selected_traffic=body.selected_traffic_limit,
         coupon_code=body.coupon_code,
     )
+    if not quote.is_switch and not _is_renew_available(int(key_expiry_ms)):
+        available_msk = datetime.fromtimestamp(
+            _renew_available_from_ms(int(key_expiry_ms)) / 1000, tz=timezone(timedelta(hours=3))
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=RENEWAL_AVAILABLE_FROM.format(available_from=available_msk.strftime("%d.%m.%Y %H:%M")),
+        )
     net_cost = quote.net_cost_rub
     required_amount = max(0, int(round(net_cost - pricing.balance)))
     payment_required = required_amount > 0
@@ -200,6 +202,7 @@ async def user_key_renew(
             accepted_gross_amount=body.accepted_gross_amount,
             metadata={
                 "payment_flow": "key_renewal",
+                "payhot_customer_phone": body.payhot_customer_phone,
                 "autopay_consent": body.autopay_consent,
                 "autopay_accepted_amount": body.autopay_accepted_amount,
                 "autopay_accepted_gross_amount": body.autopay_accepted_gross_amount,

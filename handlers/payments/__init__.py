@@ -26,6 +26,7 @@ from .kassai import router as kassai_router
 from .kassa2328 import router as kassa2328_router
 from .overpay import router as overpay_router
 from .paritypay import router as paritypay_router
+from .payhot import router as payhot_router
 from .pay import router as pay_router
 from .platega import router as platega_router
 from .robokassa import router as robokassa_router
@@ -44,6 +45,7 @@ PROVIDERS = get_providers(PROVIDERS_ENABLED)
 router.include_router(yookassa_autopay_router)
 router.include_router(kassa2328_router)
 router.include_router(yookassa_router)
+router.include_router(payhot_router)
 
 if PROVIDERS.get("YOOMONEY", {}).get("enabled"):
     router.include_router(yoomoney_router)

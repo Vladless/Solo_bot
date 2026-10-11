@@ -46,7 +46,7 @@ from api.v2.schemas.web_public import (
     AccountKeyResetHwidResponse,
     AccountKeyResponse,
 )
-from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, NOTIFICATIONS_CONFIG, PAYMENTS_CONFIG, TARIFFS_CONFIG
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, PAYMENTS_CONFIG, TARIFFS_CONFIG
 from core.settings.tariffs_config import normalize_tariff_config
 from database import (
     check_server_name_by_cluster,
@@ -84,6 +84,7 @@ from services.operations.aggregated_links import make_aggregated_link
 from services.payments.payment_links import PaymentLinkRequest, create_payment_link, store_provider_checkout
 from services.payments.providers import get_web_link_provider_ids
 from services.tariffs import calculate_config_price
+from services.tariffs.renewal_window import is_renewal_available, renewal_available_from_ms
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key, get_key_tariff_addons_state
 from settings.buttons import CONNECT_DEVICE, ROUTER_BUTTON, TV_BUTTON
 from settings.config import (
@@ -93,7 +94,6 @@ from settings.config import (
     QRCODE,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
-    RENEW_BUTTON_BEFORE_DAYS,
     USE_COUNTRY_SELECTION,
 )
 
@@ -154,15 +154,11 @@ async def key_stats(
 
 
 def _renew_available_from_ms(expiry_time_ms: int) -> int:
-    renew_before_days = int(NOTIFICATIONS_CONFIG.get("RENEW_BUTTON_BEFORE_DAYS", RENEW_BUTTON_BEFORE_DAYS))
-    return int(expiry_time_ms) - renew_before_days * 86_400_000
+    return renewal_available_from_ms(expiry_time_ms)
 
 
 def _is_renew_available(expiry_time_ms: int) -> bool:
-    if not expiry_time_ms:
-        return True
-    now_ms = int(datetime.now(UTC).timestamp() * 1000)
-    return now_ms >= _renew_available_from_ms(expiry_time_ms)
+    return is_renewal_available(expiry_time_ms)
 
 
 def _key_actions_config() -> AccountKeyActionsConfigResponse:

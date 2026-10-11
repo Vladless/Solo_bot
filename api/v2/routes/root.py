@@ -26,7 +26,10 @@ from services.payments.providers import (
     get_providers_with_hooks,
     get_web_link_provider_ids,
 )
-from settings import buttons as payment_buttons
+from settings import (
+    buttons as payment_buttons,
+    texts,
+)
 from settings.config import (
     BALANCE_BUTTON,
     CAPTCHA_ENABLE,
@@ -263,6 +266,9 @@ async def site_config(session: AsyncSession = Depends(get_session)):
             "any_telegram_only_enabled": bool(telegram_only_provider_ids),
             "web_link_provider_ids": web_link_provider_ids,
             "provider_labels": {name: getattr(payment_buttons, name, name) for name in web_link_provider_ids},
+            "payhot_phone_label": texts.PAYHOT_WEB_PHONE_LABEL,
+            "payhot_phone_placeholder": texts.PAYHOT_WEB_PHONE_PLACEHOLDER,
+            "payhot_phone_invalid": texts.PAYHOT_WEB_PHONE_INVALID,
             "telegram_only_provider_ids": telegram_only_provider_ids,
             "yookassa_enabled": pay_flags.get("YOOKASSA", False),
             "yoomoney_enabled": pay_flags.get("YOOMONEY", False),

@@ -152,6 +152,27 @@ PROVIDERS_BASE: dict[str, dict[str, Any]] = {
         "module": "kassa2328",
         "order": 21,
     },
+    "PAYHOT_CARDS": {
+        "currency": "RUB",
+        "value": "pay_payhot_cards",
+        "fast": "handle_custom_amount_input_payhot_cards",
+        "module": "payhot",
+        "order": 22,
+    },
+    "PAYHOT_SBP": {
+        "currency": "RUB",
+        "value": "pay_payhot_sbp",
+        "fast": "handle_custom_amount_input_payhot_sbp",
+        "module": "payhot",
+        "order": 23,
+    },
+    "PAYHOT_SBERPAY": {
+        "currency": "RUB",
+        "value": "pay_payhot_sberpay",
+        "fast": "handle_custom_amount_input_payhot_sberpay",
+        "module": "payhot",
+        "order": 24,
+    },
 }
 
 WEB_LINK_PROVIDER_IDS = (
@@ -175,6 +196,9 @@ WEB_LINK_PROVIDER_IDS = (
     "CRYPTOBOT",
     "YOOKASSA_AUTOPAY",
     "KASSA2328",
+    "PAYHOT_CARDS",
+    "PAYHOT_SBP",
+    "PAYHOT_SBERPAY",
 )
 
 TELEGRAM_ONLY_PROVIDER_IDS = (

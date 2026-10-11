@@ -102,6 +102,9 @@ PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
     "YOOKASSA_AUTOPAY": "YooKassa (Автоплатёж)",
     "YOOKASSA_SBP": YOOKASSA_SBP,
     "KASSA2328": KASSA2328,
+    "PAYHOT_CARDS": "PayHOT карты",
+    "PAYHOT_SBP": "PayHOT СБП",
+    "PAYHOT_SBERPAY": "PayHOT SberPay",
 }
 
 PAYMENT_CASHBOX_GROUPS: Final[dict[str, tuple[str, ...]]] = {
@@ -119,6 +122,7 @@ PAYMENT_CASHBOX_GROUPS: Final[dict[str, tuple[str, ...]]] = {
     "FREEKASSA": ("FREEKASSA",),
     "STARS": ("STARS",),
     "KASSA2328": ("KASSA2328",),
+    "PAYHOT": ("PAYHOT_CARDS", "PAYHOT_SBP", "PAYHOT_SBERPAY"),
 }
 
 MODES_TITLES: Final[dict[str, str]] = {

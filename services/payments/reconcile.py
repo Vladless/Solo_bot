@@ -39,6 +39,12 @@ async def reconcile_pending_payment(payment: dict) -> str:
             return "success"
         return "canceled" if status in {"cancel", "canceled", "cancelled", "refund_paid"} else ""
 
+    if provider in {"payhot", "payhot_cards", "payhot_sbp", "payhot_sberpay"}:
+        from services.payments.payhot.service import reconcile_payment
+
+        status = await reconcile_payment(payment_id)
+        return "success" if status == "success" else "canceled" if status in {"cancelled", "failed", "refunded"} else ""
+
     if provider in {"yookassa_autopay", "yookassa_autopay_web"}:
         from services.payments.yookassa_autopay.service import reconcile_payment
 

@@ -130,6 +130,7 @@ async def process_success_payment(
                     "kassai",
                     "paritypay",
                     "overpay",
+                    "payhot",
                 }:
                     currency = str(parsed.currency).upper()
                     if currency not in {"RUB", "643"}:

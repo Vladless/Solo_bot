@@ -168,6 +168,7 @@ async def complete_key_renewal(
     credited_to_balance_rub: int = 0,
     state: FSMContext | None = None,
     expected_key_snapshot: dict | None = None,
+    carry_addons: bool = True,
 ):
     """Продлевает подписку через сервис и отправляет Telegram-уведомление."""
     from services.errors import ServiceError
@@ -225,6 +226,7 @@ async def complete_key_renewal(
                 selected_traffic_limit=selected_traffic_limit,
                 selected_price_rub=selected_price_rub,
                 expected_key_snapshot=quoted_key_snapshot,
+                carry_addons=carry_addons,
             )
             renewal_applied = True
         except ServiceError as e:

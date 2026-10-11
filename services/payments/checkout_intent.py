@@ -28,8 +28,10 @@ from services.operations import renew_key_in_cluster
 from services.tariffs import calculate_config_price
 from services.tariffs.cooldown import get_tariff_cooldown_remaining
 from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS
+from services.tariffs.renewal_window import is_renewal_available
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 from services.tariffs.visibility import is_tariff_visible_for
+from settings.texts import RENEWAL_NOT_YET_AVAILABLE
 
 
 _FLOW_STATES = {
@@ -177,6 +179,7 @@ async def freeze_checkout_intent(
     amount: float,
     *,
     trusted_legacy: bool = False,
+    enforce_renewal_window: bool = True,
 ) -> dict:
     """Фиксирует условия оплачиваемой операции по серверным ценам."""
     user_id = UserId(user_id)
@@ -236,6 +239,8 @@ async def freeze_checkout_intent(
             current_tariff_id=key.tariff_id,
             current_selected_device=key.selected_device_limit,
             current_selected_traffic=key.selected_traffic_limit,
+            current_device_limit=getattr(key, "current_device_limit", None),
+            current_traffic_limit=getattr(key, "current_traffic_limit", None),
             current_expiry_ms=normalize_expiry_ms(key.expiry_time),
             now_ms=now_ms,
             new_tariff_id=int(tariff_id),
@@ -243,6 +248,12 @@ async def freeze_checkout_intent(
             new_selected_traffic=traffic,
             coupon_code=data.get("applied_coupon_code"),
         )
+        if (
+            enforce_renewal_window
+            and not quote.is_switch
+            and not is_renewal_available(normalize_expiry_ms(key.expiry_time), now_ms=now_ms)
+        ):
+            raise ValidationError(RENEWAL_NOT_YET_AVAILABLE)
         data.update(
             email=key.email,
             client_id=key.client_id,
@@ -363,7 +374,9 @@ async def normalize_legacy_checkout_intent(
             metadata[field] = None
     if flow == "key_addons" and metadata.get("cost") is None:
         metadata["cost"] = metadata.get("agreed_extra_price", metadata.get("extra_price"))
-    return await freeze_checkout_intent(session, UserId(user_id), metadata, amount, trusted_legacy=True)
+    return await freeze_checkout_intent(
+        session, UserId(user_id), metadata, amount, trusted_legacy=True, enforce_renewal_window=False
+    )
 
 
 async def _freeze_addons(session, data, key, tariff, devices, traffic, now_ms):
