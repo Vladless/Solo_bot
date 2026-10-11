@@ -21,11 +21,11 @@ def owner(func: Callable[..., Any]) -> str | None:
     return None
 
 
-def register_hook(name: str, func: Callable[..., Any] | None = None):
+def register_hook(name: str, func: Callable[..., Any] | None = None, *, persistent: bool = False):
     if func is None:
 
         def deco(f: Callable[..., Any]):
-            register_hook(name, f)
+            register_hook(name, f, persistent=persistent)
             return f
 
         return deco
@@ -44,6 +44,14 @@ def register_hook(name: str, func: Callable[..., Any] | None = None):
             for registered, module in _hooks.get(name, [])
             if (registered.__module__, registered.__qualname__) != (func.__module__, func.__qualname__)
         ]
+    if persistent:
+        func.__persistent_module_hooks__ = getattr(func, "__persistent_module_hooks__", frozenset()) | {name}
+    if name in getattr(func, "__persistent_module_hooks__", ()):
+        _hooks[name] = [
+            (registered, module)
+            for registered, module in _hooks.get(name, [])
+            if (registered.__module__, registered.__qualname__) != (func.__module__, func.__qualname__)
+        ]
     _hooks.setdefault(name, []).append((func, owner(func)))
     logger.info("[Hook] {} -> {}", name, func.__name__)
 
@@ -52,7 +60,11 @@ def unregister_module_hooks(module_name: str):
     for k, lst in list(_hooks.items()):
         if k == "user_data_transfer":
             continue
-        filtered = [(f, owner) for (f, owner) in lst if owner != module_name]
+        filtered = [
+            (f, owner)
+            for (f, owner) in lst
+            if owner != module_name or k in getattr(f, "__persistent_module_hooks__", ())
+        ]
         if filtered:
             _hooks[k] = filtered
         else:
@@ -66,6 +78,12 @@ def clear_missing_module_data_hooks(installed: set[str]) -> None:
     if "user_data_transfer" in _hooks:
         _hooks["user_data_transfer"] = [
             (func, module) for func, module in _hooks["user_data_transfer"] if module is None or module in installed
+        ]
+    for name, handlers in list(_hooks.items()):
+        _hooks[name] = [
+            (func, module)
+            for func, module in handlers
+            if name not in getattr(func, "__persistent_module_hooks__", ()) or module is None or module in installed
         ]
 
 

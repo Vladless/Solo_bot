@@ -12,7 +12,6 @@ from api.depends import get_session, verify_admin_token
 from api.shared.partners import default_partner_percent, parse_percent, row_dt_iso
 from database import partners as pdb
 from database.access.resolution import public_tg_id
-from settings import texts as partner_texts
 
 
 async def ensure_partner_available(session: AsyncSession = Depends(get_session)) -> None:
@@ -337,7 +336,7 @@ async def get_partner_payouts_pending(
     total, rows = await pdb.list_partner_payouts(
         session,
         user_id=profile["id"] if profile else None,
-        statuses=("pending", "processing"),
+        statuses=("pending",),
         limit=limit,
         offset=offset,
         ascending=True,
@@ -376,23 +375,11 @@ async def approve_partner_payout(
 ):
     """Одобряет заявку на вывод."""
 
-    from services.payments.payhot.partner_payouts import approve_payout
-
-    try:
-        payout = await approve_payout(session, payout_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    changed = payout is not None
-    processing = changed and payout["status"] == "processing"
+    changed = await pdb.decide_partner_payout(session, payout_id, True)
     return ORJSONResponse(
         content={
             "success": changed,
-            "status": payout["status"] if changed else None,
-            "message": partner_texts.PARTNER_PAYHOT_PROCESSING
-            if processing
-            else "Заявка одобрена"
-            if changed
-            else "Заявка не найдена или уже обработана",
+            "message": "Заявка одобрена" if changed else "Заявка не найдена или уже обработана",
         },
         status_code=200 if changed else 404,
     )

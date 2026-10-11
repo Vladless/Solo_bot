@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 import aiohttp
 
 from core.settings.yookassa_autopay_config import YOOKASSA_AUTOPAY_CONFIG
+from services.payments.yookassa.metadata import normalize_yookassa_metadata
 from settings import texts
 from settings.config import YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 
@@ -87,6 +88,11 @@ class YooKassaClient:
             return APIResult(unknown=True, error=texts.YOOKASSA_AUTOPAY_SERVICE_REQUEST_UNKNOWN)
 
     async def create_payment(self, payload: dict, idempotency_key: str) -> APIResult:
+        """Создаёт платёж с проверенными полями ЮKassa."""
+        try:
+            payload = {**payload, "metadata": normalize_yookassa_metadata(payload.get("metadata"))}
+        except ValueError as exc:
+            return APIResult(error=str(exc))
         return await self.request("POST", "payments", payload=payload, idempotency_key=idempotency_key)
 
     async def get_payment(self, payment_id: str) -> APIResult:

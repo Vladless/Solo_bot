@@ -722,10 +722,19 @@ async def _transfer_user_data(
         )
 
     await refresh_tg_mirrors_for_user(session, dst_uid)
+    from hooks.hooks import run_hooks
+
+    await run_hooks(
+        "before_user_data_transfer",
+        require_enabled=False,
+        raise_on_error=True,
+        src_user_id=UserId(src_uid),
+        dst_user_id=UserId(dst_uid),
+        session=session,
+    )
     await transfer_partner_user_data(session, src_uid, dst_uid)
 
     src_tg = (await session.execute(select(User.tg_id).where(User.id == src_uid))).scalar_one_or_none()
-    from hooks.hooks import run_hooks
 
     await run_hooks(
         "user_data_transfer",

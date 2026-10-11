@@ -173,5 +173,23 @@ class ModulesManager:
     def should_autostart(self, name: str) -> bool:
         return not is_core_replaced_module(name) and _normalize_module_name(name) not in self.disabled
 
+    def is_available(self, name: str) -> bool:
+        """Читает доступность модуля без изменения состояния менеджера."""
+        name = _normalize_module_name(name)
+        if not self._is_safe_module_name(name) or is_core_replaced_module(name):
+            return False
+        try:
+            with open(STATE_FILE, encoding="utf-8") as stream:
+                data = json.load(stream)
+            disabled = data.get("disabled", [])
+            if not isinstance(disabled, list) or not all(isinstance(item, str) for item in disabled):
+                return False
+            disabled = {_normalize_module_name(item) for item in disabled}
+        except FileNotFoundError:
+            disabled = self.disabled
+        except (OSError, ValueError, TypeError, AttributeError):
+            return False
+        return name not in disabled and (name not in self.registry or self.is_enabled(name))
+
 
 manager = ModulesManager()

@@ -42,12 +42,12 @@ from core.tasks.loop_tasks import (
     backup_thread_loop,
     blocked_drain_loop,
     notifications_loop,
-    payhot_payout_loop,
     remnawave_monitor_loop,
     scheduled_broadcasts_loop_task,
     server_checks_loop,
     yookassa_autopay_loop,
 )
+from core.tasks.module_tasks import discover_module_loop_tasks
 from core.tasks.periodic_manager import periodic_task_manager
 
 
@@ -90,7 +90,8 @@ def register_periodic_tasks() -> None:
 
     periodic_task_manager.register_loop_task("remnawave_monitor", remnawave_monitor_loop)
     periodic_task_manager.register_loop_task("yookassa_autopay", yookassa_autopay_loop)
-    periodic_task_manager.register_loop_task("payhot_payouts", payhot_payout_loop)
+    for task_id, runner in discover_module_loop_tasks():
+        periodic_task_manager.register_loop_task(task_id, runner)
 
     periodic_task_manager.set_scheduler_process_workers(process_budget)
 

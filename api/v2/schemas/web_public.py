@@ -532,7 +532,6 @@ class PartnerPayoutEntryResponse(BaseModel):
 class PartnerPayoutHistoryResponse(BaseModel):
     total: int = 0
     items: list[PartnerPayoutEntryResponse] = []
-    status_labels: dict[str, str] = {}
 
 
 class PartnerPayoutMethodOption(BaseModel):
@@ -547,15 +546,11 @@ class PartnerPayoutMethodState(BaseModel):
     method_label: str | None = None
     masked: str | None = None
     methods: list[PartnerPayoutMethodOption] = []
-    automation_enabled: bool = False
-    recipient: dict[str, str] | None = None
-    recipient_labels: dict[str, str] = {}
 
 
 class PartnerPayoutMethodUpdate(BaseModel):
     method: str = Field(..., min_length=1, max_length=20)
-    requisites: str = Field("", max_length=128)
-    recipient: dict[str, str] | None = None
+    requisites: str = Field(..., min_length=1, max_length=128)
 
 
 class DailyBonusStateResponse(BaseModel):

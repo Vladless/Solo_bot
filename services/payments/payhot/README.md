@@ -100,7 +100,7 @@ PAYHOT_MAX_AMOUNT_RUB = "1000000.00"  # Локальный верхний пре
 
 ## Партнёрские выплаты
 
-Автоматические выплаты партнёрам включаются отдельно, в конце `settings/config.py`:
+Автоматические выплаты партнёрам включаются отдельно, в конце `modules/partner_program/settings.py`:
 
 ```python
 PARTNER_PAYHOT_PAYOUTS_ENABLED = False  # Выплаты PayHOT после одобрения администратором.

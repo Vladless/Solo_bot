@@ -5,6 +5,7 @@ from database.admins import get_admin_by_tg_id
 from database.models import Admin
 from filters.admin_actions import AdminActionAccess, granular_permissions_enabled
 from filters.permissions import (
+    ALL_ACTION_PERMISSIONS,
     PERM_ADS,
     PERM_CLUSTERS,
     PERM_COUPONS,
@@ -92,11 +93,8 @@ async def _admin_access(session, principal) -> tuple[AdminActionAccess, frozense
     return AdminActionAccess(role != "moderator", permissions), permissions
 
 
-async def require_admin_action(session, principal, *required: str) -> None:
-    """Запрещает действие без актуального разрешения."""
-    if not granular_permissions_enabled():
-        return
-    access, permissions = await _admin_access(session, principal)
+def _allows_admin_action(access: AdminActionAccess, permissions: frozenset[str], required: tuple[str, ...]) -> bool:
+    """Проверяет детальные права вместе с доступом к клиентам."""
     coarse = (
         PERM_USERS
         if any(
@@ -104,9 +102,31 @@ async def require_admin_action(session, principal, *required: str) -> None:
         )
         else None
     )
-    if not access.is_super and coarse and coarse not in permissions:
-        raise HTTPException(status_code=403, detail=ADMIN_ACTION_PERMISSION_DENIED)
-    if not access.allows(tuple(required)):
+    if access.is_super:
+        return True
+    detailed = tuple(permission for permission in required if permission in ALL_ACTION_PERMISSIONS)
+    resources = tuple(permission for permission in required if permission not in ALL_ACTION_PERMISSIONS)
+    return bool(
+        (not coarse or coarse in permissions)
+        and all(permission in permissions for permission in resources)
+        and access.allows(detailed)
+    )
+
+
+async def admin_action_capabilities(session, principal, actions: dict[str, tuple[str, ...]]) -> dict[str, bool]:
+    """Возвращает доступные действия по актуальным правам администратора."""
+    if not granular_permissions_enabled():
+        return dict.fromkeys(actions, True)
+    access, permissions = await _admin_access(session, principal)
+    return {name: _allows_admin_action(access, permissions, required) for name, required in actions.items()}
+
+
+async def require_admin_action(session, principal, *required: str) -> None:
+    """Запрещает действие без актуального разрешения."""
+    if not granular_permissions_enabled():
+        return
+    access, permissions = await _admin_access(session, principal)
+    if not _allows_admin_action(access, permissions, tuple(required)):
         raise HTTPException(status_code=403, detail=ADMIN_ACTION_PERMISSION_DENIED)
 
 
@@ -142,7 +162,7 @@ async def require_admin_crud_permissions(
             )
             await require_admin_action(session, principal, permission)
     elif name == "User":
-        required = []
+        required = [PERM_USERS]
         if operation == "create":
             required.append(PERM_KEY_CREATE)
         elif operation == "delete":

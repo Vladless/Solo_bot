@@ -2,7 +2,7 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.access.resolution import TelegramId, resolve_user_optional
-from database.migrations.partners import PARTNER_OWNER_COLUMNS, PAYOUT_PROVIDER_COLUMNS
+from database.migrations.partners import PARTNER_OWNER_COLUMNS
 from database.models import User
 from utils.referral_codes import decode_partner_code, encode_partner_code
 
@@ -54,23 +54,6 @@ async def partner_schema_available(session: AsyncSession) -> bool:
     return await session.run_sync(inspect_schema)
 
 
-async def partner_payout_schema_available(session: AsyncSession) -> bool:
-    """Проверяет миграцию автоматических выплат без изменения ручного режима."""
-
-    def inspect_schema(sync):
-        inspector = inspect(sync.connection())
-        tables = set(inspector.get_table_names())
-        return (
-            {"users", "payout_requests"} <= tables
-            and "payout_recipient" in {c["name"] for c in inspector.get_columns("users")}
-            and set(PAYOUT_PROVIDER_COLUMNS) <= {c["name"] for c in inspector.get_columns("payout_requests")}
-        )
-
-    if "partner_payout_schema" not in session.info:
-        session.info["partner_payout_schema"] = await session.run_sync(inspect_schema)
-    return session.info["partner_payout_schema"]
-
-
 async def get_partner_profile(session: AsyncSession, user_id: int, lock: bool = False) -> dict | None:
     """Возвращает партнёрский профиль по ID клиента."""
     if lock:
@@ -80,15 +63,7 @@ async def get_partner_profile(session: AsyncSession, user_id: int, lock: bool = 
         .mappings()
         .first()
     )
-    if not row:
-        return None
-    profile = dict(row)
-    profile["payout_recipient"] = None
-    if await partner_payout_schema_available(session):
-        profile["payout_recipient"] = (
-            await session.execute(text("SELECT payout_recipient FROM users WHERE id = :id"), {"id": int(user_id)})
-        ).scalar()
-    return profile
+    return dict(row) if row else None
 
 
 async def resolve_partner_telegram(session: AsyncSession, tg_id: int) -> dict | None:
@@ -298,19 +273,11 @@ async def update_partner_profile(session: AsyncSession, user_id: int, **values) 
         "partner_code",
         "payout_method",
         "card_number",
-        "payout_recipient",
         "partner_percent",
         "partner_percent_custom",
     }
     if not values or not set(values) <= allowed:
         raise ValueError("Unsupported partner fields")
-    has_recipient = await partner_payout_schema_available(session)
-    if "payout_recipient" in values and not has_recipient:
-        if values["payout_recipient"] is not None:
-            raise ValueError("Partner payout schema requires migration")
-        values.pop("payout_recipient")
-    if has_recipient and ("payout_method" in values or "card_number" in values) and "payout_recipient" not in values:
-        values["payout_recipient"] = None
     assignments = ", ".join(f"{key} = :{key}" for key in values)
     result = await session.execute(
         text(f"UPDATE users SET {assignments} WHERE id = :id"), {"id": int(user_id), **values}
@@ -330,11 +297,9 @@ async def partner_code_taken(session: AsyncSession, user_id: int, code: str) -> 
 
 async def reset_payout_methods(session: AsyncSession, methods: list[str]) -> None:
     """Сбрасывает реквизиты отключённых способов вывода."""
-    clear_recipient = ", payout_recipient = NULL" if await partner_payout_schema_available(session) else ""
     for method in methods:
         await session.execute(
-            text(f"UPDATE users SET card_number = NULL{clear_recipient} WHERE payout_method = :method"),
-            {"method": method},
+            text("UPDATE users SET card_number = NULL WHERE payout_method = :method"), {"method": method}
         )
 
 
@@ -414,13 +379,10 @@ async def create_partner_payout(
     balance = result.scalar()
     if balance is None:
         raise ValueError("balance")
-    has_snapshot = await partner_payout_schema_available(session)
-    snapshot_column = ", recipient_data" if has_snapshot else ""
-    snapshot_value = ", :recipient_data" if has_snapshot else ""
     payout_id = (
         await session.execute(
             text(
-                f"INSERT INTO payout_requests (user_id, tg_id, amount, reserved_amount, status, created_at, method, destination{snapshot_column}) VALUES (:user_id, :tg_id, :amount, :reserved_amount, :status, CURRENT_TIMESTAMP, :method, :destination{snapshot_value}) RETURNING id"
+                "INSERT INTO payout_requests (user_id, tg_id, amount, reserved_amount, status, created_at, method, destination) VALUES (:user_id, :tg_id, :amount, :reserved_amount, :status, CURRENT_TIMESTAMP, :method, :destination) RETURNING id"
             ),
             {
                 "user_id": int(user_id),
@@ -430,7 +392,6 @@ async def create_partner_payout(
                 "status": status,
                 "method": method,
                 "destination": destination,
-                "recipient_data": owner.get("payout_recipient"),
             },
         )
     ).scalar_one()
@@ -542,8 +503,6 @@ async def transfer_partner_user_data(session: AsyncSession, src_user_id: int, ds
         values["partner_code"] = source["partner_code"]
     if source["card_number"] and not target["card_number"]:
         values.update(payout_method=source["payout_method"], card_number=source["card_number"])
-        if source.get("payout_recipient"):
-            values["payout_recipient"] = source["payout_recipient"]
     if source["partner_percent_custom"] and not target["partner_percent_custom"]:
         values.update(partner_percent=source["partner_percent"], partner_percent_custom=True)
     await update_partner_profile(session, dst, **values)

@@ -2,6 +2,7 @@ from aiohttp import web
 
 from core.settings import payhot_config as config
 from core.webhook_abuse import get_webhook_client_ip, is_webhook_ip_blocked, record_webhook_signature_failure
+from hooks.hooks import run_hooks
 from logger import logger
 from services.payments.payhot.api import PaymentError, parse_json, verify_webhook
 from services.payments.payhot.service import settle_payment
@@ -46,24 +47,20 @@ async def payhot_webhook(request: web.Request) -> web.Response:
         header_id = request.headers.get("PayHot-Event-Id")
         if header_id and header_id != event_id:
             return web.Response(status=400, text="invalid event id")
-        if event_type.startswith("payout."):
-            from uuid import UUID
-
-            from database import async_session_maker
-            from services.payments.payhot.partner_payouts import reconcile_webhook
-
-            data = event.get("data")
-            if not isinstance(data, dict):
-                return web.Response(status=400, text="invalid payout")
-            if data.get("environment") == "sandbox":
-                return web.Response(status=200)
-            try:
-                payout_id = str(UUID(data.get("id", "")))
-            except (ValueError, TypeError, AttributeError):
-                return web.Response(status=400, text="invalid payout id")
-            await reconcile_webhook(payout_id, async_session_maker)
-            return web.Response(status=200)
         if not event_type.startswith("payment."):
+            from database import async_session_maker
+
+            responses = await run_hooks(
+                "provider_webhook",
+                require_enabled=False,
+                raise_on_error=True,
+                provider="PAYHOT",
+                event=event,
+                sessionmaker=async_session_maker,
+            )
+            for response in responses:
+                if isinstance(response, web.Response):
+                    return response
             return web.Response(status=200)
         data = event.get("data")
         if not isinstance(data, dict) or data.get("object") != "payment":

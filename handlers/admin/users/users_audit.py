@@ -1,8 +1,6 @@
 import html
-import re
 
 from datetime import datetime
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytz
@@ -16,6 +14,14 @@ from audit import list_audit_events
 from core.redis_cache import cache_get, cache_key, cache_set
 from database.models import User
 from filters.admin import IsAdminFilter
+from services.user_audit import (
+    EVENT_TYPE_LABELS,
+    _event_category,
+    _event_created_at,
+    _event_created_at_moscow,
+    _load_balance_log_events,
+    _resolve_event_types,
+)
 from settings.cache_config import AUDIT_HISTORY_CACHE_TTL_SEC
 
 from ..panel.headers import card, menu_text, quote, section, strip_tags
@@ -24,12 +30,6 @@ from .keyboard import AdminUserEditorCallback, build_user_audit_kb
 
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 PAGE_SIZE = 10
-LOGS_DIR = Path(__file__).resolve().parents[3] / "logs"
-BALANCE_LOG_PATTERN = re.compile(
-    r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \| [^|]+ \| [^|]+ \| .*?\[DB\] Баланс пользователя "
-    r"(?:id=(?P<user_id>\d+)|(?P<tg_id>-?\d+)) обновлён: "
-    r"(?P<old>-?\d+(?:\.\d+)?) → (?P<new>-?\d+(?:\.\d+)?)$"
-)
 router = Router()
 
 
@@ -83,212 +83,6 @@ def _deserialize_audit_events(cached: list[dict]) -> list:
     return out
 
 
-def _event_created_at(event) -> datetime:
-    created = getattr(event, "created_at", None)
-    if created is None:
-        return datetime.min
-    if created.tzinfo is not None:
-        return created.astimezone(pytz.UTC).replace(tzinfo=None)
-    return created
-
-
-def _event_created_at_moscow(event) -> datetime | None:
-    created = getattr(event, "created_at", None)
-    if created is None:
-        return None
-    if getattr(event, "event_type", "") == "balance_changed" and created.tzinfo is None:
-        return MOSCOW_TZ.localize(created)
-    if created.tzinfo is None:
-        return pytz.UTC.localize(created).astimezone(MOSCOW_TZ)
-    return created.astimezone(MOSCOW_TZ)
-
-
-def _load_balance_log_events(
-    user_id: int,
-    limit: int,
-    *,
-    tg_id: int | None = None,
-    identity_id: str | None = None,
-) -> list:
-    if limit <= 0 or not LOGS_DIR.is_dir():
-        return []
-
-    files = [path for path in LOGS_DIR.iterdir() if path.is_file() and path.name.startswith("logging")]
-    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-
-    events = []
-    for path in files:
-        try:
-            with open(path, encoding="utf-8", errors="ignore") as file:
-                lines = file.read().splitlines()
-        except Exception:
-            continue
-
-        for line in reversed(lines):
-            match = BALANCE_LOG_PATTERN.match(line.strip())
-            if not match:
-                continue
-            logged_user_id = match.group("user_id")
-            logged_tg_id = match.group("tg_id")
-            if logged_user_id is not None:
-                if int(logged_user_id) != user_id:
-                    continue
-                entity_type, entity_id = "user", user_id
-            elif tg_id is None or int(logged_tg_id) != tg_id:
-                continue
-            else:
-                entity_type, entity_id = "telegram_user", tg_id
-
-            old_balance = float(match.group("old"))
-            new_balance = float(match.group("new"))
-            amount = new_balance - old_balance
-            if amount == 0:
-                continue
-
-            try:
-                created_at = MOSCOW_TZ.localize(datetime.strptime(match.group("ts"), "%Y-%m-%d %H:%M:%S"))
-            except ValueError:
-                continue
-
-            events.append(
-                SimpleNamespace(
-                    event_type="balance_changed",
-                    channel="system",
-                    path_or_handler="logger:balance",
-                    actor_identity_id=identity_id,
-                    actor_tg_id=tg_id if tg_id is not None and tg_id > 0 else None,
-                    entity_type=entity_type,
-                    entity_id=entity_id,
-                    result="success",
-                    reason=None,
-                    metadata_={
-                        "amount": amount,
-                        "balance_before": old_balance,
-                        "balance_after": new_balance,
-                    },
-                    request_id=None,
-                    created_at=created_at,
-                )
-            )
-            if len(events) >= limit:
-                break
-        if len(events) >= limit:
-            break
-
-    events.sort(key=_event_created_at, reverse=True)
-    return events[:limit]
-
-
-EVENT_CATEGORY_MAP = {
-    "balance": {
-        "balance_changed",
-    },
-    "auth": {
-        "register_success",
-        "register_failed",
-        "login_success",
-        "login_failed",
-        "login_code_sent",
-        "login_code_send_failed",
-        "login_by_code_success",
-        "login_by_code_failed",
-        "telegram_login_success",
-        "telegram_login_failed",
-        "telegram_link_success",
-        "telegram_link_failed",
-    },
-    "payments": {
-        "payment_menu_opened",
-        "payment_currency_selected",
-        "balance_screen_opened",
-        "balance_history_opened",
-        "payment_link_created",
-        "payment_link_create_failed",
-        "coupon_activation_success",
-        "coupon_activation_failed",
-        "coupon_renewal_success",
-        "coupon_renewal_failed",
-        "coupon_key_selection_opened",
-    },
-    "subscriptions": {
-        "trial_requested",
-        "key_purchase_started",
-        "keys_list_opened",
-        "key_view_opened",
-        "key_alias_updated",
-        "key_hwid_reset",
-        "key_renew_requested",
-        "key_renew_blocked",
-        "key_renew_insufficient_funds",
-        "key_renew_completed",
-        "key_renew_failed",
-    },
-    "marketing": {
-        "start_link_opened",
-        "coupon_link_opened",
-        "gift_link_opened",
-        "referral_link_opened",
-        "referral_link_applied",
-        "referral_link_failed",
-        "referral_screen_opened",
-        "referral_qr_opened",
-        "top_referrals_opened",
-        "utm_link_opened",
-        "utm_link_failed",
-    },
-}
-
-EVENT_TYPE_LABELS = {
-    "balance_changed": "Движение баланса",
-    "start_entry_opened": "Старт бота",
-    "start_link_opened": "Переход по ссылке",
-    "register_success": "Регистрация (успех)",
-    "register_failed": "Регистрация (ошибка)",
-    "login_success": "Вход по паролю",
-    "login_failed": "Вход (ошибка)",
-    "login_code_sent": "Код входа отправлен",
-    "login_code_send_failed": "Код входа не отправлен",
-    "login_by_code_success": "Вход по коду",
-    "login_by_code_failed": "Вход по коду (ошибка)",
-    "telegram_login_success": "Вход через Telegram",
-    "telegram_login_failed": "Вход через Telegram (ошибка)",
-    "telegram_link_success": "Привязка Telegram",
-    "telegram_link_failed": "Привязка Telegram (ошибка)",
-    "payment_menu_opened": "Меню оплаты",
-    "payment_currency_selected": "Выбор валюты",
-    "balance_screen_opened": "Экран баланса",
-    "balance_history_opened": "История пополнений",
-    "payment_link_created": "Создана платёжная ссылка",
-    "payment_link_create_failed": "Ошибка создания ссылки",
-    "coupon_activation_success": "Купон активирован",
-    "coupon_activation_failed": "Купон не активирован",
-    "coupon_renewal_success": "Продление по купону",
-    "coupon_renewal_failed": "Продление по купону (ошибка)",
-    "coupon_key_selection_opened": "Выбор ключа для купона",
-    "coupon_link_opened": "Переход по ссылке купона",
-    "trial_requested": "Запрос триала",
-    "key_purchase_started": "Начало покупки подписки",
-    "keys_list_opened": "Список подписок",
-    "key_view_opened": "Карточка подписки",
-    "key_alias_updated": "Переименование подписки",
-    "key_hwid_reset": "Сброс устройств (HWID)",
-    "key_renew_requested": "Запрос продления",
-    "key_renew_blocked": "Продление ещё недоступно",
-    "key_renew_insufficient_funds": "Не хватило баланса на продление",
-    "key_renew_completed": "Подписка продлена",
-    "key_renew_failed": "Ошибка продления",
-    "gift_link_opened": "Переход по подарочной ссылке",
-    "referral_link_opened": "Переход по реферальной ссылке",
-    "referral_link_applied": "Реферал применён",
-    "referral_link_failed": "Реферальная ссылка (ошибка)",
-    "referral_screen_opened": "Экран рефералов",
-    "referral_qr_opened": "QR реферальной ссылки",
-    "top_referrals_opened": "Топ рефералов",
-    "utm_link_opened": "Переход по UTM",
-    "utm_link_failed": "UTM не найден",
-}
-
-
 def _parse_filter_page(raw_data: str | int | None) -> tuple[str, str, int]:
     if isinstance(raw_data, str):
         parts = raw_data.split("|")
@@ -309,15 +103,6 @@ def _parse_filter_page(raw_data: str | int | None) -> tuple[str, str, int]:
     return "all", "all", 0
 
 
-def _resolve_event_types(category_filter: str) -> list[str] | None:
-    if category_filter == "all":
-        return None
-    category_events = EVENT_CATEGORY_MAP.get(category_filter)
-    if not category_events:
-        return None
-    return sorted(category_events)
-
-
 CATEGORY_BLOCK_ORDER = ("balance", "auth", "subscriptions", "payments", "marketing", "other")
 CATEGORY_BLOCK_LABELS = {
     "balance": "Баланс",
@@ -327,45 +112,6 @@ CATEGORY_BLOCK_LABELS = {
     "marketing": "Маркетинг",
     "other": "Другое",
 }
-
-
-def _event_category(event) -> str:
-    """Определяет категорию события аудита."""
-    path = (getattr(event, "path_or_handler", None) or "").lower()
-    etype = (getattr(event, "event_type", None) or "").lower()
-    if etype == "balance_changed":
-        return "balance"
-    if etype != "telegram_access":
-        for cat, event_types in EVENT_CATEGORY_MAP.items():
-            if etype in event_types:
-                return cat
-        return "other"
-    if (
-        "handlers.keys" in path
-        or "key_view" in path
-        or "key_create" in path
-        or "key_renew" in path
-        or "tariffs" in path
-        or "key_tariffs" in path
-        or "addon" in path
-        or "key_addons" in path
-    ):
-        return "subscriptions"
-    if (
-        "handlers.payments" in path
-        or "pay" in path
-        or "balance" in path
-        or "handlers.coupons" in path
-        or "payment" in path
-    ):
-        return "payments"
-    if "handlers.refferal" in path or "referral" in path or "gift" in path or "utm" in path:
-        return "marketing"
-    if "handlers.start" in path or "start_entry" in path or "process_start" in path:
-        return "marketing"
-    if "auth" in path or "login" in path or "register" in path:
-        return "auth"
-    return "other"
 
 
 def _format_metadata(metadata: dict | None) -> str | None:
