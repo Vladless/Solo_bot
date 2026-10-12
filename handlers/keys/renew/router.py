@@ -657,6 +657,8 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
                         "selected_device_limit": pricing.selected_device_limit,
                         "selected_traffic_limit": pricing.selected_traffic_limit,
                         "selected_price_rub": int(pricing.final_price_rub),
+                        "coupon_id": pricing.coupon_id,
+                        "applied_coupon_code": pricing.applied_coupon_code,
                     },
                     required_amount=required_amount,
                 )

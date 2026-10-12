@@ -53,7 +53,7 @@ async def apply_checkout_coupon(
     coupon_code: str | None = None,
 ) -> tuple[dict, int | None, str]:
     """Применяет процентный купон к корзине и возвращает её вместе с суммой доплаты."""
-    if coupon_code is None and payload.get("applied_coupon_code"):
+    if payload.get("applied_coupon_code") or payload.get("coupon_id") is not None:
         return payload, required_amount, ""
 
     base_price = payload_base_price(payload)
