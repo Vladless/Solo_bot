@@ -8,6 +8,7 @@ import { f, parseBlockData } from "@/components/constructor/blockContent/cabinet
 import { useBlockApi } from "@/components/constructor/blockContent/cabinetKit/apiHooksRegistry";
 import { useAccountMutations } from "@/components/constructor/blockContent/account/useAccountMutations";
 import { isApiError } from "@/lib/api";
+import { navigateToSamePageAnchor } from "@/lib/anchor-navigation";
 
 const SECURITY_PANEL_SCHEMA = {
   panelHeader: f.str("Безопасность"),
@@ -74,10 +75,8 @@ export function DefaultSecurityPanelBlockView({ block, context }: TypedBlockView
     <a
       href={href}
       onClick={(e) => {
-        if (!href.startsWith("#")) return;
-        e.preventDefault();
-        const el = typeof document !== "undefined" ? document.getElementById(href.slice(1)) : null;
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (navigateToSamePageAnchor(href)) e.preventDefault();
       }}
       style={{ ...btnSecondary(t), ...btnSm(t), borderRadius: CONTROL_R, textDecoration: "none", flexShrink: 0 }}
     >
