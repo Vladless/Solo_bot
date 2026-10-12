@@ -15,6 +15,13 @@ async def yookassa_autopay_loop(bot, sessionmaker) -> None:
     await autopay_loop(bot, sessionmaker)
 
 
+async def yookassa_refunds_loop(bot, sessionmaker) -> None:
+    """Продолжает сверку отправленных возвратов YooKassa."""
+    from services.payments.yookassa.refunds import refunds_loop
+
+    await refunds_loop(bot, sessionmaker)
+
+
 async def scheduled_broadcasts_loop_task(bot, _sessionmaker) -> None:
     from handlers.admin.sender.scheduled_service import scheduled_broadcasts_loop
 

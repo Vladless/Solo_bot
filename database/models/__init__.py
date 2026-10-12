@@ -40,6 +40,7 @@ from .yookassa_autopay import (
     YooKassaSavedCard,
     YooKassaSubscription,
 )
+from .yookassa_refunds import RefundOperation
 
 
 __all__ = [
@@ -97,4 +98,5 @@ __all__ = [
     "YooKassaPayment",
     "YooKassaLog",
     "YooKassaAutopayAttempt",
+    "RefundOperation",
 ]

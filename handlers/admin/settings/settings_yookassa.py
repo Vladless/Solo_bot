@@ -60,6 +60,12 @@ def markup_keyboard(*, show_autopay_settings: bool = True) -> InlineKeyboardMark
     if show_autopay_settings:
         rows.append([
             InlineKeyboardButton(
+                text="↩️ Возвраты",
+                callback_data=AdminPanelCallback(action="settings_yoo_refunds").pack(),
+            )
+        ])
+        rows.append([
+            InlineKeyboardButton(
                 text=YOOKASSA_AUTOPAY_SETTINGS,
                 callback_data=AdminPanelCallback(action="settings_yoo_autopay").pack(),
             )

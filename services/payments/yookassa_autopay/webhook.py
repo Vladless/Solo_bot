@@ -49,7 +49,12 @@ async def dispatch_if_known(payload: dict) -> PipelineResult | None:
                 raise ValueError("Неверная валюта возврата")
         except (KeyError, TypeError, ValueError):
             return PipelineResult(ok=False, error="Неверная сумма возврата")
-        return await process_verified_refund(payment_id, refund_id, amount)
+        result = await process_verified_refund(payment_id, refund_id, amount)
+        if result.ok:
+            from services.payments.yookassa.refunds import sync_verified_refund
+
+            await sync_verified_refund(data, provider="yookassa_autopay")
+        return result
     if event not in {"payment.succeeded", "payment.canceled", "payment.waiting_for_capture"}:
         return PipelineResult(ok=True)
     if attempt is not None and attempt.payment_id is None:
