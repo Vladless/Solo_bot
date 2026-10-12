@@ -8,7 +8,7 @@ import { f, parseBlockData } from "@/components/constructor/blockContent/cabinet
 import { useBlockApi } from "@/components/constructor/blockContent/cabinetKit/apiHooksRegistry";
 import { useAccountMutations } from "@/components/constructor/blockContent/account/useAccountMutations";
 import { isApiError } from "@/lib/api";
-import { navigateToSamePageAnchor } from "@/lib/anchor-navigation";
+import { useBlockNavigate } from "@/lib/block-navigation";
 
 const SECURITY_PANEL_SCHEMA = {
   panelHeader: f.str("Безопасность"),
@@ -40,6 +40,7 @@ export function DefaultSecurityPanelBlockView({ block, context }: TypedBlockView
   const t = useDefaultTheme(d);
   const cfg = parseBlockData(d, SECURITY_PANEL_SCHEMA);
   const isPreview = previewMode === true;
+  const navigate = useBlockNavigate();
 
   const api = useBlockApi({ needs: ["summary", "sessions"], disabled: isPreview, mock: isPreview });
   const mut = useAccountMutations();
@@ -76,7 +77,10 @@ export function DefaultSecurityPanelBlockView({ block, context }: TypedBlockView
       href={href}
       onClick={(e) => {
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-        if (navigateToSamePageAnchor(href)) e.preventDefault();
+        if (href.startsWith("#")) {
+          e.preventDefault();
+          navigate(href);
+        }
       }}
       style={{ ...btnSecondary(t), ...btnSm(t), borderRadius: CONTROL_R, textDecoration: "none", flexShrink: 0 }}
     >
