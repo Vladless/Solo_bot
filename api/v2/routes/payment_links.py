@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_token
-from api.shared.http import resolve_default_web_payment_provider
+from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from api.v2.schemas.payment_links import (
     PaymentAmountQuote,
     PaymentLinkCreateRequest,
@@ -235,13 +235,14 @@ async def create_link(
     if body.payhot_customer_phone is not None:
         web_metadata["payhot_customer_phone"] = body.payhot_customer_phone
     await _validate_payment_intent(session, billing_user_ref, web_metadata)
+    base_url = resolve_public_base_url(http_request)
     payment_request = PaymentLinkRequest(
         legacy_user_ref=billing_user_ref,
         amount=body.amount,
         currency=body.currency or "RUB",
         provider_id=body.provider_id or resolve_default_web_payment_provider() or "",
-        success_url=body.success_url,
-        failure_url=body.failure_url,
+        success_url=str(body.success_url or "").strip() or f"{base_url}/payment-success",
+        failure_url=str(body.failure_url or "").strip() or f"{base_url}/payment-failure",
         metadata=web_metadata,
         accepted_gross_amount=body.accepted_gross_amount,
     )
