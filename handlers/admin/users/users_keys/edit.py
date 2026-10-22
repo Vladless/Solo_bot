@@ -1,8 +1,12 @@
+from database.access.resolution import UserId
+from database.keys import resolve_key_operation_owner
 from database.subscription_events import get_recent_renewals
+from filters.admin_actions import admin_action_allowed
+from filters.permissions import PERM_KEY_VIEW
 from services.subscription_keys import resolve_remnawave_server_ref
 
 from ...panel.headers import card, menu_text, quote, section
-from ._common import *  # noqa: F401,F403
+from ._common import *
 
 
 _RENEWAL_SOURCE_LABELS = {"bot": "бот", "web": "сайт", "webapp": "WebApp", "admin": "админ", "balance": "баланс"}
@@ -144,11 +148,12 @@ async def handle_key_edit(
     plan += [line for line in (devices_line, traffic_line) if line]
 
     blocks = [
-        section("🔗 Ссылка", f"<code>{key_value}</code>"),
         section("⏳ Срок", *term),
         section("📦 Тариф", *plan),
         section("🗺 Размещение", f"Кластер: {key_obj.server_id or '—'}", f"Клиент: {key_obj.tg_id or '—'}"),
     ]
+    if admin_action_allowed(PERM_KEY_VIEW):
+        blocks.insert(0, section("🔗 Ссылка", f"<code>{key_value}</code>"))
     if renewals_block:
         blocks.append(section("🔄 Продления", *renewals_block.split("\n")))
 
@@ -255,7 +260,7 @@ async def handle_expiry_add(
         return
 
     if days:
-        await change_expiry_time(key_details["expiry_time"] + days * 24 * 3600 * 1000, email, session)
+        await change_expiry_time(key_details["expiry_time"] + days * 24 * 3600 * 1000, email, session, user_id=user_id)
         await handle_key_edit(callback_query, callback_data, session, True)
         return
 
@@ -349,7 +354,7 @@ async def handle_expiry_set(
 @router.message(UserEditorState.waiting_for_expiry_time, IsAdminFilter())
 async def handle_expiry_time_input(message: Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
     email = data.get("email")
     key_ref = data.get("key_ref")
     op_type = data.get("op_type")
@@ -361,9 +366,11 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
         )
         return
 
-    key_details = await get_key_details(session, email)
+    key_obj = await get_key_by_email(session, email, user_id) if user_id is not None else None
+    key_details = await get_key_details(session, email) if key_obj is not None else None
 
     if not key_details:
+        await state.clear()
         await message.answer(
             text=menu_text("Подписка", "❌ Подписка не найдена."),
             reply_markup=build_editor_kb(user_id),
@@ -390,7 +397,7 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
             text = menu_text("Подписка", f"✅ Время действия ключа изменено на <b>{message.text} (МСК)</b>")
 
         new_expiry_timestamp = int(new_expiry_time.timestamp() * 1000)
-        await change_expiry_time(new_expiry_timestamp, email, session)
+        await change_expiry_time(new_expiry_timestamp, email, session, user_id=user_id)
     except ValueError:
         text = menu_text(
             "Срок действия", "Некорректный формат даты.", quote("Нужно так: <code>ГГГГ-ММ-ДД ЧЧ:ММ</code>")
@@ -404,8 +411,10 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
     )
 
 
-async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession) -> Exception | None:
-    key_obj = await get_key_by_email(session, email)
+async def change_expiry_time(
+    expiry_time: int, email: str, session: AsyncSession, *, user_id: UserId
+) -> Exception | None:
+    key_obj = await get_key_by_email(session, email, user_id)
     if not key_obj:
         return ValueError(f"User with email {email} was not found")
 
@@ -449,7 +458,7 @@ async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession
 
     await release_session_early(session)
 
-    await renew_key_in_cluster(
+    renewed = await renew_key_in_cluster(
         cluster_id=target_cluster,
         email=email,
         client_id=client_id,
@@ -462,6 +471,11 @@ async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession
         old_subgroup=key_subgroup,
         plan=tariff_id,
     )
+    if not renewed:
+        return RuntimeError("Изменение срока подписки на панели не подтверждено")
 
-    await update_key_expiry(session, client_id, expiry_time)
+    current_owner = await resolve_key_operation_owner(session, user_id, client_id, email)
+    if current_owner is None:
+        return ValueError("Subscription owner changed while updating expiry")
+    await update_key_expiry(session, client_id, expiry_time, user_id=current_owner)
     return None

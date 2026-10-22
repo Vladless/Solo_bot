@@ -1,6 +1,7 @@
 from sqlalchemy import and_, func, select
 
 from core.settings.bonus_config import resolve_daily_bonus_rules
+from database.access.resolution import public_tg_id
 from database.models import DailyBonusClaim, Key, Payment
 
 from .base import INTERNAL_SYSTEMS, StatsCtx
@@ -60,7 +61,7 @@ async def _top_users(ctx: StatsCtx, limit: int = 10) -> list[dict]:
     return [
         {
             "user_id": int(uid or 0),
-            "tg_id": int(tg) if tg is not None else None,
+            "tg_id": public_tg_id(tg),
             "claims": int(c or 0),
             "amount": round(float(a or 0), 2),
             "best_streak": int(st or 0),

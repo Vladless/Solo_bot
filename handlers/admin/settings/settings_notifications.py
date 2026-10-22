@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import NOTIFICATIONS_CONFIG, update_notifications_config
 from filters.admin import IsAdminFilter
+from settings.texts import EXPIRY_SKIP_TRIAL_HINT, TRAFFIC_SETTINGS_HINT, TRAFFIC_SETTINGS_INVALID
 
 from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
@@ -38,6 +39,7 @@ async def open_settings_notifications_menu(callback: CallbackQuery, session: Asy
         "Уведомления",
         "Что бот шлёт клиентам и админам.",
         quote("Нажмите на уведомление, чтобы включить или выключить его."),
+        quote(EXPIRY_SKIP_TRIAL_HINT, TRAFFIC_SETTINGS_HINT),
     )
     await callback.message.edit_text(text=text, reply_markup=build_settings_notifications_kb(notifications_state))
     await callback.answer()
@@ -123,12 +125,14 @@ async def toggle_notification_setting(
     current = bool(config.get(key, False))
     config[key] = not current
 
-    await update_notifications_config(session, config)
+    try:
+        await update_notifications_config(session, config)
+    except ValueError:
+        await callback.answer(TRAFFIC_SETTINGS_INVALID, show_alert=True)
+        return
 
     notifications_state = await load_notification_settings()
-    await callback.message.edit_reply_markup(
-        reply_markup=build_settings_notifications_kb(notifications_state),
-    )
+    await callback.message.edit_reply_markup(reply_markup=build_settings_notifications_kb(notifications_state))
     await callback.answer(menu_text("Уведомления", "Настройка обновлена"))
 
 
@@ -176,7 +180,7 @@ async def notification_interval_value_input(message: Message, state: FSMContext,
 
     data = await state.get_data()
     key = data.get("setting_key")
-    if not key:
+    if key not in NOTIFICATION_TIME_FIELDS:
         await state.clear()
         await message.answer(menu_text("Уведомления", "Ошибка состояния. Попробуйте ещё раз."))
         return
@@ -184,7 +188,11 @@ async def notification_interval_value_input(message: Message, state: FSMContext,
     config = dict(NOTIFICATIONS_CONFIG or {})
     config[key] = new_value
 
-    await update_notifications_config(session, config)
+    try:
+        await update_notifications_config(session, config)
+    except ValueError:
+        await message.answer(TRAFFIC_SETTINGS_INVALID)
+        return
     await state.clear()
 
     notifications_state = await load_notification_settings()

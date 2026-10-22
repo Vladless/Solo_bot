@@ -1,11 +1,10 @@
 from fastapi import Request
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v2.schemas.identities import IdentityResponse, LoginResponse
+from database import partners as pdb
 from logger import logger
 from settings.config import API_TOKEN_TTL_DAYS
-from utils.referral_codes import encode_partner_code
 
 
 TOKEN_TTL_HINT = "бессрочно" if API_TOKEN_TTL_DAYS is None else f"{API_TOKEN_TTL_DAYS} дн."
@@ -62,9 +61,7 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
     except Exception:
         partner_feature_enabled = False
         default_percent = 0.0
-    from api.v2.routes.partners import partners_table_exists
-
-    partner_table_ok = await partners_table_exists(session)
+    partner_table_ok = await pdb.partner_schema_available(session)
     if not partner_table_ok:
         partner_feature_enabled = False
     payload: dict[str, object] = {
@@ -81,89 +78,32 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
         return payload
     try:
         async with session.begin_nested():
-            partner_row = (
-                await session.execute(
-                    text(
-                        """
-                        SELECT
-                            tg_id,
-                            COALESCE(partner_balance, 0),
-                            partner_percent,
-                            COALESCE(partner_percent_custom, false),
-                            partner_code,
-                            payout_method
-                        FROM users
-                        WHERE id = :user_id
-                        LIMIT 1
-                        """
-                    ),
-                    {"user_id": int(billing_user_id)},
-                )
-            ).first()
+            partner_row = await pdb.get_partner_profile(session, billing_user_id)
     except Exception as e:
         logger.warning("[Site:Partner] Не удалось прочитать партнёрские поля клиента: {}", e)
         partner_row = None
     if partner_row is None:
         return payload
-    tg_id = int(partner_row[0]) if partner_row[0] is not None else None
-    balance = float(partner_row[1] or 0.0)
-    percent_raw = partner_row[2]
-    percent_custom = bool(partner_row[3])
+    balance = float(partner_row["partner_balance"] or 0.0)
+    percent_raw = partner_row["partner_percent"]
+    percent_custom = bool(partner_row["partner_percent_custom"])
     percent_value = float(percent_raw) if (percent_custom and percent_raw is not None) else float(default_percent)
-    code = str(partner_row[4] or "").strip()
-    if (not code or code.isdigit() or code.startswith("r1_")) and int(billing_user_id) > 0:
-        generated_code = encode_partner_code(int(billing_user_id))
-        code = generated_code
-        try:
-            async with session.begin_nested():
-                await session.execute(
-                    text("UPDATE users SET partner_code = :code WHERE id = :id"),
-                    {"code": generated_code, "id": int(billing_user_id)},
-                )
-                await session.flush()
-        except Exception as e:
-            logger.warning("[Site:Partner] Не удалось сохранить партнёрский код клиента {}: {}", billing_user_id, e)
-    payout_method = str(partner_row[5] or "").strip() or None
+    code = str(partner_row["partner_code"] or "").strip()
+    try:
+        async with session.begin_nested():
+            code = await pdb.ensure_partner_code(session, billing_user_id, code)
+    except Exception as e:
+        logger.warning("[Site:Partner] Не удалось сохранить партнёрский код клиента {}: {}", billing_user_id, e)
+    payout_method = str(partner_row["payout_method"] or "").strip() or None
     referred_total = 0
     referred_paid = 0
-    if tg_id is not None:
-        try:
-            async with session.begin_nested():
-                referred_total = int(
-                    (
-                        await session.execute(
-                            text("SELECT COUNT(*) FROM partners WHERE partner_tg_id = :tg_id"),
-                            {"tg_id": int(tg_id)},
-                        )
-                    ).scalar()
-                    or 0
-                )
-        except Exception as e:
-            logger.warning("[Site:Partner] Не удалось посчитать приглашённых: {}", e)
-            referred_total = 0
-        try:
-            async with session.begin_nested():
-                referred_paid = int(
-                    (
-                        await session.execute(
-                            text(
-                                "SELECT COUNT(DISTINCT pr.joined_tg_id) "
-                                "FROM partners pr "
-                                "WHERE pr.partner_tg_id = :tg_id "
-                                "AND EXISTS ("
-                                "  SELECT 1 FROM payments pay "
-                                "  WHERE pay.tg_id = pr.joined_tg_id "
-                                "  AND lower(pay.status) = 'success'"
-                                ")"
-                            ),
-                            {"tg_id": int(tg_id)},
-                        )
-                    ).scalar()
-                    or 0
-                )
-        except Exception as e:
-            logger.warning("[Site:Partner] Не удалось посчитать оплативших приглашённых: {}", e)
-            referred_paid = 0
+    try:
+        async with session.begin_nested():
+            summary = await pdb.get_partner_summary(session, billing_user_id)
+            referred_total = summary["referred_count"]
+            referred_paid = summary["paid_count"]
+    except Exception as e:
+        logger.warning("[Site:Partner] Не удалось посчитать приглашённых: {}", e)
     payload.update({
         "partner_enabled": bool(
             partner_table_ok and (partner_feature_enabled or code or referred_total > 0 or balance > 0)

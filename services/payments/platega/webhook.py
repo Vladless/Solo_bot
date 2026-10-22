@@ -9,6 +9,7 @@ from core.webhook_abuse import (
     record_webhook_signature_failure,
 )
 from database import async_session_maker, get_payment_by_payment_id
+from database.access.resolution import UserId
 from logger import logger
 from services.payments.pipeline import (
     ParsedPayment,
@@ -79,7 +80,9 @@ async def platega_webhook(request: web.Request):
             except (TypeError, ValueError):
                 rub_amount = 0.0
             try:
-                if pending.get("tg_id") is not None:
+                if pending.get("user_id") is not None:
+                    tg_id = UserId(pending["user_id"])
+                elif pending.get("tg_id") is not None:
                     tg_id = int(pending.get("tg_id"))
             except (TypeError, ValueError):
                 tg_id = None
@@ -100,7 +103,7 @@ async def platega_webhook(request: web.Request):
                     f"[Platega] Не удалось определить tg_id для transaction={transaction_id}; "
                     f"pending запись не найдена."
                 )
-                return web.Response(status=400, text="unknown payment")
+                return web.Response(status=500, text="unknown payment")
 
             if rub_amount <= 0:
                 if webhook_currency == "RUB":
@@ -125,7 +128,7 @@ async def platega_webhook(request: web.Request):
 
             parsed = ParsedPayment(
                 payment_id=transaction_id,
-                tg_id=int(tg_id),
+                tg_id=tg_id,
                 amount=float(rub_amount),
                 currency="RUB",
                 metadata=metadata_patch,
@@ -159,12 +162,14 @@ async def platega_webhook(request: web.Request):
 
             parsed = ParsedPayment(
                 payment_id=transaction_id,
-                tg_id=int(tg_id) if tg_id is not None else None,
+                tg_id=tg_id,
                 amount=parsed_amount,
                 currency=webhook_currency,
                 metadata=metadata_patch,
             )
-            await process_cancelled_payment(_PROVIDER, parsed, new_status="cancelled")
+            result = await process_cancelled_payment(_PROVIDER, parsed, new_status="cancelled")
+            if not result.ok:
+                return web.Response(status=500, text="pipeline error")
 
             logger.info(f"[Platega] Платёж отменён: transaction={transaction_id}")
             return web.Response(status=200, text="OK")
@@ -179,12 +184,14 @@ async def platega_webhook(request: web.Request):
 
             parsed = ParsedPayment(
                 payment_id=transaction_id,
-                tg_id=int(tg_id) if tg_id is not None else None,
+                tg_id=tg_id,
                 amount=parsed_amount,
                 currency=webhook_currency,
                 metadata=metadata_patch,
             )
-            await process_cancelled_payment(_PROVIDER, parsed, new_status="chargebacked")
+            result = await process_cancelled_payment(_PROVIDER, parsed, new_status="chargebacked")
+            if not result.ok:
+                return web.Response(status=500, text="pipeline error")
 
             logger.warning(
                 f"[Platega] CHARGEBACK: transaction={transaction_id}, amount={webhook_amount} {webhook_currency}"

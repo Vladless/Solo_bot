@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Header, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.admin_permissions import require_admin_action, require_legacy_resource_permission
 from audit import set_api_actor
 from core.redis_cache import cache_get, cache_key, cache_set
 from core.settings.runtime_sync import maybe_sync_runtime_configs
@@ -16,8 +17,16 @@ from database import (
     identities as idb,
     identity_sessions as idsess,
 )
-from database.access.resolution import ActorSurface, ResolvedActor, resolve_actor_from_identity
+from database.access.resolution import (
+    ActorSurface,
+    ResolvedActor,
+    get_user_by_id,
+    public_tg_id,
+    resolve_actor_from_identity,
+    telegram_chat_id,
+)
 from database.models import Admin, Identity
+from filters.admin_actions import granular_permissions_enabled
 from logger import logger
 from settings.cache_config import AUTH_ACTOR_CACHE_TTL_SEC
 
@@ -72,6 +81,7 @@ async def verify_admin_token(
     admin = result.scalar_one_or_none()
     if not admin:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    await require_legacy_resource_permission(session, admin, request)
     set_api_actor(request, tg_id=admin.tg_id)
     return admin
 
@@ -95,7 +105,7 @@ def _is_secure_request(request: Request | None) -> bool:
 
 
 def set_auth_cookie(response: Response, token: str, request: Request | None = None) -> None:
-    """Устанавливает HttpOnly cookie с auth-токеном на ответ. Используется во всех login-ручках."""
+    """Устанавливает защищённую cookie с токеном авторизации."""
     response.set_cookie(
         key=AUTH_COOKIE_NAME,
         value=token,
@@ -108,7 +118,7 @@ def set_auth_cookie(response: Response, token: str, request: Request | None = No
 
 
 def clear_auth_cookie(response: Response, request: Request | None = None) -> None:
-    """Удаляет auth cookie на стороне браузера."""
+    """Удаляет cookie авторизации."""
     response.delete_cookie(
         key=AUTH_COOKIE_NAME,
         path="/",
@@ -121,7 +131,7 @@ def clear_auth_cookie(response: Response, request: Request | None = None) -> Non
 
 
 def set_is_admin_cookie(response: Response, identity: Identity, request: Request | None = None) -> None:
-    """Ставит/гасит `is_admin` cookie в зависимости от текущей identity."""
+    """Обновляет cookie административного доступа."""
     if getattr(identity, "is_admin", False):
         response.set_cookie(
             key=IS_ADMIN_COOKIE_NAME,
@@ -186,27 +196,48 @@ async def _identity_from_auth_cache(session: AsyncSession, request: Request | No
     cached = await cache_get(_auth_cache_key(token_hash))
     if not isinstance(cached, dict):
         return None
+    if not isinstance(cached.get("iid"), str) or not cached["iid"]:
+        return None
+    uid = cached.get("uid")
+    if type(uid) is not int or not 0 < uid <= 2**63 - 1:
+        return None
+    for field in ("itg", "atg"):
+        value = cached.get(field)
+        if field not in cached or (value is not None and (type(value) is not int or not 0 < value <= 2**63 - 1)):
+            return None
     exp = cached.get("exp")
-    if exp:
+    if exp is not None:
         try:
             if datetime.fromisoformat(exp) <= datetime.utcnow():
                 return None
-        except ValueError:
+        except (TypeError, ValueError):
             return None
-    identity = await idb.get_identity_by_id(session, cached.get("iid"))
+    auth_session = await idsess.get_session_by_token_hash(session, token_hash)
+    if auth_session is None or auth_session.identity_id != cached["iid"]:
+        return None
+    if auth_session.expires_at is not None and auth_session.expires_at <= datetime.utcnow():
+        return None
+    identity = await idb.get_identity_by_id(session, cached["iid"])
     if identity is None:
         return None
     if (identity.tg_id or None) != cached.get("itg"):
         return None
+    user = await get_user_by_id(session, uid)
+    if user is None or user.identity_id != identity.id:
+        return None
+    chat_id = telegram_chat_id(user)
+    if chat_id != cached["atg"] or chat_id != public_tg_id(identity.tg_id):
+        return None
     actor = ResolvedActor(
         surface=ActorSurface.WEB,
-        billing_user_id=cached.get("uid"),
-        telegram_chat_id=cached.get("atg"),
+        billing_user_id=user.id,
+        telegram_chat_id=chat_id,
         identity_id=identity.id,
     )
     set_api_actor(request, identity_id=actor.identity_id, tg_id=actor.telegram_chat_id)
     if request is not None:
         request.state.actor = actor
+        request.state.auth_session = auth_session
     return identity
 
 
@@ -230,7 +261,7 @@ async def verify_identity_token(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    """Проверяет токен из HttpOnly cookie `auth_token`; возвращает Identity."""
+    """Проверяет токен из cookie и возвращает личность пользователя."""
     from database.site_state import mark_site_initialized
 
     token = _read_auth_cookie(request)
@@ -271,7 +302,7 @@ async def verify_identity_admin(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    """Проверяет токен из cookie и что identity.is_admin; для админских ручек v2."""
+    """Проверяет авторизацию и права администратора."""
     from database.site_state import mark_site_initialized
 
     identity = await _identity_from_cookie(session, request)
@@ -279,6 +310,7 @@ async def verify_identity_admin(
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not identity.is_admin:
         raise HTTPException(status_code=403, detail="Forbidden")
+    await require_admin_action(session, identity)
     if await resolve_identity_role(session, identity) in ("moderator", "designer"):
         raise HTTPException(status_code=403, detail="Forbidden")
     await bind_identity_actor(request, session, identity)
@@ -290,7 +322,7 @@ async def verify_identity_designer(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    """Пускает админа и дизайнера (для визуального редактора сайта)."""
+    """Проверяет доступ администратора или дизайнера."""
     from database.site_state import mark_site_initialized
 
     identity = await _identity_from_cookie(session, request)
@@ -309,7 +341,7 @@ async def verify_identity_agent(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    """Пускает суперадмина и модератора (для раздела тикетов /support)."""
+    """Проверяет доступ администратора или модератора."""
     from database.site_state import mark_site_initialized
 
     identity = await _identity_from_cookie(session, request)
@@ -325,12 +357,16 @@ async def verify_identity_agent(
 async def verify_identity_admin_short(
     request: Request,
 ):
-    """Проверка админа с короткой сессией (для broadcast и др.), чтобы не держать соединение с БД."""
+    """Проверяет права администратора и закрывает сессию базы данных."""
     identity = None
     actor = None
     async with async_session_maker() as session:
         identity = await _identity_from_cookie(session, request)
         if identity:
+            if granular_permissions_enabled():
+                await require_admin_action(session, identity)
+                if await resolve_identity_role(session, identity) in ("moderator", "designer"):
+                    raise HTTPException(status_code=403, detail="Forbidden")
             actor = await resolve_actor_from_identity(session, identity)
         await session.commit()
     if not identity:
@@ -351,11 +387,13 @@ async def verify_admin_token_short(
     token: str = Header(..., alias="X-Token"),
     request: Request = None,
 ) -> Admin:
-    """Проверка админа с короткой сессией (для broadcast и др.), чтобы не держать соединение с БД."""
+    """Проверяет токен администратора и закрывает сессию базы данных."""
     hashed = hash_token(token)
     async with async_session_maker() as session:
         result = await session.execute(select(Admin).where(Admin.tg_id == admin_id, Admin.token == hashed))
         admin = result.scalar_one_or_none()
+        if admin is not None:
+            await require_legacy_resource_permission(session, admin, request)
         await session.commit()
     if not admin:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -364,7 +402,7 @@ async def verify_admin_token_short(
 
 
 def validate_redirect_url(url: str, base_url: str) -> str:
-    """Validate redirect URL is same-origin or relative. Returns safe URL or base_url fallback."""
+    """Проверяет адрес перенаправления и подставляет адрес сайта при отказе."""
     url = url.strip()
     if not url:
         return base_url

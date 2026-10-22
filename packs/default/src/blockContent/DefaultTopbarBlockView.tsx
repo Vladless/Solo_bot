@@ -17,8 +17,8 @@ import { pickBool } from "@/components/constructor/blockContent/cabinetKit/dataP
 import type { CabinetTopbarAction } from "@/components/constructor/blockData/blocks";
 import { useBlockApi } from "@/components/constructor/blockContent/cabinetKit/apiHooksRegistry";
 import { useAccountMutations } from "@/components/constructor/blockContent/account/useAccountMutations";
-import { useAppInfo } from "@/app/AppInfoProvider";
 import { activateTrial as requestTrial } from "@/lib/trial-activation";
+import { useTrialAvailability } from "../../../_shared/trialAvailability";
 import { hasAuth } from "@/lib/auth";
 import { slugToPath } from "@/lib/web-page-registry";
 import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor";
@@ -146,11 +146,12 @@ const ACTION_SEARCH: QuickAction[] = [
 ];
 
 
-export function DefaultTopbarBlockView({ block, context }: TypedBlockViewProps<"defaultTopbar">) {
+export function DefaultTopbarBlockView({ block, context, editMode }: TypedBlockViewProps<"defaultTopbar">) {
   const navigate = useBlockNavigate();
   const decor = usePanelDecor();
   const { ref: barRef, width: barWidth, height: barHeight } = useContainerSize();
   const { wrap, previewMode } = context;
+  const isPreview = previewMode === true || editMode === true;
   const d = block.data as Record<string, unknown>;
   const ownFontScale = typeof d.fontScale === "number" && d.fontScale > 0 ? d.fontScale : 1;
   const autoScale = topbarAutoScale(barWidth, barHeight, ownFontScale);
@@ -164,22 +165,28 @@ export function DefaultTopbarBlockView({ block, context }: TypedBlockViewProps<"
   const sectionScreen = useSectionScreen();
   const goToTarget = useCabinetTarget();
   const isMobile = useIsMobile();
-  const api = useBlockApi({ needs: ["summary"], disabled: previewMode === true, mock: previewMode === true });
+  const api = useBlockApi({ needs: ["summary"], disabled: isPreview, mock: isPreview });
   const mut = useAccountMutations();
-  const appInfo = useAppInfo();
+  const trial = useTrialAvailability(isPreview);
   const keysTotal = typeof api.summary.data?.keys_total === "number" ? api.summary.data.keys_total : 0;
-  const trialStatus = typeof api.summary.data?.trial_status === "number" ? api.summary.data.trial_status : 0;
-  const trialAvailable = !!appInfo.features.trialEnabled && (trialStatus === 0 || trialStatus === -1);
+  const keysTotalKnown = typeof api.summary.data?.keys_total === "number" && Number.isFinite(api.summary.data.keys_total);
   const [trialBusy, setTrialBusy] = useState(false);
   const activateTrial = async () => {
-    if (previewMode || trialBusy) return;
+    if (isPreview || trialBusy || !trial.available) return;
     if (!hasAuth()) {
       navigate(`${slugToPath("login")}?from=${encodeURIComponent(slugToPath("dashboard"))}`);
       return;
     }
     setTrialBusy(true);
     const result = await requestTrial();
+    if (result.paymentRequired && result.paymentUrl) {
+      setTrialBusy(false);
+      navigate(result.paymentUrl);
+      return;
+    }
     if (result.ok) {
+      trial.markUsed();
+      setTrialBusy(false);
       navigate(slugToPath("dashboard-keys"));
       return;
     }
@@ -459,9 +466,10 @@ export function DefaultTopbarBlockView({ block, context }: TypedBlockViewProps<"
         ) : null}
         {actions.map((act, i) => {
           const visibility = act.visibility ?? "always";
-          if (!previewMode) {
+          if (!isPreview) {
             if (visibility === "hidden") return null;
-            if (visibility === "if_no_keys" && keysTotal > 0) return null;
+            if (visibility === "if_no_keys" && (!keysTotalKnown || keysTotal > 0)) return null;
+            if (visibility === "if_tg_linked" && api.summary.data?.linked_telegram !== true) return null;
           }
           const isSupportIcon = act.variant === "supportIcon";
           const style = isSupportIcon
@@ -494,8 +502,14 @@ export function DefaultTopbarBlockView({ block, context }: TypedBlockViewProps<"
           ) : (act.label ?? "");
           const iconA11y = isSupportIcon ? { title: act.label || "Помощь", "aria-label": act.label || "Помощь" } : {};
           const linkType = act.linkType ?? "url";
-          if (act.trialMode && (previewMode || trialAvailable)) {
-            const trialText = (act.trialLabel && act.trialLabel.trim()) || "Попробовать";
+          const trialText = (act.trialLabel && act.trialLabel.trim()) || "Попробовать";
+          const fallbackLabel = (act.label ?? "").trim();
+          const fallbackHref = (act.href ?? "").trim();
+          const trialOnly = act.trialMode && linkType === "url" &&
+            (!fallbackLabel || fallbackLabel === trialText || /^попробовать(?: бесплатно)?$/i.test(fallbackLabel)) &&
+            (!fallbackHref || fallbackHref === "#" || /^\/login(?:[?#]|$)/.test(fallbackHref));
+          if (!isPreview && trialOnly && !trial.available) return null;
+          if (act.trialMode && trial.available) {
             return (
               <button
                 key={i}

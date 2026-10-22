@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import (
     get_tariffs_for_cluster,
 )
+from database.access.resolution import TelegramId
 from database.tariffs import find_subgroup_by_hash, get_subgroup_description, get_tariffs
 from handlers.utils import edit_or_send_message
 from services.tariffs.visibility import filter_visible_tariffs
@@ -77,7 +78,7 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
             tariffs = await get_tariffs(session, group_code=group_code)
             filtered = await filter_visible_tariffs(
                 session,
-                callback.from_user.id,
+                TelegramId(callback.from_user.id),
                 [tariff for tariff in tariffs if tariff.get("subgroup_title") == subgroup and tariff.get("is_active")],
             )
 
@@ -89,7 +90,7 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
         )
         return
 
-    tg_id = callback.from_user.id
+    tg_id = TelegramId(callback.from_user.id)
     language_code = callback.from_user.language_code
 
     builder = InlineKeyboardBuilder()
@@ -136,7 +137,7 @@ async def back_to_tariff_group_list(callback: CallbackQuery, state: FSMContext, 
 
 @router.callback_query(F.data == "back_to_subgroup_tariffs")
 async def back_to_subgroup_tariffs(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
-    """Возврат к списку тарифов текущей подгруппы (из конфигуратора)."""
+    """Возвращает к тарифам текущей подгруппы."""
     data = await state.get_data()
     subgroup_hash = data.get("tariff_subgroup_hash")
     if not subgroup_hash:
@@ -158,7 +159,7 @@ async def back_to_subgroup_tariffs(callback: CallbackQuery, state: FSMContext, s
             tariffs = await get_tariffs(session, group_code=gc)
             filtered = await filter_visible_tariffs(
                 session,
-                callback.from_user.id,
+                TelegramId(callback.from_user.id),
                 [t for t in tariffs if t.get("subgroup_title") == subgroup and t.get("is_active")],
             )
 
@@ -166,7 +167,7 @@ async def back_to_subgroup_tariffs(callback: CallbackQuery, state: FSMContext, s
         await back_to_tariff_group_list(callback, state, session)
         return
 
-    tg_id = callback.from_user.id
+    tg_id = TelegramId(callback.from_user.id)
     language_code = getattr(callback.from_user, "language_code", None)
     builder = InlineKeyboardBuilder()
     for tariff in filtered:

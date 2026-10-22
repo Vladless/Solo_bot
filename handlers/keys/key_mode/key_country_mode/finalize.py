@@ -1,4 +1,4 @@
-from ._common import *  # noqa: F401,F403
+from ._common import *
 
 
 async def finalize_key_creation(
@@ -29,6 +29,7 @@ async def finalize_key_creation(
         await callback_query.message.answer("❌ Пользователь не найден.")
         return
     uid = owner.id
+    billing_user_id = UserId(uid)
 
     expiry_time = expiry_time.astimezone(moscow_tz)
 
@@ -37,7 +38,12 @@ async def finalize_key_creation(
         key_obj = await resolve_key(session, tg_id, old_key_name)
         old_key_name = key_obj.email if key_obj else old_key_name
         old_key_details = await get_key_details(session, old_key_name)
-        if not old_key_details:
+        if (
+            key_obj is None
+            or not old_key_details
+            or old_key_details.get("user_id") != uid
+            or old_key_details.get("client_id") != key_obj.client_id
+        ):
             await callback_query.message.answer("❌ Ключ не найден. Попробуйте снова.")
             return
         key_name = old_key_name
@@ -119,32 +125,25 @@ async def finalize_key_creation(
         cluster_name = cluster_info["cluster_name"]
         is_full_remnawave = await is_full_remnawave_cluster(cluster_name, session)
 
+        old_server_info = None
         if old_key_name and old_key_details:
             old_server_id = old_key_details["server_id"]
             if old_server_id:
                 result = await session.execute(select(Server).where(Server.server_name == old_server_id))
                 old_server_info = result.scalar_one_or_none()
-                if old_server_info:
-                    try:
-                        if old_server_info.panel_type.lower() == "3x-ui":
-                            xui = await get_xui_instance(old_server_info.api_url)
-                            await delete_client(xui, old_server_info.inbound_id, email, client_id)
-                            await session.execute(
-                                update(Key).where(Key.user_id == uid, Key.email == email).values(key=None)
-                            )
-                        elif old_server_info.panel_type.lower() == "remnawave":
-                            remna_del = remnawave_panel.RemnawaveAPI(old_server_info.api_url)
-                            if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                                await remna_del.delete_user(client_id, username=email)
-                                await session.execute(
-                                    update(Key)
-                                    .where(Key.user_id == uid, Key.email == email)
-                                    .values(remnawave_link=None)
-                                )
-                    except Exception as e:
-                        logger.warning(f"[Delete] Ошибка при удалении клиента: {e}")
 
         panel_type = server_info.panel_type.lower()
+        old_panel_type = str(getattr(old_server_info, "panel_type", "") or "").lower()
+        same_api = bool(old_server_info) and (
+            str(old_server_info.api_url or "").rstrip("/") == str(server_info.api_url or "").rstrip("/")
+        )
+        same_panel_client = (
+            same_api
+            and old_panel_type == panel_type
+            and (
+                panel_type == "remnawave" or str(old_server_info.inbound_id or "") == str(server_info.inbound_id or "")
+            )
+        )
 
         if panel_type == "remnawave" or is_full_remnawave:
             remna = remnawave_panel.RemnawaveAPI(server_info.api_url)
@@ -160,9 +159,7 @@ async def finalize_key_creation(
                 "uuid": client_id,
             }
             try:
-                from database.access.resolution import panel_identity_fields
-
-                _panel_tg, _panel_email = await panel_identity_fields(session, tg_id)
+                _panel_tg, _panel_email = await panel_identity_fields(session, billing_user_id)
                 if _panel_tg is not None:
                     user_data["telegramId"] = _panel_tg
                 if _panel_email:
@@ -174,7 +171,18 @@ async def finalize_key_creation(
             if device_limit:
                 user_data["hwidDeviceLimit"] = device_limit
 
-            result = await remna.create_user(user_data)
+            if same_api and old_panel_type == "remnawave":
+                updated = await remna.update_user(
+                    uuid=client_id,
+                    lookup_username=email,
+                    expire_at=expire_at,
+                    active_user_inbounds=user_data["activeInternalSquads"],
+                    traffic_limit_bytes=traffic_limit_bytes,
+                    hwid_device_limit=device_limit,
+                )
+                result = {"uuid": client_id, "username": email} if updated else None
+            else:
+                result = await remna.create_user(user_data)
             if not result:
                 raise ValueError("❌ Ошибка при создании пользователя в Remnawave")
 
@@ -213,14 +221,14 @@ async def finalize_key_creation(
 
         if panel_type == "3x-ui":
             semaphore = asyncio.Semaphore(2)
-            await create_client_on_server(
+            confirmed = await create_client_on_server(
                 server_info={
                     "api_url": server_info.api_url,
                     "inbound_id": server_info.inbound_id,
                     "server_name": server_info.server_name,
                     "panel_type": server_info.panel_type,
                 },
-                tg_id=tg_id,
+                tg_id=billing_user_id,
                 client_id=client_id,
                 email=email,
                 expiry_timestamp=expiry_timestamp,
@@ -230,7 +238,23 @@ async def finalize_key_creation(
                 is_trial=is_trial,
                 total_traffic_limit_bytes=traffic_limit_bytes,
                 device_limit_value=device_limit,
+                reuse_existing=bool(old_key_name),
             )
+            if confirmed is not True:
+                raise ValueError("Создание подписки не подтверждено в выбранной локации")
+
+        if old_server_info and not same_panel_client:
+            try:
+                if old_panel_type == "3x-ui":
+                    xui = await get_xui_instance(old_server_info.api_url)
+                    panel_email = f"{email}_{old_server_info.server_name.lower()}" if SUPERNODE else email
+                    await delete_client(xui, old_server_info.inbound_id, panel_email, old_key_details["client_id"])
+                elif old_panel_type == "remnawave":
+                    remna_del = remnawave_panel.RemnawaveAPI(old_server_info.api_url)
+                    if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                        await remna_del.delete_user(old_key_details["client_id"], username=email)
+            except Exception as error:
+                logger.warning(f"[Delete] Ошибка при удалении клиента: {error}")
 
         subgroup_code = tariff.get("subgroup_title") if tariff and tariff.get("subgroup_title") else None
         cluster_all = [
@@ -288,11 +312,11 @@ async def finalize_key_creation(
             )
             session.add(new_key)
             if is_trial:
-                trial_status = await get_trial(session, tg_id)
+                trial_status = await get_trial(session, billing_user_id)
                 if trial_status in [0, -1]:
-                    await update_trial(session, tg_id, 1)
+                    await update_trial(session, billing_user_id, 1)
             if not is_trial and price_to_charge and not skip_balance_charge:
-                debited = await update_balance(session, tg_id, -int(price_to_charge))
+                debited = await update_balance(session, billing_user_id, -int(price_to_charge))
                 if debited is None:
                     raise InsufficientFundsError("Недостаточно средств на балансе")
 
@@ -300,6 +324,7 @@ async def finalize_key_creation(
                 await state.update_data(skip_balance_charge=False)
 
     except Exception as e:
+        await session.rollback()
         logger.error(f"[Key Finalize] Ошибка при создании ключа для пользователя {tg_id}: {e}")
         await callback_query.message.answer("❌ Произошла ошибка при создании подписки. Попробуйте снова.")
         return
@@ -365,19 +390,25 @@ async def finalize_key_creation(
         builder.row(support_btn)
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    if await process_intercept_key_creation_message(
-        chat_id=tg_id,
+    tg_notify = await notify_telegram_chat_id(session, billing_user_id)
+    current_target = callback_query if callback_query.message.chat.id == tg_notify else None
+    if tg_notify is not None and await process_intercept_key_creation_message(
+        chat_id=tg_notify,
         session=session,
-        target_message=callback_query,
+        target_message=current_target,
     ):
         return
 
-    hook_commands = await process_key_creation_complete(
-        chat_id=tg_id,
-        admin=False,
-        session=session,
-        email=email,
-        key_name=key_name,
+    hook_commands = (
+        await process_key_creation_complete(
+            chat_id=tg_notify,
+            admin=False,
+            session=session,
+            email=email,
+            key_name=key_name,
+        )
+        if tg_notify is not None
+        else []
     )
     if hook_commands:
         builder = insert_hook_buttons(builder, hook_commands)
@@ -392,19 +423,23 @@ async def finalize_key_creation(
         selected_traffic_gb=selected_traffic_gb,
     )
 
-    await edit_or_send_message(
-        target_message=callback_query.message,
-        text=message_text,
-        reply_markup=builder.as_markup(),
-        media_path="img/pic.jpg",
-    )
+    tg_notify = await notify_telegram_chat_id(session, billing_user_id)
+    if callback_query.message.chat.id == tg_notify:
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text=message_text,
+            reply_markup=builder.as_markup(),
+            media_path="img/pic.jpg",
+        )
+    elif tg_notify is not None:
+        await bot.send_message(chat_id=tg_notify, text=message_text, reply_markup=builder.as_markup())
 
     if state:
         await state.clear()
 
 
 async def check_server_availability(server_info: dict, session: AsyncSession) -> bool:
-    """Делегирует в services.clusters.check_server_availability()."""
+    """Проверяет доступность сервера через сервис кластеров."""
     from services.clusters import check_server_availability as _svc_check
 
     result = await _svc_check(server_info, session)
@@ -412,7 +447,7 @@ async def check_server_availability(server_info: dict, session: AsyncSession) ->
 
 
 async def _legacy_check_server_availability(server_info: dict, session: AsyncSession) -> bool:
-    """Legacy — оставлено для reference."""
+    """Проверяет доступность сервера и лимит ключей."""
     server_name = server_info.get("server_name", "unknown")
     panel_type = server_info.get("panel_type", "3x-ui").lower()
     enabled = server_info.get("enabled", True)
@@ -442,13 +477,7 @@ async def _legacy_check_server_availability(server_info: dict, session: AsyncSes
             logger.info(f"[Ping] Remnawave сервер {server_name} доступен.")
             return True
 
-        xui = AsyncApi(
-            server_info["api_url"],
-            username=ADMIN_USERNAME,
-            password=ADMIN_PASSWORD,
-            logger=logger,
-        )
-        await asyncio.wait_for(xui.login(), timeout=5.0)
+        await asyncio.wait_for(check_xui_connection(server_info["api_url"]), timeout=5.0)
         logger.info(f"[Ping] 3x-ui сервер {server_name} доступен.")
         return True
 

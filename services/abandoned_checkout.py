@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.access.resolution import UserId, notify_telegram_chat_id
 from database.models.users import TemporaryData
 from database.notifications import add_notification, check_notification_time
 from database.web_notifications import notify_web
@@ -79,8 +80,7 @@ def _compose(state: str) -> tuple[str, str]:
 
 
 async def send_abandoned_checkout_reminders(session: AsyncSession) -> int:
-    """Находит брошенные оформления (висящие waiting_*-intent'ы) и шлёт одно напоминание.
-    Сигнал: temporary_data чистится при успешной оплате, поэтому провисевший intent = брошен."""
+    """Отправляет напоминания о незавершённых оплатах."""
     now = datetime.utcnow()
     oldest = now - timedelta(hours=_MAX_AGE_HOURS)
     newest = now - timedelta(minutes=_MIN_AGE_MINUTES)
@@ -92,7 +92,6 @@ async def send_abandoned_checkout_reminders(session: AsyncSession) -> int:
                         TemporaryData.state.in_(_WAITING_STATES),
                         TemporaryData.updated_at >= oldest,
                         TemporaryData.updated_at <= newest,
-                        TemporaryData.tg_id.isnot(None),
                     )
                 )
             )
@@ -106,11 +105,12 @@ async def send_abandoned_checkout_reminders(session: AsyncSession) -> int:
     sent = 0
     for row in rows:
         try:
-            tg_id = int(row.tg_id)
+            owner_ref = UserId(row.user_id)
+            tg_id = await notify_telegram_chat_id(session, owner_ref)
         except (TypeError, ValueError):
             continue
         try:
-            allowed = await check_notification_time(session, tg_id, _NOTIF_TYPE, hours=_DEDUP_HOURS)
+            allowed = await check_notification_time(session, owner_ref, _NOTIF_TYPE, hours=_DEDUP_HOURS)
         except Exception:
             allowed = False
         if not allowed:
@@ -124,14 +124,15 @@ async def send_abandoned_checkout_reminders(session: AsyncSession) -> int:
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text=COMPLETE_PAYMENT, callback_data="resume_checkout")]]
             )
-            await bot.send_message(tg_id, f"{title}\n\n{body}", parse_mode=None, reply_markup=keyboard)
+            if tg_id is not None:
+                await bot.send_message(tg_id, f"{title}\n\n{body}", parse_mode=None, reply_markup=keyboard)
         except Exception as exc:
             logger.warning("[AbandonedCheckout] tg-сообщение {} не отправлено: {}", tg_id, exc)
 
         try:
             await notify_web(
                 session,
-                user_ref=tg_id,
+                user_ref=owner_ref,
                 type="payment_pending",
                 title=title,
                 message=body,
@@ -141,7 +142,7 @@ async def send_abandoned_checkout_reminders(session: AsyncSession) -> int:
             pass
 
         try:
-            await add_notification(session, tg_id, _NOTIF_TYPE, commit=False)
+            await add_notification(session, owner_ref, _NOTIF_TYPE, commit=False)
         except Exception:
             pass
 

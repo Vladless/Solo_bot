@@ -4,6 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Admin, Identity, Ticket, TicketMessage
+from database.tickets import get_ticket_delivery_identity
+from database.users import get_billing_user_id_for_identity
 from database.web_notifications import create_notification
 from settings import config
 
@@ -27,7 +29,7 @@ def _local_upload(url: str) -> Path | None:
 
 
 def support_bot_instance():
-    """Экземпляр бота поддержки, если он поднят."""
+    """Возвращает бота поддержки, если он запущен."""
     try:
         from support_bot import support_bot
 
@@ -79,7 +81,7 @@ async def notify_agents_new_ticket(session: AsyncSession, *, ticket: Ticket) -> 
 async def notify_client_ticket_closed(session: AsyncSession, *, ticket: Ticket) -> None:
     if ticket.rating is not None:
         return
-    client = await session.get(Identity, ticket.identity_id)
+    client = await get_ticket_delivery_identity(session, ticket.id)
     if client is None:
         return
     tg_id = client.tg_id or 0
@@ -127,7 +129,7 @@ async def _webpush_agents(session: AsyncSession, agent_tgs: list[int], title: st
 
 
 async def _client_ticket_href(session: AsyncSession, ticket_id: str) -> str:
-    """Адрес переписки в кабинете: считается на месте, блок поддержки админ мог поставить куда угодно."""
+    """Определяет адрес переписки в кабинете клиента."""
     try:
         from database.web_layout import block_location_href, find_block_locations, support_block_types
 
@@ -171,20 +173,22 @@ async def _email_client_reply(client: Identity, ticket: Ticket, body: str) -> No
 
 
 async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: TicketMessage) -> None:
-    client = await session.get(Identity, ticket.identity_id)
+    client = await get_ticket_delivery_identity(session, ticket.id)
     if client is None:
         return
     body = (msg.body or "").strip()
     preview = body[:120] or "Новый ответ по вашему обращению"
-    await create_notification(
-        session,
-        user_id=client.tg_id or 0,
-        identity_id=client.id,
-        type="ticket",
-        title=f"{support_persona()} ответила",
-        message=preview,
-        data={"ticket_id": ticket.id},
-    )
+    owner_id = await get_billing_user_id_for_identity(session, client.id, client.tg_id)
+    if owner_id is not None:
+        await create_notification(
+            session,
+            user_id=owner_id,
+            identity_id=client.id,
+            type="ticket",
+            title=f"{support_persona()} ответила",
+            message=preview,
+            data={"ticket_id": ticket.id},
+        )
     await _webpush_client(
         session,
         client.id,
@@ -193,6 +197,9 @@ async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: 
         await _client_ticket_href(session, ticket.id),
     )
     await publish_client_ticket_changed(client.id)
+    client = await get_ticket_delivery_identity(session, ticket.id)
+    if client is None:
+        return
     tg_id = client.tg_id or 0
     if tg_id <= 0:
         await _email_client_reply(client, ticket, body)
@@ -210,6 +217,10 @@ async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: 
         local = _local_upload(att)
         if local is None or not local.exists():
             continue
+        client = await get_ticket_delivery_identity(session, ticket.id)
+        tg_id = client.tg_id if client is not None else None
+        if tg_id is None or tg_id <= 0:
+            return
         try:
             if str(local).lower().endswith(_IMAGE_EXT):
                 await support_bot.send_photo(tg_id, FSInputFile(str(local)))

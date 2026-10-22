@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import BUTTONS_CONFIG, PAYMENTS_CONFIG
 from core.settings.money_config import get_currency_mode
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import User
 from database.payments import get_balance_activity
 from database.temporary_data import clear_temporary_data
@@ -21,7 +21,7 @@ from handlers.payments.tribute.handlers import process_callback_pay_tribute
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from services.payments.currency_rates import format_for_user
-from services.payments.providers import get_providers_with_hooks
+from services.payments.providers import get_provider_menu_currency, get_providers_with_hooks
 from settings import buttons as btn
 from settings.config import DONATIONS_ENABLE, TRIBUTE_LINK
 from settings.texts import (
@@ -59,7 +59,7 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         allowed_currency = "RUB" if mode == "RUB" else "USD"
         filtered: dict[str, dict[str, Any]] = {}
         for key, cfg in providers_with_hooks.items():
-            currency = str(cfg.get("currency") or "").upper()
+            currency = get_provider_menu_currency(cfg)
             if currency in (allowed_currency, "RUB+USD"):
                 filtered[key] = cfg
         providers_with_hooks = filtered
@@ -145,7 +145,7 @@ async def _build_pay_menu_for_currency(currency: str) -> InlineKeyboardBuilder:
             continue
         if not cfg.get("enabled"):
             continue
-        if cfg.get("currency") != currency:
+        if get_provider_menu_currency(cfg) != currency:
             continue
         text = getattr(btn, key, key)
         builder.row(InlineKeyboardButton(text=text, callback_data=cfg["value"]))
@@ -188,7 +188,7 @@ async def balance_handler(callback_query: CallbackQuery, state: FSMContext, sess
         data.pop(key, None)
     await state.set_data(data)
     await state.set_state(None)
-    await clear_temporary_data(session, callback_query.from_user.id)
+    await clear_temporary_data(session, TelegramId(callback_query.from_user.id))
 
     stmt = select(User.balance).where(User.tg_id == callback_query.from_user.id)
     result = await session.execute(stmt)
@@ -222,14 +222,16 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
     builder.row(InlineKeyboardButton(text=btn.PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
 
-    u = await resolve_user_optional(session, callback_query.from_user.id)
-    records = await get_balance_activity(
-        session,
-        uid=(u.id if u is not None else None),
-        tg_id=(u.tg_id if u is not None else callback_query.from_user.id),
-        limit=15,
-        success_only=True,
-    )
+    u = await resolve_user_optional(session, TelegramId(callback_query.from_user.id))
+    records = []
+    if u is not None:
+        records = await get_balance_activity(
+            session,
+            uid=u.id,
+            tg_id=u.tg_id,
+            limit=15,
+            success_only=True,
+        )
 
     if records:
         language_code = getattr(callback_query.from_user, "language_code", None)

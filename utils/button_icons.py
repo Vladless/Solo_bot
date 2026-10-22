@@ -18,9 +18,7 @@ _button_icon_config: dict[str, dict[str, str]] = {}
 
 
 def apply_button_icons_patch(config: dict[str, dict[str, str]] | None = None) -> None:
-    """
-    Патчит InlineKeyboardButton, добавляя поддержку глобального конфига для иконок и стилей кнопок по callback_data или url.
-    """
+    """Подключает настроенные иконки и стили кнопок по данным обратного вызова или ссылке."""
     if config is not None:
         _button_icon_config.clear()
         _button_icon_config.update(config)

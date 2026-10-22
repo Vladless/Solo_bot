@@ -7,11 +7,13 @@ import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor"
 import { hexToRgba } from "@/components/constructor/utils";
 import { resolveButtonAction } from "@/lib/button-action";
 import { useAppInfo } from "@/app/AppInfoProvider";
-import { isTrialCtaHidden } from "@/lib/feature-flags";
+import { useTrialAvailability } from "../../../_shared/trialAvailability";
 
 export function DefaultCtaBannerBlockView({ block, context, editMode }: TypedBlockViewProps<"defaultCtaBanner">) {
   const d = block.data as Record<string, unknown>;
   const appInfo = useAppInfo();
+  const isPreview = context.previewMode === true || editMode === true;
+  const trial = useTrialAvailability(isPreview);
   const wrap = context.wrap;
   const t = useDefaultTheme(d);
   const decor = usePanelDecor(t.panel);
@@ -35,7 +37,8 @@ export function DefaultCtaBannerBlockView({ block, context, editMode }: TypedBlo
   const onAccentDim = hexToRgba(onAccent, 0.78);
   const [hovered, setHovered] = useState(false);
 
-  if (isTrialCtaHidden(appInfo, ctaActionType, ctaFlowId) && !editMode) {
+  const trialCta = ctaActionType === "flow" && appInfo.features.trialFlowIds.includes(ctaFlowId.trim());
+  if (!isPreview && trialCta && !trial.available) {
     return null;
   }
 
@@ -80,7 +83,7 @@ export function DefaultCtaBannerBlockView({ block, context, editMode }: TypedBlo
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10, flexShrink: 0 }}>
         <a
           href={action.href ?? "#"}
-          onClick={action.onClick ? (e) => { e.preventDefault(); action.onClick?.(); } : undefined}
+          onClick={action.onClick ? (e) => { e.preventDefault(); if (trialCta && (isPreview || !trial.available)) return; action.onClick?.(); } : undefined}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           style={{

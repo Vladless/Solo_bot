@@ -27,7 +27,7 @@ from database import (
     get_user_referral_count,
     identities as idb,
 )
-from database.access.resolution import public_tg_id, resolve_user_optional
+from database.access.resolution import TelegramId, UserId, public_tg_id, resolve_user_optional
 from database.models import Referral
 from database.referrals import get_referral_position, get_top_referrals
 from settings.config import (
@@ -55,7 +55,7 @@ def _normalize_referrer_code(value: str | None, fallback_tg_id: int | None) -> i
         if parsed is not None:
             return parsed
     if fallback_tg_id is not None and int(fallback_tg_id) > 0:
-        return int(fallback_tg_id)
+        return TelegramId(fallback_tg_id)
     return None
 
 
@@ -78,14 +78,14 @@ async def apply_referral(
         raise HTTPException(status_code=400, detail="Нельзя использовать собственную ссылку")
     if await get_referral_by_referred_id(session, billing_uid):
         raise HTTPException(status_code=409, detail="Реферальная связь уже сохранена")
-    await add_referral(session, billing_uid, referrer_u.id)
+    await add_referral(session, billing_uid, UserId(referrer_u.id))
     referred_u = await resolve_user_optional(session, billing_uid)
     try:
         from database.web_notifications import notify_web
 
         await notify_web(
             session,
-            user_ref=int(referrer_u.id),
+            user_ref=UserId(referrer_u.id),
             type="referral_joined",
             title="Ваш реферал присоединился",
             message="Новый пользователь зарегистрировался по вашей реферальной ссылке.",
@@ -99,7 +99,7 @@ async def apply_referral(
     return ReferralApplyResponse(
         ok=True,
         message="Приглашение применено",
-        referrer_code=str(referrer_u.id),
+        referrer_code=encode_referral_code(referrer_u.id),
         referrer_user_id=int(referrer_u.id),
         referrer_tg_id=public_tg_id(referrer_u.tg_id),
         referred_user_id=int(billing_uid),

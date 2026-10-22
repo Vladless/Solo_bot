@@ -17,11 +17,7 @@ from settings.cache_config import (
 
 
 class ConcurrencyLimiterMiddleware(BaseMiddleware):
-    """
-    Регистрируется до SessionMiddleware. Ограничивает число апдейтов, одновременно
-    получающих сессию (CONCURRENCY_LIMIT), чтобы не упираться в лимит.
-    Остальные ждут в очереди до CONCURRENCY_MAX_WAIT_SEC; по истечении — вежливый отказ.
-    """
+    """Ограничивает одновременную обработку событий и время ожидания свободной сессии."""
 
     def __init__(self) -> None:
         self._semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)

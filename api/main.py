@@ -12,6 +12,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response as StarletteResponse
 from starlette.staticfiles import StaticFiles
 
+from api.module_routers import register_module_api_routers
 from audit import ensure_api_context, log_api_access, record_api_access_event_background
 from core.client_origin import ClientOriginMiddleware
 from core.executor import spawn
@@ -356,7 +357,7 @@ async def health_detailed(
     return checks
 
 
-app.include_router(api_router)
+register_module_api_routers(app, api_router, API_VERSION)
 
 _web_uploads_dir = "static/web_uploads"
 os.makedirs(_web_uploads_dir, exist_ok=True)

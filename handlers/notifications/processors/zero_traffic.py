@@ -7,12 +7,13 @@ import pytz
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
-from database.models import Key
+from database.access.resolution import UserId, notify_telegram_chat_id
+from database.notifications import mark_zero_traffic_notified
 from database.tariffs import get_tariffs
+from database.web_notifications import notify_web
 from handlers.keys.utils import build_key_callback
 from handlers.notifications.sender import send_messages_with_limit
 from handlers.utils import build_support_button, is_full_remnawave_cluster
@@ -77,10 +78,11 @@ async def process_zero_traffic(
         return
 
     messages = []
-    keys_to_mark = [k.client_id for k in candidate_keys]
+    keys_to_mark = []
 
     for key in candidate_keys:
-        tg_id = key.tg_id
+        owner_ref = UserId(key.user_id)
+        tg_id = await notify_telegram_chat_id(session, owner_ref)
         email = key.email
         client_id = key.client_id
 
@@ -134,17 +136,27 @@ async def process_zero_traffic(
             logger.warning(f"[ZeroTraffic] Ошибка хуков: {e}")
 
         messages.append({
+            "user_id": owner_ref,
             "tg_id": tg_id,
             "text": ZERO_TRAFFIC_MSG.format(email=email),
             "keyboard": builder.as_markup(),
             "client_id": client_id,
         })
+        await notify_web(
+            session,
+            user_ref=owner_ref,
+            type="system",
+            title="Подключите устройство",
+            message=ZERO_TRAFFIC_MSG.format(email=email),
+            data={"href": "/dashboard/subscriptions", "client_id": client_id},
+        )
+        keys_to_mark.append((owner_ref, client_id))
 
     if keys_to_mark:
         try:
             for i in range(0, len(keys_to_mark), _ZERO_TRAFFIC_UPDATE_BATCH_SIZE):
                 batch = keys_to_mark[i : i + _ZERO_TRAFFIC_UPDATE_BATCH_SIZE]
-                await session.execute(update(Key).where(Key.client_id.in_(batch)).values(notified=True))
+                await mark_zero_traffic_notified(session, batch)
                 await session.commit()
             logger.info(f"[ZeroTraffic] Отмечено {len(keys_to_mark)} ключей как notified")
         except Exception as e:

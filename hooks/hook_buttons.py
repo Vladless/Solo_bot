@@ -3,19 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> InlineKeyboardBuilder:
-    """
-    Вставляет кнопки из хуков в существующий builder.
-
-    Поддерживает:
-    - {"button": InlineKeyboardButton} — добавить в конец
-    - {"after": callback_data, "button": InlineKeyboardButton} — вставить после заданной кнопки
-    - {"insert_at": int, "button": InlineKeyboardButton} — вставить по индексу (0 = начало)
-    - {"remove": str | list[str]} — удалить кнопки с указанным callback_data
-    - {"remove_prefix": str} — удалить кнопки, у которых callback_data начинается с префикса
-    - {"remove_url": str | list[str]} — удалить кнопки с указанным URL
-    - {"remove_url_prefix": str} — удалить кнопки, у которых URL начинается с префикса
-    - {"replace_keyboard": InlineKeyboardBuilder} — полностью заменить клавиатуру
-    """
+    """Добавляет, удаляет и заменяет кнопки клавиатуры по результатам хуков."""
     markup = builder.as_markup()
     new_rows = markup.inline_keyboard.copy()
 

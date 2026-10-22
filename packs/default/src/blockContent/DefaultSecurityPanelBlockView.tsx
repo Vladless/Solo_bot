@@ -8,6 +8,7 @@ import { f, parseBlockData } from "@/components/constructor/blockContent/cabinet
 import { useBlockApi } from "@/components/constructor/blockContent/cabinetKit/apiHooksRegistry";
 import { useAccountMutations } from "@/components/constructor/blockContent/account/useAccountMutations";
 import { isApiError } from "@/lib/api";
+import { useBlockNavigate } from "@/lib/block-navigation";
 
 const SECURITY_PANEL_SCHEMA = {
   panelHeader: f.str("Безопасность"),
@@ -39,6 +40,7 @@ export function DefaultSecurityPanelBlockView({ block, context }: TypedBlockView
   const t = useDefaultTheme(d);
   const cfg = parseBlockData(d, SECURITY_PANEL_SCHEMA);
   const isPreview = previewMode === true;
+  const navigate = useBlockNavigate();
 
   const api = useBlockApi({ needs: ["summary", "sessions"], disabled: isPreview, mock: isPreview });
   const mut = useAccountMutations();
@@ -74,10 +76,11 @@ export function DefaultSecurityPanelBlockView({ block, context }: TypedBlockView
     <a
       href={href}
       onClick={(e) => {
-        if (!href.startsWith("#")) return;
-        e.preventDefault();
-        const el = typeof document !== "undefined" ? document.getElementById(href.slice(1)) : null;
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (href.startsWith("#")) {
+          e.preventDefault();
+          navigate(href);
+        }
       }}
       style={{ ...btnSecondary(t), ...btnSm(t), borderRadius: CONTROL_R, textDecoration: "none", flexShrink: 0 }}
     >
@@ -121,7 +124,7 @@ export function DefaultSecurityPanelBlockView({ block, context }: TypedBlockView
       key: "password",
       name: cfg.passwordLabel,
       desc: passwordSet ? cfg.passwordSetDesc : cfg.passwordEmptyDesc,
-      right: linkButton(cfg.passwordHref, passwordSet ? cfg.changePasswordLabel : cfg.setPasswordLabel),
+      right: linkButton(cfg.passwordHref === "/forgot-password" ? "/forgot-password?force=1" : cfg.passwordHref, passwordSet ? cfg.changePasswordLabel : cfg.setPasswordLabel),
     },
     {
       key: "bindings",

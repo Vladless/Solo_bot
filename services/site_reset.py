@@ -21,14 +21,7 @@ from settings.config import DATABASE_URL, USE_PGBOUNCER
 
 
 async def reset_site(_session: AsyncSession) -> None:
-    """Полный сброс web-части: все web_* таблицы + identities.
-
-    Использует отдельный engine без command_timeout — стандартный pool имеет
-    жёсткий 30-сек лимит на запрос, который не переопределяется SET LOCAL
-    (это клиентский asyncpg-таймаут). Для длинных FK-каскадов нужен dedicated
-    коннект с более мягкими настройками.
-    Биллинг-данные (пользователи бота, ключи, платежи) не трогаются.
-    """
+    """Сбрасывает данные сайта и учётные записи, сохраняя расчётные данные клиентов."""
     connect_args: dict = {}
     db_url = DATABASE_URL
     if "+asyncpg" in DATABASE_URL:

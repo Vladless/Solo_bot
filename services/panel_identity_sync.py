@@ -11,11 +11,7 @@ from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
 
 async def push_identity_to_panel(session: AsyncSession, legacy_ref: int) -> None:
-    """Проставляет актуальные поля владельца (telegramId, email) во внешней Remnawave-панели.
-
-    Вызывается после связывания аккаунтов, чтобы ключи, созданные до привязки, получили оба поля
-    единой идентичности, не дожидаясь продления.
-    """
+    """Обновляет Telegram ID и почту владельца ключей в панели Remnawave."""
     from panels.remnawave_runtime import remnawave_api
 
     tg, email = await panel_identity_fields(session, legacy_ref)

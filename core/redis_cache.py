@@ -33,12 +33,7 @@ def _drop_client(client_key: tuple[int, int]) -> None:
 
 
 async def close_loop_client() -> None:
-    """Закрывает redis-клиент текущего цикла.
-
-    Клиенты живут по ключу (pid, loop). У отдельного цикла — поток рассылки, разовая задача —
-    он свой, и уйти должен вместе с циклом: иначе соединения остаются открытыми навсегда,
-    а сборщик мусора потом ругается `Event loop is closed`.
-    """
+    """Закрывает клиент Redis и его соединения для текущего цикла событий."""
     client = _REDIS_CLIENTS.pop(_client_key(), None)
     if client is None:
         return
@@ -56,6 +51,8 @@ async def close_loop_client() -> None:
 async def _get_redis() -> Any | None:
     global _REDIS_UNAVAILABLE_UNTIL
 
+    if not str(REDIS_URL or "").strip():
+        return None
     client_key = _client_key()
     client = _REDIS_CLIENTS.get(client_key)
     if client is not None:
@@ -129,6 +126,24 @@ async def cache_delete(key: str) -> None:
         return
 
 
+async def cache_compare_and_delete(key: str, expected: Any) -> bool:
+    """Удаляет значение атомарно, если оно не изменилось."""
+    client = await _get_redis()
+    if client is None:
+        return False
+    try:
+        return bool(
+            await client.eval(
+                "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
+                1,
+                key,
+                json.dumps(expected, ensure_ascii=False),
+            )
+        )
+    except Exception:
+        return False
+
+
 async def cache_setnx(key: str, value: Any, ttl_sec: float) -> bool:
     client = await _get_redis()
     if client is None:
@@ -154,9 +169,7 @@ async def cache_incr(key: str, ttl_sec: float) -> int:
 
 
 async def cache_incr_checked(key: str, ttl_sec: float) -> tuple[int, bool]:
-    """Возвращает (value, redis_available). redis_available=False значит клиент
-    должен применить fallback-логику (например, in-memory limiter).
-    """
+    """Увеличивает счётчик и возвращает его значение с признаком доступности Redis."""
     client = await _get_redis()
     if client is None:
         return 1, False
@@ -183,7 +196,7 @@ async def cache_delete_pattern(pattern: str) -> int:
 
 
 async def cache_rpush(key: str, *values: Any) -> int:
-    """Добавляет значения в хвост списка. Значения сериализуются в JSON. Возвращает длину списка после или 0 при ошибке."""
+    """Добавляет значения в конец списка и возвращает его длину или ноль при ошибке."""
     if not values:
         return 0
     client_key = _client_key()

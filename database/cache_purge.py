@@ -1,9 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.redis_cache import cache_delete
+from core.redis_cache import cache_delete, cache_delete_pattern
+from logger import logger
 
 
 _PENDING = "pending_cache_purge"
+_PENDING_PATTERNS = "pending_cache_purge_patterns"
 
 
 def _pending_store(session) -> dict | None:
@@ -34,7 +36,7 @@ def defer_purge(session: AsyncSession | None, *keys: str) -> bool:
 
 
 async def flush_purges(session: AsyncSession | None) -> None:
-    """Сбрасывает отложенные ключи. Вызывается после успешного коммита."""
+    """Сбрасывает отложенный кеш после успешного коммита."""
     info = _pending_store(session)
     if info is None:
         return
@@ -42,5 +44,23 @@ async def flush_purges(session: AsyncSession | None) -> None:
     for key in pending or ():
         try:
             await cache_delete(key)
-        except Exception:
-            continue
+        except Exception as exc:
+            logger.debug("[Cache] Purge after commit failed: {}", exc)
+    for pattern in info.pop(_PENDING_PATTERNS, ()):
+        try:
+            await cache_delete_pattern(pattern)
+        except Exception as exc:
+            logger.debug("[Cache] Pattern purge after commit failed: {}", exc)
+
+
+def defer_purge_patterns(session: AsyncSession | None, *patterns: str) -> bool:
+    info = _pending_store(session)
+    if info is None:
+        return False
+    info.setdefault(_PENDING_PATTERNS, set()).update(patterns)
+    return True
+
+
+def is_purge_pending(session: AsyncSession | None, key: str) -> bool:
+    info = _pending_store(session)
+    return info is not None and key in info.get(_PENDING, ())

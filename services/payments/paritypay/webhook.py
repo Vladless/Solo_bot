@@ -10,6 +10,7 @@ from core.webhook_abuse import (
     record_webhook_signature_failure,
 )
 from logger import logger
+from services.payments.owner_refs import parse_payment_owner
 from services.payments.pipeline import (
     ParsedPayment,
     process_cancelled_payment,
@@ -62,7 +63,7 @@ def _parse_tg_id_from_order(order_id: str) -> int | None:
     if len(parts) < 2:
         return None
     try:
-        return int(parts[1])
+        return parse_payment_owner(parts[1])
     except (ValueError, TypeError):
         return None
 
@@ -127,7 +128,7 @@ async def paritypay_webhook(request: web.Request):
             }
             parsed = ParsedPayment(
                 payment_id=order_id,
-                tg_id=int(tg_id),
+                tg_id=tg_id,
                 amount=float(amount),
                 currency="RUB",
                 metadata=metadata_patch,
@@ -144,7 +145,7 @@ async def paritypay_webhook(request: web.Request):
             new_status = "refunded" if status == "REFUNDED" else "failed"
             parsed = ParsedPayment(
                 payment_id=order_id,
-                tg_id=int(tg_id) if tg_id is not None else None,
+                tg_id=tg_id,
                 amount=float(amount),
                 currency="RUB",
             )

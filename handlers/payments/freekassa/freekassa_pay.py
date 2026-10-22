@@ -1,4 +1,5 @@
 import hashlib
+import uuid
 
 from typing import Any
 
@@ -19,13 +20,17 @@ from database import (
     add_user,
     async_session_maker,
     check_user_exists,
-    clear_temporary_data,
     get_key_count,
+    get_payment_by_payment_id,
     get_temporary_data,
     register_pending_payment,
 )
+from database.access.resolution import TelegramId, UserId
+from database.payments import resolve_payment_creation_owner
+from services.payments.checkout_snapshot import capture_payment_checkout
 from handlers.utils import edit_or_send_message
 from logger import logger
+from services.payments.owner_refs import parse_payment_owner, payment_owner_token
 from services.payments.payment_links import register_payment_creator
 from settings.buttons import BACK, PAY_2
 from settings.config import (
@@ -73,7 +78,7 @@ def generate_payment_link(amount: float, order_id: str, tg_id: int, currency: st
 
 @router.callback_query(F.data == "pay_freekassa")
 async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
-    tg_id = callback_query.message.chat.id
+    tg_id = TelegramId(callback_query.message.chat.id)
     logger.info(f"User {tg_id} initiated Freekassa payment.")
 
     builder = InlineKeyboardBuilder()
@@ -127,7 +132,9 @@ async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, st
 
 
 @router.callback_query(F.data.startswith("freekassa_amount|"))
-async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_amount_selection(
+    callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession | None = None
+):
     logger.info(f"Получены данные callback_data: {callback_query.data}")
 
     data = callback_query.data.split("|")
@@ -157,10 +164,23 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     await state.update_data(amount=amount)
     logger.info(f"User {callback_query.message.chat.id} selected amount: {amount}.")
 
-    tg_id = callback_query.message.chat.id
-    order_id = f"order_{tg_id}_{int(amount)}_{hash(str(tg_id) + str(amount))}"
+    tg_id = TelegramId(callback_query.message.chat.id)
+    try:
+        payment_owner = await resolve_payment_creation_owner(session, tg_id)
+    except ValueError:
+        await callback_query.answer("Не удалось определить клиента. Откройте оплату заново.", show_alert=True)
+        return
+    order_id = f"order_{payment_owner_token(payment_owner)}_{int(amount)}_{uuid.uuid4().hex}"
+    metadata = await capture_payment_checkout(session, payment_owner)
 
     payment_url = generate_payment_link(amount, order_id, tg_id)
+    await register_pending_payment(
+        payment_id=order_id,
+        tg_id=payment_owner,
+        amount=amount,
+        payment_system="freekassa",
+        metadata=metadata,
+    )
 
     logger.info(f"Payment URL for user {callback_query.message.chat.id}: {payment_url}")
 
@@ -197,15 +217,15 @@ def verify_signature(params: dict) -> bool:
         return False
 
 
-async def freekassa_webhook(request: web.Request):
-    """Freekassa webhook через общий pipeline.
+def _freekassa_owner_from_order(merchant_order_id: str) -> int:
+    parts = merchant_order_id.split("_")
+    if len(parts) < 3 or parts[0] != "order":
+        raise ValueError("Cannot identify owner from signed merchant order")
+    return parse_payment_owner(parts[1])
 
-    Провайдер-специфичная часть: MD5 подпись + проверка merchant_id +
-    извлечение tg_id из ``us_tg_id`` (custom param) либо из формата
-    ``order_<tg_id>_<rest>`` fallback. После pipeline.process_success_payment
-    отдельно очищаем ``temporary_data`` (FSM state), т.к. freekassa используется
-    из Telegram-bot flow в отличие от остальных web-провайдеров.
-    """
+
+async def freekassa_webhook(request: web.Request):
+    """Проверяет уведомление Freekassa и передаёт оплату ядру."""
     from services.payments.pipeline import ParsedPayment, process_success_payment
 
     try:
@@ -219,7 +239,6 @@ async def freekassa_webhook(request: web.Request):
         amount = params.get("AMOUNT")
         merchant_order_id = params.get("MERCHANT_ORDER_ID")
         sign = params.get("SIGN")
-        tg_id = params.get("us_tg_id")
 
         if not all([merchant_id, amount, merchant_order_id, sign]):
             logger.error("Missing required parameters in webhook")
@@ -236,15 +255,12 @@ async def freekassa_webhook(request: web.Request):
 
         try:
             amount_float = float(amount)
-            if tg_id:
-                tg_id_int = int(tg_id)
+            async with async_session_maker() as lookup_session:
+                pending = await get_payment_by_payment_id(lookup_session, merchant_order_id)
+            if pending and pending.get("user_id") is not None:
+                tg_id_int = UserId(pending["user_id"])
             else:
-                order_parts = merchant_order_id.split("_")
-                if len(order_parts) >= 3 and order_parts[0] == "order":
-                    tg_id_int = int(order_parts[1])
-                else:
-                    logger.error(f"Cannot extract tg_id from order_id: {merchant_order_id}")
-                    return web.Response(status=400, text="Cannot identify user")
+                tg_id_int = _freekassa_owner_from_order(merchant_order_id)
         except (ValueError, TypeError) as e:
             logger.error(f"Error parsing parameters: {e}")
             return web.Response(status=400, text="Invalid parameter format")
@@ -259,13 +275,6 @@ async def freekassa_webhook(request: web.Request):
         if not result.ok:
             return web.Response(status=500, text="Internal server error")
 
-        try:
-            async with async_session_maker() as session:
-                await clear_temporary_data(session, tg_id_int)
-                await session.commit()
-        except Exception as e:
-            logger.warning(f"[Freekassa] Не удалось очистить temporary_data: {e}")
-
         logger.info(f"Payment processed successfully. User: {tg_id_int}, Amount: {amount_float}")
         return web.Response(text="YES")
 
@@ -276,7 +285,7 @@ async def freekassa_webhook(request: web.Request):
 
 @router.callback_query(F.data == "enter_custom_amount_freekassa")
 async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    tg_id = callback_query.message.chat.id
+    tg_id = TelegramId(callback_query.message.chat.id)
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
     builder = InlineKeyboardBuilder()
@@ -298,16 +307,17 @@ async def handle_custom_amount_input(
     session: AsyncSession = None,
 ):
     if isinstance(message, types.CallbackQuery):
-        tg_id = message.message.chat.id
+        tg_id = TelegramId(message.message.chat.id)
         target_message = message.message
     else:
-        tg_id = message.chat.id
+        tg_id = TelegramId(message.chat.id)
         target_message = message
 
     logger.info(f"User {tg_id} initiated payment through Freekassa")
 
     try:
-        user_data = await get_temporary_data(session, tg_id)
+        payment_owner = await resolve_payment_creation_owner(session, tg_id)
+        user_data = await get_temporary_data(session, payment_owner)
 
         if not user_data:
             await edit_or_send_message(
@@ -328,7 +338,8 @@ async def handle_custom_amount_input(
             )
             return
 
-        order_id = f"order_{tg_id}_{int(amount)}_{hash(str(tg_id) + str(amount))}"
+        order_id = f"order_{payment_owner_token(payment_owner)}_{int(amount)}_{uuid.uuid4().hex}"
+        metadata = await capture_payment_checkout(session, payment_owner)
         payment_url = generate_payment_link(amount, order_id, tg_id)
         logger.info(f"Generated payment link for user {tg_id}: {payment_url}")
 
@@ -352,6 +363,13 @@ async def handle_custom_amount_input(
             )
             return
 
+        await register_pending_payment(
+            payment_id=order_id,
+            tg_id=payment_owner,
+            amount=amount,
+            payment_system="freekassa",
+            metadata=metadata,
+        )
         await edit_or_send_message(
             target_message=target_message,
             text=message_text,
@@ -379,9 +397,11 @@ async def create_link(
     failure_url: str | None,
     metadata: dict | None,
 ) -> tuple[str, str]:
+    tg_id = await resolve_payment_creation_owner(session, tg_id)
+    metadata = await capture_payment_checkout(session, tg_id, metadata)
     if currency not in ("RUB", "USD"):
         raise ValueError("Freekassa поддерживает только RUB или USD")
-    order_id = f"order_{tg_id}_{int(amount)}_{hash(str(tg_id) + str(amount))}"
+    order_id = f"order_{payment_owner_token(tg_id)}_{int(amount)}_{uuid.uuid4().hex}"
     url = generate_payment_link(amount, order_id, tg_id, currency)
     await register_pending_payment(
         payment_id=order_id,

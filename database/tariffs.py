@@ -233,10 +233,7 @@ async def get_vless_enabled(session: AsyncSession, tariff_id: int | None) -> boo
 
 
 async def get_vless_enabled_batch(session: AsyncSession, tariff_ids: list[int]) -> dict[int, bool]:
-    """
-    Один запрос: для списка tariff_id возвращает dict[tariff_id -> vless].
-    Использовать в списках ключей вместо N вызовов get_vless_enabled.
-    """
+    """Возвращает признаки поддержки VLESS для списка тарифов с учётом кеша."""
     if not tariff_ids:
         return {}
     unique_ids = list(dict.fromkeys(tariff_ids))
@@ -286,9 +283,7 @@ async def move_tariff_down(session: AsyncSession, tariff_id: int) -> bool:
 
 
 async def move_subgroup(session: AsyncSession, group_code: str, subgroup_title: str, direction: str) -> bool:
-    """Двигает подгруппу целиком в сквозном порядке: меняет её местами с соседним
-    элементом (тарифом или подгруппой) и перенумеровывает sort_order всей группы 1..N.
-    direction: 'up' | 'down'."""
+    """Меняет подгруппу местами с соседним элементом и обновляет порядок тарифов."""
     rows = list(
         (
             await session.execute(

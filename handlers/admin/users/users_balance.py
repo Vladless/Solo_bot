@@ -6,7 +6,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_balance, set_user_balance, update_balance
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import UserId, resolve_user_optional
 from database.payments import add_payment, count_balance_activity, get_balance_activity
 from filters.admin import IsAdminFilter
 from utils.csv_export import export_user_all_payments_csv
@@ -225,7 +225,7 @@ async def handle_balance_set(
 @router.message(UserEditorState.waiting_for_balance, IsAdminFilter())
 async def handle_balance_input(message: Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
     op_type = data.get("op_type")
 
     if not message.text.isdigit() or int(message.text) < 0:

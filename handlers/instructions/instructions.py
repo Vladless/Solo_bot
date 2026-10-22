@@ -78,7 +78,12 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
     key_name = key_obj.email if key_obj else key_ref
     record = await get_key_details(session, key_name)
-    if not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await callback_query.answer("Доступ запрещён.", show_alert=True)
         return
     key_link = await get_subscription_link(session, key_name)
@@ -124,7 +129,12 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
     key_name = key_obj.email if key_obj else key_ref
     record = await get_key_details(session, key_name)
-    if not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await callback_query.answer("Доступ запрещён.", show_alert=True)
         return
     key_link = await get_subscription_link(session, key_name)
@@ -169,7 +179,12 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
     key_name = key_obj.email if key_obj else key_ref
     record = await get_key_details(session, key_name)
-    if not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await callback_query.answer("Доступ запрещён.", show_alert=True)
         return
     key_link = await get_subscription_link(session, key_name)
@@ -215,7 +230,12 @@ async def process_connect_tv(callback_query: CallbackQuery, session: Any):
     key_name = key_obj.email if key_obj else key_ref
 
     record = await get_key_details(session, key_name)
-    if not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await callback_query.answer("Доступ запрещён.", show_alert=True)
         return
     final_link = None
@@ -279,7 +299,12 @@ async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
     key_name = key_obj.email if key_obj else key_ref
     record = await get_key_details(session, key_name)
-    if not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await callback_query.answer("Доступ запрещён.", show_alert=True)
         return
     key_link = await get_subscription_link(session, key_name)
@@ -307,7 +332,12 @@ async def process_connect_router(callback_query: CallbackQuery, session: Any):
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
     key_name = key_obj.email if key_obj else key_ref
     record = await get_key_details(session, key_name)
-    if not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await callback_query.answer("Доступ запрещён.", show_alert=True)
         return
     key_link = await get_subscription_link(session, key_name)

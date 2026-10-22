@@ -23,7 +23,7 @@ from database import (
     update_balance,
     update_trial,
 )
-from database.access.resolution import notify_telegram_chat_id, resolve_user_optional
+from database.access.resolution import UserId, notify_telegram_chat_id, resolve_user_optional
 from database.models import Key
 from handlers.keys.utils import build_key_callback
 from handlers.utils import (
@@ -88,8 +88,6 @@ async def send_or_edit_key_created_view(
     elif isinstance(target_message, Message):
         target = target_message
         safe_to_edit = True
-
-    tg_notify = await notify_telegram_chat_id(session, tg_id)
 
     try:
         vless_enabled = False
@@ -160,6 +158,12 @@ async def send_or_edit_key_created_view(
             builder.row(support_btn)
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
+        tg_notify = await notify_telegram_chat_id(session, tg_id)
+        if target is not None and target.chat.id != tg_notify:
+            target = None
+            target_message = None
+            safe_to_edit = False
+
         if tg_notify is not None and await process_intercept_key_creation_message(
             chat_id=tg_notify,
             session=session,
@@ -188,6 +192,10 @@ async def send_or_edit_key_created_view(
             selected_device_limit=selected_device_limit,
             selected_traffic_gb=selected_traffic_gb,
         )
+
+        tg_notify = await notify_telegram_chat_id(session, tg_id)
+        if target is not None and target.chat.id != tg_notify:
+            safe_to_edit = False
 
         default_media_path = "img/pic.jpg"
         if safe_to_edit and target is not None:
@@ -254,6 +262,7 @@ async def key_cluster_mode(
                 await bot.send_message(chat_id=tg_notify, text=error_message)
             return
         uid = owner.id
+        billing_user_id = UserId(uid)
 
         data = await state.get_data() if state else {}
         if is_trial is None:
@@ -276,7 +285,7 @@ async def key_cluster_mode(
         )
 
         forced_cluster = await process_cluster_override(
-            tg_id=tg_id,
+            tg_id=tg_notify,
             state_data=data,
             session=session,
             plan=plan,
@@ -313,7 +322,7 @@ async def key_cluster_mode(
 
         await create_key_on_cluster(
             cluster_id=least_loaded_cluster,
-            tg_id=tg_id,
+            tg_id=billing_user_id,
             client_id=client_id,
             email=email,
             expiry_timestamp=expiry_timestamp,
@@ -343,12 +352,12 @@ async def key_cluster_mode(
         final_link = key_record.get("link", "")
 
         if is_trial:
-            trial_status = await get_trial(session, tg_id)
+            trial_status = await get_trial(session, billing_user_id)
             if trial_status in [0, -1]:
-                await update_trial(session, tg_id, 1)
+                await update_trial(session, billing_user_id, 1)
 
         if price_to_charge and not skip_balance_charge:
-            debited = await update_balance(session, tg_id, -int(price_to_charge))
+            debited = await update_balance(session, billing_user_id, -int(price_to_charge))
             if debited is None:
                 raise InsufficientFundsError("Недостаточно средств на балансе")
 
@@ -368,7 +377,7 @@ async def key_cluster_mode(
 
     await send_or_edit_key_created_view(
         session=session,
-        tg_id=tg_id,
+        tg_id=billing_user_id,
         key_record=key_record,
         client_id=client_id,
         email=email,

@@ -83,6 +83,24 @@ def is_email_binding_enabled() -> bool:
     return bool(WEB_CONFIG.get("EMAIL_BINDING_ENABLED", False))
 
 
+def is_email_binding_verification_enabled() -> bool:
+    """Проверяет включение подтверждения почты кодом."""
+    return bool(WEB_CONFIG.get("EMAIL_BINDING_VERIFY_ENABLED", False))
+
+
+def is_email_binding_reminder_enabled() -> bool:
+    """Проверяет включение напоминания о привязке почты."""
+    return WEB_CONFIG.get("EMAIL_BINDING_REMINDER_ENABLED") is True
+
+
+def get_email_binding_reminder_interval_days() -> int:
+    """Возвращает интервал напоминания о почте в днях."""
+    value = WEB_CONFIG.get("EMAIL_BINDING_REMINDER_INTERVAL_DAYS", 7)
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 365:
+        return 7
+    return value
+
+
 def get_site_mode() -> str:
     """Режим сайта: full — с лендингом, cabinet_only — только кабинет, webapp_only — только веб-апп."""
     return str(WEB_CONFIG.get("SITE_MODE", "full")).strip() or "full"

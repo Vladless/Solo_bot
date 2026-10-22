@@ -1,7 +1,7 @@
 from importlib import import_module
 
 
-version = "0.5.3"
+version = "6.0.1"
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -24,23 +24,27 @@ bot = Bot(
     token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML, protect_content=resolve_protect_content())
 )
 
-RedisStorage = import_module("aiogram.fsm.storage.redis").RedisStorage
-_redis_asyncio = import_module("redis.asyncio")
-_BlockingConnectionPool = import_module("redis.asyncio.connection").BlockingConnectionPool
+if str(REDIS_URL or "").strip():
+    RedisStorage = import_module("aiogram.fsm.storage.redis").RedisStorage
+    _redis_asyncio = import_module("redis.asyncio")
+    _BlockingConnectionPool = import_module("redis.asyncio.connection").BlockingConnectionPool
 
-_redis_pool = _BlockingConnectionPool.from_url(
-    REDIS_URL,
-    encoding="utf-8",
-    decode_responses=True,
-    max_connections=128,
-    timeout=20,
-    health_check_interval=30,
-    socket_connect_timeout=5,
-    socket_timeout=5,
-    retry_on_timeout=True,
-)
-redis = _redis_asyncio.Redis(connection_pool=_redis_pool)
-storage = RedisStorage(redis=redis)
+    _redis_pool = _BlockingConnectionPool.from_url(
+        REDIS_URL,
+        encoding="utf-8",
+        decode_responses=True,
+        max_connections=128,
+        timeout=20,
+        health_check_interval=30,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+        retry_on_timeout=True,
+    )
+    redis = _redis_asyncio.Redis(connection_pool=_redis_pool)
+    storage = RedisStorage(redis=redis)
+else:
+    redis = None
+    storage = MemoryStorage()
 
 dp = Dispatcher(bot=bot, storage=storage)
 

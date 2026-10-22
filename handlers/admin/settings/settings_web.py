@@ -4,7 +4,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from core.settings.web_config import WEB_CONFIG, get_web_node_status_interval_min, update_web_config
+from core.settings.web_config import (
+    WEB_CONFIG,
+    get_web_node_status_interval_min,
+    is_email_binding_verification_enabled,
+    update_web_config,
+)
 from database import async_session_maker
 
 from ..panel.headers import menu_text, quote, section
@@ -56,6 +61,13 @@ def build_settings_web_kb() -> InlineKeyboardBuilder:
             callback_data=AdminPanelCallback(action="settings_web_email_binding_toggle").pack(),
         )
     )
+    email_verification = is_email_binding_verification_enabled()
+    builder.row(
+        InlineKeyboardButton(
+            text=f"{'✅' if email_verification else '❌'} Подтверждение почты кодом: {'вкл' if email_verification else 'выкл'}",
+            callback_data=AdminPanelCallback(action="settings_web_email_verify_toggle").pack(),
+        )
+    )
     maintenance = bool(WEB_CONFIG.get("WEB_MAINTENANCE_MODE", False))
     builder.row(
         InlineKeyboardButton(
@@ -84,6 +96,7 @@ def _web_settings_text() -> str:
     enabled = bool(WEB_CONFIG.get("WEB_ENABLED", False))
     url = str(WEB_CONFIG.get("SITE_URL") or "не указан")
     email_binding = bool(WEB_CONFIG.get("EMAIL_BINDING_ENABLED", False))
+    email_verification = is_email_binding_verification_enabled()
     open_in_browser = bool(WEB_CONFIG.get("WEB_OPEN_IN_BROWSER", False))
     return menu_text(
         "Веб-сайт",
@@ -93,12 +106,15 @@ def _web_settings_text() -> str:
             f"URL: <code>{url}</code>\n"
             f"Открытие: {'в браузере' if open_in_browser else 'в веб-аппе'}\n"
             f"Статус серверов: раз в {get_web_node_status_interval_min()} мин\n"
-            f"Привязка почты: {'✅ включена' if email_binding else '❌ выключена'}"
+            f"Привязка почты: {'✅ включена' if email_binding else '❌ выключена'}\n"
+            f"Подтверждение почты кодом в боте: {'вкл' if email_verification else 'выкл'}"
         ),
         quote(
             "Сайт может жить на отдельном домене и сервере. Выключите — кнопка «Личный кабинет» пропадёт из бота.",
             "«В веб-аппе» кабинет открывается внутри Telegram, «в браузере» — обычной ссылкой.",
             "Привязка почты даёт клиенту вход на сайт, когда с Telegram проблемы.",
+            "Подтверждение кодом проверяет доступ к почте при привязке в боте.",
+            "При выключенной проверке или недоступных SMTP/Redis почта сохраняется без подтверждения. Проверенной она станет только после ввода кода.",
         ),
     )
 
@@ -179,6 +195,27 @@ async def toggle_email_binding(callback: CallbackQuery) -> None:
         await update_web_config(session, new_config)
 
     status = "✅ Привязка почты включена" if new_config["EMAIL_BINDING_ENABLED"] else "❌ Привязка почты выключена"
+    await callback.answer(status, show_alert=True)
+    await callback.message.edit_text(
+        text=_web_settings_text(),
+        reply_markup=build_settings_web_kb().as_markup(),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_email_verify_toggle"), flags={"popup": True})
+async def toggle_email_verification(callback: CallbackQuery) -> None:
+    """Переключает подтверждение почты кодом в боте."""
+    new_config = dict(WEB_CONFIG)
+    new_config["EMAIL_BINDING_VERIFY_ENABLED"] = not is_email_binding_verification_enabled()
+
+    async with async_session_maker() as session:
+        await update_web_config(session, new_config)
+
+    status = (
+        "✅ Подтверждение почты кодом включено"
+        if new_config["EMAIL_BINDING_VERIFY_ENABLED"]
+        else "❌ Подтверждение почты кодом выключено"
+    )
     await callback.answer(status, show_alert=True)
     await callback.message.edit_text(
         text=_web_settings_text(),

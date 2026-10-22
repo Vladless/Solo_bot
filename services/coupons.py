@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from database.access.resolution import UserId, resolve_user_optional
 from database.coupons import (
     apply_percent_coupon,
     check_coupon_usage,
@@ -16,7 +17,7 @@ from database.coupons import (
 from database.keys import count_active_keys_for_user
 from database.models import Coupon
 from database.payments import add_payment, count_successful_payments
-from database.users import get_balance, update_balance
+from database.users import update_balance
 from logger import logger
 
 from .errors import LimitExceededError, NotFoundError, ServiceError, ValidationError
@@ -32,7 +33,7 @@ async def resolve_percent_coupon(
     base_price_rub: int,
     coupon_code: str | None,
 ) -> tuple[int, int, int | None, str | None]:
-    """Возвращает цену со скидкой по введённому коду либо по закреплённому за клиентом купону."""
+    """Рассчитывает скидку по введённому или закреплённому купону."""
     normalized = (coupon_code or "").strip()
     if not normalized:
         return await _resolve_held_coupon(session, billing_user_id, base_price_rub)
@@ -74,15 +75,15 @@ async def _resolve_held_coupon(
     billing_user_id: int,
     base_price_rub: int,
 ) -> tuple[int, int, int | None, str | None]:
-    """Применяет закреплённый за клиентом купон и снимает закрепление, если купон непригоден."""
-    coupon = await get_coupon_hold(session, int(billing_user_id))
+    """Применяет закреплённый купон или снимает непригодную скидку."""
+    coupon = await get_coupon_hold(session, billing_user_id)
     if coupon is None:
         return int(base_price_rub), 0, None, None
 
     try:
         await _check_percent_coupon(session, coupon, billing_user_id)
     except ServiceError:
-        await clear_coupon_hold(session, int(billing_user_id))
+        await clear_coupon_hold(session, billing_user_id)
         return int(base_price_rub), 0, None, None
 
     discounted_price, discount_rub = apply_percent_coupon(int(base_price_rub), coupon)
@@ -96,7 +97,7 @@ async def _check_percent_coupon(session: AsyncSession, coupon: Coupon, billing_u
     """Проверяет пригодность процентного купона для клиента."""
     _check_coupon_limits(coupon)
 
-    if await check_coupon_usage(session, int(coupon.id), int(billing_user_id)):
+    if await check_coupon_usage(session, int(coupon.id), billing_user_id):
         raise LimitExceededError("Вы уже использовали этот купон")
 
     if getattr(coupon, "percent", None) is None:
@@ -130,7 +131,7 @@ async def hold_percent_coupon(session: AsyncSession, user_id: int, code: str) ->
 
     await _check_percent_coupon(session, coupon, user_id)
 
-    if not await set_coupon_hold(session, int(user_id), int(coupon.id)):
+    if not await set_coupon_hold(session, user_id, int(coupon.id)):
         raise ValidationError("Не удалось сохранить скидку")
 
     return CouponHoldResult(
@@ -146,15 +147,15 @@ async def hold_percent_coupon(session: AsyncSession, user_id: int, code: str) ->
 
 
 async def peek_percent_hold(session: AsyncSession, user_id: int) -> CouponHoldResult | None:
-    """Возвращает закреплённую за клиентом скидку и снимает непригодное закрепление."""
-    coupon = await get_coupon_hold(session, int(user_id))
+    """Возвращает действующую закреплённую скидку клиента."""
+    coupon = await get_coupon_hold(session, user_id)
     if coupon is None:
         return None
 
     try:
         await _check_percent_coupon(session, coupon, user_id)
     except ServiceError:
-        await clear_coupon_hold(session, int(user_id))
+        await clear_coupon_hold(session, user_id)
         return None
 
     return CouponHoldResult(
@@ -171,7 +172,7 @@ async def peek_percent_hold(session: AsyncSession, user_id: int) -> CouponHoldRe
 
 async def drop_percent_coupon(session: AsyncSession, user_id: int) -> None:
     """Снимает закрепление скидки у клиента."""
-    await clear_coupon_hold(session, int(user_id))
+    await clear_coupon_hold(session, user_id)
 
 
 class CouponApplyResult:
@@ -190,56 +191,64 @@ async def apply_fixed_coupon(
     code: str,
 ) -> CouponApplyResult:
     """Активирует купон с фиксированной суммой и зачисляет её на баланс."""
-    normalized = code.strip()
-    if not normalized:
-        raise ValidationError("Введите код купона")
+    from middlewares.session import operation_session
 
-    coupon = await get_coupon_by_code_ci(session, normalized)
-    if coupon is None:
-        raise NotFoundError("Купон не найден")
+    async with operation_session(session) as session:
+        owner = await resolve_user_optional(session, user_id)
+        if owner is None:
+            raise NotFoundError("Пользователь не найден")
+        user_id = UserId(owner.id)
+        normalized = code.strip()
+        if not normalized:
+            raise ValidationError("Введите код купона")
 
-    _check_coupon_limits(coupon)
+        coupon = await get_coupon_by_code_ci(session, normalized)
+        if coupon is None:
+            raise NotFoundError("Купон не найден")
 
-    if await check_coupon_usage(session, int(coupon.id), int(user_id)):
-        raise LimitExceededError("Вы уже использовали этот купон")
+        _check_coupon_limits(coupon)
 
-    percent = getattr(coupon, "percent", None)
-    if percent is not None:
-        raise ValidationError("Этот купон применяется при оплате тарифа")
+        if await check_coupon_usage(session, int(coupon.id), user_id):
+            raise LimitExceededError("Вы уже использовали этот купон")
 
-    days = int(getattr(coupon, "days", 0) or 0)
-    if days > 0:
-        raise ValidationError("Купон на продление применяйте через Telegram-бота")
+        percent = getattr(coupon, "percent", None)
+        if percent is not None:
+            raise ValidationError("Этот купон применяется при оплате тарифа")
 
-    amount = int(getattr(coupon, "amount", 0) or 0)
-    if amount <= 0:
-        raise ValidationError("Купон недействителен")
+        days = int(getattr(coupon, "days", 0) or 0)
+        if days > 0:
+            raise ValidationError("Купон на продление применяйте через Telegram-бота")
 
-    if bool(getattr(coupon, "new_users_only", False)):
-        await _check_new_user(session, user_id)
+        amount = int(getattr(coupon, "amount", 0) or 0)
+        if amount <= 0:
+            raise ValidationError("Купон недействителен")
 
-    if not await claim_coupon_slot(session, int(coupon.id)):
-        raise ValidationError("Лимит активаций купона исчерпан")
-    if not await create_coupon_usage(session, int(coupon.id), int(user_id)):
-        await release_coupon_slot(session, int(coupon.id))
-        raise ValidationError("Купон уже активирован")
-    await update_balance(session, int(user_id), float(amount))
-    await add_payment(
-        session=session,
-        user_id=int(user_id),
-        amount=float(amount),
-        payment_system="coupon",
-        status="success",
-        currency="RUB",
-    )
+        if bool(getattr(coupon, "new_users_only", False)):
+            await _check_new_user(session, user_id)
 
-    balance = float(await get_balance(session, int(user_id)))
+        async with session.begin_nested():
+            if not await claim_coupon_slot(session, int(coupon.id)):
+                raise ValidationError("Лимит активаций купона исчерпан")
+            if not await create_coupon_usage(session, int(coupon.id), user_id):
+                await release_coupon_slot(session, int(coupon.id))
+                raise ValidationError("Купон уже активирован")
+            balance = await update_balance(session, user_id, float(amount))
+            if balance is None:
+                raise ValidationError("Не удалось начислить купон")
+            await add_payment(
+                session=session,
+                user_id=int(user_id),
+                amount=float(amount),
+                payment_system="coupon",
+                status="success",
+                currency="RUB",
+            )
 
-    return CouponApplyResult(
-        coupon_code=str(coupon.code or normalized),
-        amount=amount,
-        balance=balance,
-    )
+        return CouponApplyResult(
+            coupon_code=str(coupon.code or normalized),
+            amount=amount,
+            balance=float(balance),
+        )
 
 
 def _check_coupon_limits(coupon: Coupon) -> None:
@@ -252,8 +261,11 @@ def _check_coupon_limits(coupon: Coupon) -> None:
 
 async def is_new_user(session: AsyncSession, user_id: int) -> bool:
     """Проверяет, что у клиента нет ни успешных платежей, ни активных ключей."""
-    payments_count = await count_successful_payments(session, int(user_id))
-    keys_count = await count_active_keys_for_user(session, int(user_id))
+    owner = await resolve_user_optional(session, user_id)
+    if owner is None:
+        return True
+    payments_count = await count_successful_payments(session, owner.id)
+    keys_count = await count_active_keys_for_user(session, owner.id)
     return payments_count == 0 and keys_count == 0
 
 

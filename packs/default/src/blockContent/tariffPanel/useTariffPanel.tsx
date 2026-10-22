@@ -226,6 +226,10 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
     if (adminPrimaryHref || !activeKey?.client_id) return;
     e.preventDefault();
     if (renewBusy) return;
+    if (!tariff || (tariff.configurable && hasDeviceOptions)) {
+      navigate(renewHref);
+      return;
+    }
     setRenewBusy(true);
     try {
       const headers = { "Content-Type": "application/json" };

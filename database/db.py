@@ -99,10 +99,7 @@ def reset_async_db_engine() -> None:
 
 @asynccontextmanager
 async def isolated_sessionmaker() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    """Свой движок на время работы отдельного event loop (поток рассылки, разовая задача).
-
-    Соединения такого движка не попадают в общий пул и закрываются здесь же, пока цикл жив.
-    """
+    """Создаёт отдельный пул подключений на время работы текущего цикла событий."""
     from core.redis_cache import close_loop_client
 
     side_engine = _create_engine()
@@ -114,9 +111,7 @@ async def isolated_sessionmaker() -> AsyncIterator[async_sessionmaker[AsyncSessi
 
 
 async def warm_pool() -> None:
-    """
-    Прогревает пул соединений при старте.
-    """
+    """Прогревает пул соединений при старте."""
 
     async def _one() -> None:
         async with async_session_maker() as session:

@@ -1,4 +1,4 @@
-from math import ceil
+from math import ceil, isfinite
 from typing import Any
 
 from database.coupons import get_coupon_by_code_ci
@@ -24,6 +24,26 @@ def payload_base_price(payload: dict) -> int | None:
     return None
 
 
+def checkout_price(temp_key: str, payload: dict) -> float | None:
+    """Возвращает сумму списания для выбранной операции."""
+    price_key = {
+        "waiting_for_payment": "selected_price_rub",
+        "waiting_for_gift_payment": "selected_price_rub",
+        "waiting_for_renewal_payment": "cost",
+        "waiting_for_addons_payment": "agreed_extra_price",
+    }.get(temp_key)
+    if price_key is None:
+        return None
+    raw = payload.get(price_key)
+    if raw is None:
+        raw = payload_base_price(payload)
+    try:
+        price = float(raw)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return price if isfinite(price) and price >= 0 else None
+
+
 async def apply_checkout_coupon(
     session: Any,
     user_ref: int,
@@ -33,7 +53,7 @@ async def apply_checkout_coupon(
     coupon_code: str | None = None,
 ) -> tuple[dict, int | None, str]:
     """Применяет процентный купон к корзине и возвращает её вместе с суммой доплаты."""
-    if coupon_code is None and payload.get("applied_coupon_code"):
+    if payload.get("applied_coupon_code") or payload.get("coupon_id") is not None:
         return payload, required_amount, ""
 
     base_price = payload_base_price(payload)

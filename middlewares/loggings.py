@@ -23,6 +23,8 @@ except ImportError:
     AUDIT_REDIS_BUFFER_ENABLED = False
 
 from core.executor import spawn
+from core.telegram_sensitivity import REDACTED_INPUT, resolve_sensitive_input
+from database.access.resolution import TelegramId, resolve_actor_from_legacy_ref
 from logger import logger
 
 
@@ -33,7 +35,7 @@ class UserInfo(TypedDict):
 
 
 def _log_activity_sync(user_info: UserInfo) -> None:
-    """Синхронный вывод в лог, чтобы не блокировать event loop в create_task."""
+    """Синхронно записывает активность пользователя в лог."""
     logger.info(
         f"Активность пользователя │ "
         f"ID: {str(user_info['user_id']).ljust(10)} │ "
@@ -43,9 +45,7 @@ def _log_activity_sync(user_info: UserInfo) -> None:
 
 
 class LoggingMiddleware(BaseMiddleware):
-    """Middleware для логирования действий пользователя. Лог пишется в фоне.
-    Аудит: при включённом Redis-буфере пишем только в Redis (в БД — раз в сутки через drain);
-    при выключенном буфере или сбое Redis — пишем в БД."""
+    """Записывает действия пользователя в лог и журнал аудита."""
 
     def __init__(self, sessionmaker=None) -> None:
         super().__init__()
@@ -57,27 +57,34 @@ class LoggingMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
+        data["sensitive_input"] = await resolve_sensitive_input(data)
         audit_context = ensure_telegram_context(data, event)
-        user_info = self._extract_user_info(event)
+        user_info = self._extract_user_info(event, sensitive_input=data["sensitive_input"])
 
         if user_info["user_id"]:
             spawn(asyncio.to_thread(_log_activity_sync, user_info))
 
         try:
             result = await handler(event, data)
-            db_user = data.get("user")
             actor = data.get("actor")
+            if actor is None:
+                session = data.get("session")
+                from_user = data.get("event_from_user") or getattr(event, "from_user", None)
+                if (
+                    session is not None
+                    and getattr(session, "execute", None) is not None
+                    and from_user is not None
+                    and not getattr(from_user, "is_bot", False)
+                ):
+                    try:
+                        actor = await resolve_actor_from_legacy_ref(session, TelegramId(from_user.id))
+                    except Exception as error:
+                        logger.warning("[Audit] Не удалось определить текущую личность Telegram: {}", error)
             if actor is not None:
                 set_telegram_actor(
                     audit_context,
                     identity_id=getattr(actor, "identity_id", None),
                     tg_id=getattr(actor, "telegram_chat_id", None),
-                )
-            if isinstance(db_user, dict):
-                set_telegram_actor(
-                    audit_context,
-                    identity_id=db_user.get("identity_id"),
-                    tg_id=db_user.get("tg_id"),
                 )
             payload = _telegram_access_payload(audit_context, event, result="success")
             if AUDIT_REDIS_BUFFER_ENABLED:
@@ -138,7 +145,7 @@ class LoggingMiddleware(BaseMiddleware):
             )
             raise
 
-    def _extract_user_info(self, event: TelegramObject) -> UserInfo:
+    def _extract_user_info(self, event: TelegramObject, *, sensitive_input: bool = False) -> UserInfo:
         """Извлекает информацию о пользователе из различных типов событий."""
         result: UserInfo = {"user_id": None, "username": None, "action": None}
 
@@ -147,10 +154,10 @@ class LoggingMiddleware(BaseMiddleware):
             result["username"] = event.from_user.username
 
             if isinstance(event, Message):
-                result["action"] = f"Сообщение: {event.text}"
+                result["action"] = f"Сообщение: {REDACTED_INPUT if sensitive_input else event.text}"
             elif isinstance(event, CallbackQuery):
-                result["action"] = f"Обратный вызов: {event.data}"
+                result["action"] = f"Обратный вызов: {REDACTED_INPUT if sensitive_input else event.data}"
             elif isinstance(event, InlineQuery):
-                result["action"] = f"Inline запрос: {event.query}"
+                result["action"] = f"Inline запрос: {REDACTED_INPUT if sensitive_input else event.query}"
 
         return result

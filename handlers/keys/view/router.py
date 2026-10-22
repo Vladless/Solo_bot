@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_key_details, get_keys
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import Key
 from handlers.keys.utils import build_key_ref, key_owned_by_user, resolve_key
 from handlers.keys.view.payload import (
@@ -58,7 +58,7 @@ async def process_callback_or_message_view_keys(
     else:
         target_message = callback_query_or_message
 
-    tg_id = callback_query_or_message.from_user.id
+    tg_id = TelegramId(callback_query_or_message.from_user.id)
 
     records = await get_keys(session, tg_id)
 
@@ -92,8 +92,13 @@ async def process_callback_view_keys_paged(
 @router.callback_query(F.data.startswith("rename_key|"), flags={"popup": True})
 async def handle_rename_key(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     client_id = callback.data.split("|")[1]
-    key_row = (await session.execute(select(Key).where(Key.client_id == client_id))).scalar_one_or_none()
-    if not key_row or key_row.tg_id != callback.from_user.id:
+    owner = await resolve_user_optional(session, TelegramId(callback.from_user.id))
+    key_row = None
+    if owner is not None:
+        key_row = (
+            await session.execute(select(Key).where(Key.user_id == owner.id, Key.client_id == client_id))
+        ).scalar_one_or_none()
+    if key_row is None:
         await safe_answer_callback(callback, "Доступ запрещён.", show_alert=True)
         return
     await state.set_state(RenameKeyState.waiting_for_new_alias)
@@ -133,7 +138,7 @@ async def handle_new_alias_input(message: Message, state: FSMContext, session: A
     client_id = data.get("client_id")
 
     try:
-        u = await resolve_user_optional(session, message.chat.id)
+        u = await resolve_user_optional(session, TelegramId(message.chat.id))
         if u is None:
             await message.answer("❌ Не удалось переименовать подписку.")
             await state.clear()
@@ -151,7 +156,7 @@ async def handle_new_alias_input(message: Message, state: FSMContext, session: A
 @router.callback_query(F.data.startswith("view_key|"), flags={"popup": True})
 async def process_callback_view_key(callback_query: CallbackQuery, session: AsyncSession):
     key_ref = callback_query.data.split("|", 1)[1]
-    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
+    key_obj = await resolve_key(session, TelegramId(callback_query.from_user.id), key_ref)
     record = await get_key_details(session, key_obj.email) if key_obj else None
     if not key_owned_by_user(record, callback_query.from_user.id):
         await safe_answer_callback(callback_query, "Доступ запрещён.", show_alert=True)
@@ -188,10 +193,15 @@ async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSess
         await safe_answer_callback(callback_query, "❌ Некорректный запрос.", show_alert=True)
         return
 
-    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
+    key_obj = await resolve_key(session, TelegramId(callback_query.from_user.id), key_ref)
     key_name = key_obj.email if key_obj else key_ref
     record = await get_key_details(session, key_name)
-    if not record or not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await safe_answer_callback(callback_query, "❌ Ключ не найден.", show_alert=True)
         return
 
@@ -215,7 +225,9 @@ async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSess
     key_email = str(record.get("email") or "") or None
 
     async def _delete(api):
-        devices = await api.get_user_hwid_devices(client_id, username=key_email) or []
+        devices = await api.get_user_hwid_devices(client_id, username=key_email)
+        if devices is None:
+            return False
         target_idx = page * DEVICES_PER_PAGE + idx
         if target_idx >= len(devices):
             return None
@@ -224,13 +236,21 @@ async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSess
             return False
         return await api.delete_user_hwid_device(client_id, target_hwid, username=key_email)
 
-    result = await with_remnawave_api(session, server_id, _delete, fallback_any=True, timeout_sec=10.0)
+    result = await with_remnawave_api(
+        session,
+        server_id,
+        _delete,
+        timeout_sec=10.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=record.get("remnawave_link") or record.get("link"),
+    )
     if result is None:
         await safe_answer_callback(callback_query, "❌ Устройство не найдено.", show_alert=True)
     elif result is False:
         await safe_answer_callback(callback_query, "❌ Не удалось отвязать устройство.", show_alert=True)
     else:
-        await invalidate_remnawave_profile(session, server_id, str(client_id), fallback_any=True)
+        await invalidate_remnawave_profile(session, server_id, str(client_id))
         await register_deletion(client_id)
         await safe_answer_callback(callback_query, "✅ Устройство отвязано.")
 

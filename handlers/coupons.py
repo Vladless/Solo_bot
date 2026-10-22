@@ -24,11 +24,16 @@ from database import (
     release_coupon_slot,
     update_key_expiry,
 )
+from database.access.resolution import TelegramId, resolve_user_optional
+from database.keys import lock_owned_key_for_operation
+from database.models import Coupon, Key
 from handlers.admin.panel.headers import section
 from handlers.profile import process_callback_view_profile
 from handlers.utils import edit_or_send_message
 from logger import logger
-from middlewares.session import release_session_early
+from middlewares.session import operation_session
+from services.coupons import is_new_user
+from services.errors import ValidationError
 from services.formatting import format_days
 from services.operations import renew_key_in_cluster
 from services.payments.currency_rates import format_for_user
@@ -63,7 +68,7 @@ async def handle_activate_coupon(callback_query_or_message: Message | CallbackQu
     else:
         target_message = callback_query_or_message
 
-    user_id = callback_query_or_message.from_user.id
+    user_id = TelegramId(callback_query_or_message.from_user.id)
     held = await peek_percent_hold(session, user_id)
 
     builder = InlineKeyboardBuilder()
@@ -87,7 +92,7 @@ async def drop_coupon_hold(callback_query: CallbackQuery, state: FSMContext, ses
     """Снимает закрепление скидки и возвращает экран ввода купона."""
     from services.coupons import drop_percent_coupon
 
-    await drop_percent_coupon(session, callback_query.from_user.id)
+    await drop_percent_coupon(session, TelegramId(callback_query.from_user.id))
     await callback_query.answer("Скидка снята")
     await handle_activate_coupon(callback_query, state, session)
 
@@ -127,14 +132,14 @@ async def activate_coupon(
         await message.answer(COUPON_NOT_FOUND_MSG, reply_markup=builder.as_markup())
         return
 
-    if coupon.usage_count >= coupon.usage_limit or coupon.is_used:
+    if (int(coupon.usage_limit or 0) > 0 and int(coupon.usage_count or 0) >= int(coupon.usage_limit)) or coupon.is_used:
         await message.answer("❌ Лимит активаций купона исчерпан.")
         await state.clear()
         return
 
     user = user_data or message.from_user or message.chat
     language_code = user.get("language_code") if isinstance(user, dict) else getattr(user, "language_code", None)
-    user_id = user["tg_id"] if isinstance(user, dict) else user.id
+    user_id = TelegramId(user["tg_id"] if isinstance(user, dict) else user.id)
 
     usage = await check_coupon_usage(session, coupon.id, user_id)
     if usage:
@@ -259,108 +264,117 @@ async def handle_key_extension(
     session: AsyncSession,
     admin: bool = False,
 ):
-    from database.access.resolution import resolve_user_optional
-    from database.models import Coupon, Key, User
-
     parts = callback_query.data.split("|")
     client_id = parts[1]
     coupon_id = int(parts[2])
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
 
     try:
-        result = await session.execute(select(Coupon).where(Coupon.id == coupon_id))
-        coupon = result.scalar_one_or_none()
-        if not coupon or coupon.usage_count >= coupon.usage_limit:
-            await callback_query.message.edit_text("❌ Купон недействителен или лимит исчерпан.")
-            await state.clear()
-            return
+        async with operation_session(session) as billing_session:
+            async with billing_session.begin_nested():
+                result = await billing_session.execute(select(Coupon).where(Coupon.id == coupon_id))
+                coupon = result.scalar_one_or_none()
+                if (
+                    not coupon
+                    or not coupon.days
+                    or int(coupon.days) <= 0
+                    or getattr(coupon, "percent", None) is not None
+                    or (int(coupon.usage_limit or 0) > 0 and int(coupon.usage_count or 0) >= int(coupon.usage_limit))
+                ):
+                    await callback_query.message.edit_text("❌ Купон недействителен или лимит исчерпан.")
+                    await state.clear()
+                    return
 
-        usage = await check_coupon_usage(session, coupon.id, tg_id)
-        if usage:
-            await callback_query.message.edit_text("❌ Вы уже активировали этот купон.")
-            await state.clear()
-            return
+                usage = await check_coupon_usage(billing_session, coupon.id, tg_id)
+                if usage:
+                    await callback_query.message.edit_text("❌ Вы уже активировали этот купон.")
+                    await state.clear()
+                    return
 
-        if getattr(coupon, "new_users_only", False):
-            exists = await session.scalar(select(User.tg_id).where(User.tg_id == tg_id))
-            if exists is not None:
-                await callback_query.message.edit_text("❌ Этот купон доступен только для новых пользователей.")
-                await state.clear()
-                return
+                if getattr(coupon, "new_users_only", False):
+                    if not await is_new_user(billing_session, tg_id):
+                        await callback_query.message.edit_text("❌ Этот купон доступен только для новых пользователей.")
+                        await state.clear()
+                        return
 
-        owner = await resolve_user_optional(session, tg_id)
-        if owner is None:
-            await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
-            await state.clear()
-            return
-        result = await session.execute(select(Key).where(Key.user_id == owner.id, Key.client_id == client_id))
-        key = result.scalar_one_or_none()
-        if not key or key.is_frozen:
-            await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
-            await state.clear()
-            return
+                owner = await resolve_user_optional(billing_session, tg_id)
+                if owner is None:
+                    await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
+                    await state.clear()
+                    return
+                result = await billing_session.execute(
+                    select(Key).where(Key.user_id == owner.id, Key.client_id == client_id)
+                )
+                key = result.scalar_one_or_none()
+                if key is not None:
+                    key = await lock_owned_key_for_operation(billing_session, owner.id, client_id, key.email)
+                if not key or key.is_frozen:
+                    await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
+                    await state.clear()
+                    return
 
-        now_ms = int(datetime.now().timestamp() * 1000)
-        current_expiry = key.expiry_time
-        new_expiry = max(now_ms, current_expiry) + (coupon.days * 86400 * 1000)
+                now_ms = int(datetime.now().timestamp() * 1000)
+                current_expiry = key.expiry_time
+                new_expiry = max(now_ms, current_expiry) + (coupon.days * 86400 * 1000)
 
-        tariff = None
-        if key.tariff_id:
-            tariff = await get_tariff_by_id(session, key.tariff_id)
-        tariff_gb = int(tariff["traffic_limit"]) if tariff and tariff.get("traffic_limit") else 0
-        tariff_devices = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
+                tariff = None
+                if key.tariff_id:
+                    tariff = await get_tariff_by_id(billing_session, key.tariff_id)
+                tariff_gb = int(tariff["traffic_limit"]) if tariff and tariff.get("traffic_limit") else 0
+                tariff_devices = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
 
-        total_gb = (
-            int(key.current_traffic_limit)
-            if getattr(key, "current_traffic_limit", None) is not None
-            else int(key.selected_traffic_limit)
-            if getattr(key, "selected_traffic_limit", None) is not None
-            else tariff_gb
-        )
-        device_limit = (
-            int(key.current_device_limit)
-            if getattr(key, "current_device_limit", None) is not None
-            else int(key.selected_device_limit)
-            if getattr(key, "selected_device_limit", None) is not None
-            else tariff_devices
-        )
+                total_gb = (
+                    int(key.current_traffic_limit)
+                    if getattr(key, "current_traffic_limit", None) is not None
+                    else int(key.selected_traffic_limit)
+                    if getattr(key, "selected_traffic_limit", None) is not None
+                    else tariff_gb
+                )
+                device_limit = (
+                    int(key.current_device_limit)
+                    if getattr(key, "current_device_limit", None) is not None
+                    else int(key.selected_device_limit)
+                    if getattr(key, "selected_device_limit", None) is not None
+                    else tariff_devices
+                )
 
-        key_subgroup = None
-        if tariff:
-            key_subgroup = tariff.get("subgroup_title")
+                key_subgroup = None
+                if tariff:
+                    key_subgroup = tariff.get("subgroup_title")
 
-        if not await claim_coupon_slot(session, coupon.id):
-            await edit_or_send_message(
-                target_message=callback_query.message,
-                text="❌ Лимит активаций купона исчерпан.",
-            )
-            await state.clear()
-            return
-        reserved = await create_coupon_usage(session, coupon.id, tg_id)
-        if not reserved:
-            await release_coupon_slot(session, coupon.id)
-            await edit_or_send_message(
-                target_message=callback_query.message,
-                text="❌ Вы уже активировали этот купон.",
-            )
-            await state.clear()
-            return
+                if not await claim_coupon_slot(billing_session, coupon.id):
+                    await edit_or_send_message(
+                        target_message=callback_query.message,
+                        text="❌ Лимит активаций купона исчерпан.",
+                    )
+                    await state.clear()
+                    return
+                reserved = await create_coupon_usage(billing_session, coupon.id, tg_id)
+                if not reserved:
+                    await release_coupon_slot(billing_session, coupon.id)
+                    await edit_or_send_message(
+                        target_message=callback_query.message,
+                        text="❌ Вы уже активировали этот купон.",
+                    )
+                    await state.clear()
+                    return
 
-        await release_session_early(session)
-        await renew_key_in_cluster(
-            cluster_id=key.server_id,
-            email=key.email,
-            client_id=client_id,
-            new_expiry_time=new_expiry,
-            total_gb=total_gb,
-            session=session,
-            hwid_device_limit=device_limit,
-            reset_traffic=False,
-            target_subgroup=key_subgroup,
-            old_subgroup=key_subgroup,
-            plan=key.tariff_id,
-        )
-        await update_key_expiry(session, client_id, new_expiry)
+                applied = await renew_key_in_cluster(
+                    cluster_id=key.server_id,
+                    email=key.email,
+                    client_id=client_id,
+                    new_expiry_time=new_expiry,
+                    total_gb=total_gb,
+                    session=billing_session,
+                    hwid_device_limit=device_limit,
+                    reset_traffic=False,
+                    target_subgroup=key_subgroup,
+                    old_subgroup=key_subgroup,
+                    plan=key.tariff_id,
+                )
+                if not applied:
+                    raise ValidationError("Не удалось продлить подписку, купон не использован")
+                await update_key_expiry(billing_session, client_id, new_expiry, user_id=key.user_id)
 
         alias = key.alias or key.email
         expiry_date = datetime.fromtimestamp(new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")).strftime(

@@ -13,7 +13,7 @@ from api.v2.schemas import (
     TrackingSourceResponse,
 )
 from database import get_tracking_source_stats
-from database.access.resolution import public_tg_id, resolve_user_optional
+from database.access.resolution import TelegramId, public_tg_id, resolve_user_optional
 from database.models import (
     BlockedUser,
     ManualBan,
@@ -66,6 +66,7 @@ async def list_payments_admin(
     items = [
         {
             "id": p.id,
+            "user_id": p.user_id,
             "tg_id": public_tg_id(p.tg_id if p.tg_id is not None else tg),
             "amount": float(p.amount or 0),
             "currency": p.currency,
@@ -103,7 +104,7 @@ async def get_payments_by_tg_id(
     session: AsyncSession = Depends(get_session),
 ):
     """Список платежей по tg_id пользователя."""
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, TelegramId(tg_id))
     if u is None:
         raise HTTPException(status_code=404, detail="Payments not found")
     result = await session.execute(select(Payment).where(Payment.user_id == u.id))

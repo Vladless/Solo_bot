@@ -17,7 +17,7 @@ from database import (
     update_balance,
     update_trial,
 )
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, UserId, resolve_user_optional
 from database.gifts import (
     count_gift_usages,
     get_gift_locked,
@@ -27,6 +27,7 @@ from database.gifts import (
 )
 from database.models import Gift, GiftUsage, Identity, User
 from database.tariffs import get_tariff_by_id
+from database.web_notifications import notify_web
 from logger import logger
 from services.formatting import format_days, format_months, get_gift_link, get_plural_form, get_site_gift_link
 
@@ -107,8 +108,8 @@ async def _resolve_user_label(
     if user_id is not None:
         result = await session.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
-    if user is None and tg_id is not None:
-        user = await resolve_user_optional(session, tg_id)
+    if user_id is None and tg_id is not None:
+        user = await resolve_user_optional(session, TelegramId(tg_id))
 
     if user is None:
         if tg_id is not None:
@@ -235,11 +236,7 @@ async def redeem_gift(
     gift_code: str,
     billing_user_ref: int,
 ) -> GiftRedeemResult:
-    """Активирует подарок для пользователя.
-
-    Создаёт ключ, записывает usage, привязывает реферала.
-    Raises: ValidationError, NotFoundError
-    """
+    """Активирует подарок и создаёт ключ для получателя."""
     code = normalize_gift_code(gift_code)
     if not code:
         raise ValidationError("Укажите ссылку или код подарка")
@@ -273,7 +270,7 @@ async def redeem_gift(
         ):
             raise ValidationError("Этот подарок уже был использован")
 
-    existing_referral = await get_referral_by_referred_id(session, wu.id)
+    existing_referral = await get_referral_by_referred_id(session, UserId(wu.id))
     if not existing_referral and gift_info.sender_user_id:
         created_at = getattr(wu, "created_at", None)
         if created_at is not None:
@@ -286,17 +283,20 @@ async def redeem_gift(
         if is_fresh_user and trial_value == 0:
             from hooks.hooks import run_hooks
 
+            sender = await resolve_user_optional(session, UserId(gift_info.sender_user_id))
             results = await run_hooks(
                 "referral_register",
-                referrer=gift_info.sender_user_id,
-                referred=wu.id,
+                referrer=sender.tg_id if sender is not None else None,
+                referred=wu.tg_id,
+                referrer_user_id=UserId(gift_info.sender_user_id),
+                referred_user_id=UserId(wu.id),
                 context="gift_web",
                 session=session,
             )
             if not (results and "HANDLED" in results):
-                await add_referral(session, wu.id, gift_info.sender_user_id)
+                await add_referral(session, UserId(wu.id), UserId(gift_info.sender_user_id))
 
-    await update_trial(session, wu.id, 1)
+    await update_trial(session, UserId(wu.id), 1)
 
     tariff = await get_tariff_by_id(session, int(gift_info.tariff_id)) if gift_info.tariff_id else None
     if not tariff:
@@ -313,7 +313,7 @@ async def redeem_gift(
 
     await create_vpn_key_headless(
         session=session,
-        tg_id=wu.id,
+        tg_id=UserId(wu.id),
         expiry_time=expiry_time,
         plan=int(tariff["id"]),
         selected_device_limit=int(selected_device_limit) if selected_device_limit is not None else None,
@@ -329,22 +329,19 @@ async def redeem_gift(
     duration_text = _format_duration(duration_days)
 
     try:
-        from database.web_notifications import notify_web
-
-        if wu.tg_id is not None:
-            await notify_web(
-                session,
-                user_ref=wu.tg_id,
-                type="gift_received",
-                template_vars={"name": tariff["name"], "duration": duration_text},
-                data={"gift_id": gift_info.gift_id, "tariff_id": int(tariff["id"])},
-            )
+        await notify_web(
+            session,
+            user_ref=UserId(wu.id),
+            type="gift_received",
+            template_vars={"name": tariff["name"], "duration": duration_text},
+            data={"gift_id": gift_info.gift_id, "tariff_id": int(tariff["id"])},
+        )
         if gift_info.sender_user_id:
-            sender = await resolve_user_optional(session, gift_info.sender_user_id)
-            if sender and sender.tg_id is not None:
+            sender = await resolve_user_optional(session, UserId(gift_info.sender_user_id))
+            if sender:
                 await notify_web(
                     session,
-                    user_ref=int(sender.tg_id),
+                    user_ref=UserId(sender.id),
                     type="gift_redeemed",
                     title="Ваш подарок активирован",
                     message=f"Получатель активировал подарок — подписка на {duration_text}.",
@@ -369,10 +366,7 @@ async def create_gift(
     selected_traffic_gb: int | None = None,
     selected_price_rub: int | None = None,
 ) -> GiftCreateResult:
-    """Создаёт подарок: списывает баланс, сохраняет в БД.
-
-    Raises: NotFoundError, InsufficientFundsError
-    """
+    """Создаёт подарок со списанием средств с баланса."""
     tariff = await get_tariff_by_id(session, int(tariff_id))
     if not tariff or tariff.get("group_code") != "gifts":
         raise NotFoundError("Тариф не найден")

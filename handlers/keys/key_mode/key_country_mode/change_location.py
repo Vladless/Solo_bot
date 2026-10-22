@@ -1,5 +1,5 @@
-from ._common import *  # noqa: F401,F403
-from ._common import router  # noqa: F401
+from ._common import *
+from ._common import router
 from .finalize import check_server_availability
 
 
@@ -18,7 +18,12 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
         if not record:
             await callback_query.answer("❌ Ключ не найден", show_alert=True)
             return
-        if record.get("tg_id") != callback_query.from_user.id:
+        if (
+            key_obj is None
+            or record.get("tg_id") != callback_query.from_user.id
+            or record.get("user_id") != key_obj.user_id
+            or record.get("client_id") != key_obj.client_id
+        ):
             await callback_query.answer("Доступ запрещён.", show_alert=True)
             return
 

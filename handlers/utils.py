@@ -12,6 +12,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
+    InlineKeyboardButton,
     InlineKeyboardMarkup,
     InlineQuery,
     InputMediaAnimation,
@@ -23,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import Key, Notification
 from logger import logger
 from services.formatting import format_days, format_hours, format_minutes
@@ -49,10 +50,7 @@ def _is_message_not_modified(exc: BaseException) -> bool:
 async def safe_answer_callback(
     callback_query: CallbackQuery, text: str | None = None, show_alert: bool = False, **kwargs
 ) -> None:
-    """
-    Вызывает callback_query.answer(), не поднимая исключение при устаревшем/уже отвеченном callback.
-    Использовать в хендлерах после долгой обработки или при наплыве пользователей.
-    """
+    """Отвечает на нажатие кнопки, игнорируя устаревший запрос."""
     try:
         await callback_query.answer(text=text, show_alert=show_alert, **kwargs)
     except TelegramBadRequest as e:
@@ -62,10 +60,7 @@ async def safe_answer_callback(
 
 
 async def safe_answer_inline_query(inline_query: InlineQuery, *args: object, **kwargs: object) -> None:
-    """
-    Вызывает inline_query.answer(), не поднимая исключение при устаревшем запросе
-    (query is too old / response timeout). При нагрузке inline может обрабатываться с задержкой.
-    """
+    """Отвечает на инлайн-запрос, игнорируя устаревший запрос."""
     try:
         await inline_query.answer(*args, **kwargs)
     except TelegramBadRequest as e:
@@ -91,7 +86,7 @@ async def generate_random_email(
 
 
 async def get_least_loaded_cluster(session: AsyncSession) -> str:
-    """Делегирует в services.clusters.select_cluster()."""
+    """Выбирает кластер для нового ключа."""
     from services.clusters import select_cluster
 
     result = await select_cluster(session)
@@ -99,14 +94,14 @@ async def get_least_loaded_cluster(session: AsyncSession) -> str:
 
 
 async def check_server_key_limit(server_info: dict, session: AsyncSession) -> bool:
-    """Делегирует в services.clusters.check_server_key_limit() с Telegram-callback для уведомлений."""
+    """Проверяет лимит ключей сервера и уведомляет админа."""
     from services.clusters import check_server_key_limit as _svc_check
 
     async def _notify_admin_capacity(server_name: str, total_keys: int, max_keys: int) -> None:
         notif_key = f"server_warn_{server_name}"
         anchor_uid = None
         if ADMIN_ID:
-            au = await resolve_user_optional(session, int(ADMIN_ID[0]))
+            au = await resolve_user_optional(session, TelegramId(ADMIN_ID[0]))
             if au is not None:
                 anchor_uid = au.id
         already_sent = None
@@ -135,9 +130,7 @@ async def check_server_key_limit(server_info: dict, session: AsyncSession) -> bo
 
 
 async def handle_error(tg_id: int, callback_query: object | None = None, message: str = "") -> None:
-    """
-    Обрабатывает ошибку, отправляя сообщение пользователю.
-    """
+    """Отправляет пользователю сообщение об ошибке."""
     try:
         if callback_query and hasattr(callback_query, "message"):
             try:
@@ -161,7 +154,7 @@ _EMPTY_SECTION_RE = re.compile(r"(?:<b>[^<]*</b>\n)?<blockquote><code></code></b
 
 
 def _row_is_filled(row: str) -> bool:
-    """Строка таблицы пуста, если у метки нет значения."""
+    """Проверяет, заполнено ли значение строки таблицы."""
     _label, sep, value = row.partition(": ")
     return bool(value.strip()) if sep else bool(row.strip())
 
@@ -189,12 +182,12 @@ _DANGLING_SEPARATOR_RE = re.compile(r"(?m)^\s*[·|]\s*|\s*[·|]\s*$")
 
 
 def _markup_of(line: str) -> str:
-    """Оставляет от строки только теги: строка уходит, а открытые блоки не рвутся."""
+    """Извлекает HTML-теги из строки."""
     return "".join(_TAG_RE.findall(line))
 
 
 def _drop_empty_links(text: str) -> str:
-    """Убирает ссылки без адреса и строки-метки, у которых не осталось значения."""
+    """Удаляет ссылки без адреса и пустые подписи."""
     lines = []
     for line in _EMPTY_ANCHOR_RE.sub("", text).split("\n"):
         cleaned = _DANGLING_SEPARATOR_RE.sub("", line)
@@ -215,7 +208,7 @@ def _drop_empty_links(text: str) -> str:
 
 
 def fill_text(template: str, **values: object) -> str:
-    """Подставляет значения в шаблон и убирает строки и блоки, для которых не оказалось данных."""
+    """Подставляет значения в шаблон и удаляет пустые блоки."""
     try:
         text = template.format_map(_TemplateValues(values))
     except (IndexError, ValueError) as error:
@@ -225,7 +218,7 @@ def fill_text(template: str, **values: object) -> str:
 
 
 def render_screen(*parts: str) -> str:
-    """Склеивает части экрана и выравнивает значения всех таблиц по одной вертикали."""
+    """Объединяет части экрана и выравнивает таблицы."""
     from handlers.admin.panel.headers import align_screen
 
     return align_screen(join_blocks(*parts))
@@ -259,6 +252,25 @@ def get_media_type(media_path: str) -> str:
     return "photo"
 
 
+def find_media_file(original_path: str) -> str | None:
+    """Находит медиафайл с учётом доступного расширения."""
+    if not original_path:
+        return None
+
+    if os.path.isfile(original_path):
+        return original_path
+
+    base_name = os.path.splitext(original_path)[0]
+    supported_extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".avi"]
+
+    for ext in supported_extensions:
+        fallback_path = base_name + ext
+        if os.path.isfile(fallback_path):
+            return fallback_path
+
+    return None
+
+
 async def edit_or_send_message(
     target_message: Message,
     text: str,
@@ -267,6 +279,7 @@ async def edit_or_send_message(
     disable_web_page_preview: bool = False,
     force_text: bool = False,
     disable_cache: bool = False,
+    edit_only: bool = False,
 ):
     if not hasattr(edit_or_send_message, "cache"):
         import asyncio
@@ -276,23 +289,6 @@ async def edit_or_send_message(
         edit_or_send_message.cache = OrderedDict()
         edit_or_send_message.lock = asyncio.Lock()
         edit_or_send_message.max = 256
-
-    def find_media_file(original_path: str) -> str | None:
-        if not original_path:
-            return None
-
-        if os.path.isfile(original_path):
-            return original_path
-
-        base_name = os.path.splitext(original_path)[0]
-        supported_extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".avi"]
-
-        for ext in supported_extensions:
-            fallback_path = base_name + ext
-            if os.path.isfile(fallback_path):
-                return fallback_path
-
-        return None
 
     if media_path:
         actual_media_path = find_media_file(media_path)
@@ -324,31 +320,32 @@ async def edit_or_send_message(
                 except Exception as e:
                     if _is_message_not_modified(e):
                         return
-                    try:
-                        if media_type == "photo":
-                            await target_message.answer_photo(
-                                photo=cached_id,
-                                caption=text,
-                                reply_markup=reply_markup,
-                                disable_web_page_preview=disable_web_page_preview,
-                            )
-                        elif media_type == "video":
-                            await target_message.answer_video(
-                                video=cached_id,
-                                caption=text,
-                                reply_markup=reply_markup,
-                                disable_web_page_preview=disable_web_page_preview,
-                            )
-                        elif media_type == "animation":
-                            await target_message.answer_animation(
-                                animation=cached_id,
-                                caption=text,
-                                reply_markup=reply_markup,
-                                disable_web_page_preview=disable_web_page_preview,
-                            )
-                        return
-                    except Exception:
-                        pass
+                    if not edit_only:
+                        try:
+                            if media_type == "photo":
+                                await target_message.answer_photo(
+                                    photo=cached_id,
+                                    caption=text,
+                                    reply_markup=reply_markup,
+                                    disable_web_page_preview=disable_web_page_preview,
+                                )
+                            elif media_type == "video":
+                                await target_message.answer_video(
+                                    video=cached_id,
+                                    caption=text,
+                                    reply_markup=reply_markup,
+                                    disable_web_page_preview=disable_web_page_preview,
+                                )
+                            elif media_type == "animation":
+                                await target_message.answer_animation(
+                                    animation=cached_id,
+                                    caption=text,
+                                    reply_markup=reply_markup,
+                                    disable_web_page_preview=disable_web_page_preview,
+                                )
+                            return
+                        except Exception:
+                            pass
 
             async with aiofiles.open(actual_media_path, "rb") as f:
                 data = await f.read()
@@ -370,6 +367,8 @@ async def edit_or_send_message(
             except Exception as e:
                 if _is_message_not_modified(e):
                     return
+                if edit_only:
+                    raise
                 if media_type == "photo":
                     msg = await target_message.answer_photo(
                         photo=upload,
@@ -409,13 +408,19 @@ async def edit_or_send_message(
             return
 
     caption = getattr(target_message, "caption", None)
-    if not force_text and caption is not None:
+    if not force_text and (
+        caption is not None
+        or getattr(target_message, "content_type", None)
+        in {"photo", "video", "animation", "audio", "document", "voice"}
+    ):
         try:
             await target_message.edit_caption(caption=text, reply_markup=reply_markup)
             return
         except Exception as e:
             if _is_message_not_modified(e):
                 return
+            if edit_only:
+                raise
     try:
         await target_message.edit_text(
             text=text,
@@ -426,6 +431,8 @@ async def edit_or_send_message(
     except Exception as e:
         if _is_message_not_modified(e):
             return
+        if edit_only:
+            raise
         await target_message.answer(
             text=text,
             reply_markup=reply_markup,
@@ -434,9 +441,7 @@ async def edit_or_send_message(
 
 
 def convert_to_bytes(value: float, unit: str) -> int:
-    """
-    Конвертирует значение с указанной единицей измерения в байты.
-    """
+    """Переводит величину в байты."""
     KB = 1024
     MB = KB * 1024
     GB = MB * 1024
@@ -468,15 +473,7 @@ RUSSIAN_MONTHS = {
 
 
 def get_russian_month(date: datetime) -> str:
-    """
-    Преобразует английское название месяца в русское.
-
-    Args:
-        date: Объект datetime, из которого извлекается месяц.
-
-    Returns:
-        Название месяца на русском языке.
-    """
+    """Возвращает название месяца на русском языке."""
     english_month = date.strftime("%B")
     return RUSSIAN_MONTHS.get(english_month, english_month)
 
@@ -516,7 +513,7 @@ def format_discount_time_left(last_time: datetime, discount_hours: int) -> str:
 
 def extract_user_data(user) -> dict:
     return {
-        "tg_id": user.id,
+        "tg_id": TelegramId(user.id) if user.id is not None else None,
         "username": user.username,
         "first_name": user.first_name,
         "last_name": user.last_name,
@@ -526,21 +523,20 @@ def extract_user_data(user) -> dict:
 
 
 def resolve_actor_data(message, *, actor=None, saved: dict | None = None) -> dict:
-    """Данные клиента для сценария старта: явный автор, затем сохранённые, затем автор сообщения.
-
-    У сообщения, отправленного ботом, `from_user` — сам бот, поэтому такой автор отбрасывается:
-    иначе сценарий уходит на клиента с номером бота.
-    """
+    """Определяет клиента по актору, сохранённым данным или сообщению."""
     if actor is not None and not getattr(actor, "is_bot", False):
         return extract_user_data(actor)
     if saved and saved.get("tg_id") and not saved.get("is_bot"):
-        return dict(saved)
+        restored = dict(saved)
+        restored["tg_id"] = TelegramId(saved["tg_id"])
+        return restored
     author = getattr(message, "from_user", None)
     if author is not None and not getattr(author, "is_bot", False):
         return extract_user_data(author)
     chat = getattr(message, "chat", None)
+    chat_id = getattr(chat, "id", None)
     return {
-        "tg_id": getattr(chat, "id", None),
+        "tg_id": TelegramId(chat_id) if chat_id is not None else None,
         "username": getattr(chat, "username", None),
         "first_name": getattr(chat, "first_name", None),
         "last_name": getattr(chat, "last_name", None),
@@ -550,8 +546,6 @@ def resolve_actor_data(message, *, actor=None, saved: dict | None = None) -> dic
 
 
 async def build_support_button(text: str | None = None) -> "InlineKeyboardButton | None":
-    from aiogram.types import InlineKeyboardButton
-
     from settings.buttons import SUPPORT
     from settings.config import SUPPORT_CHAT_URL
 

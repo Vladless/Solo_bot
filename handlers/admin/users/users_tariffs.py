@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -16,6 +16,7 @@ from database import (
     reset_key_tariff_state,
     save_key_tariff_selection,
 )
+from database.access.resolution import UserId
 from filters.admin import IsAdminFilter
 from logger import logger
 from middlewares.session import release_session_early
@@ -40,7 +41,7 @@ async def handle_back_to_key_menu(
 ):
     data = await state.get_data()
     email = data.get("email")
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
     await state.clear()
 
     if not email or not user_id:
@@ -78,7 +79,7 @@ async def handle_user_choose_tariff_group(
     email = key_obj.email
 
     await state.set_state(RenewTariffState.selecting_group)
-    await state.update_data(email=email, user_id=user_id)
+    await state.update_data(email=email, user_id=user_id, admin_config_permissions=[])
 
     groups = await get_tariff_group_codes(session)
 
@@ -131,7 +132,7 @@ async def handle_user_renew_confirm(
     tariff_id = int(callback_query.data.split(":")[1])
     data = await state.get_data()
     email = data.get("email")
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
 
     if not email or not user_id:
         await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не найдены данные сессии."))
@@ -331,7 +332,7 @@ async def handle_user_renew_confirm(
     new_tariff = await get_tariff_by_id(session, tariff_id)
     new_subgroup = new_tariff.get("subgroup_title") if new_tariff else None
 
-    new_expiry_time = int(key_obj.expiry_time or 0) or int(datetime.utcnow().timestamp() * 1000)
+    new_expiry_time = int(key_obj.expiry_time or 0) or int(datetime.now(UTC).timestamp() * 1000)
 
     await reset_key_tariff_state(session, user_id, email, tariff_id)
     await release_session_early(session)
@@ -617,7 +618,7 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
 
     data = await state.get_data()
     email = data.get("email")
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
 
     if not email or not user_id:
         await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не найдены данные сессии."))
@@ -652,7 +653,7 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
     new_tariff = await get_tariff_by_id(session, tariff_id)
     new_subgroup = new_tariff.get("subgroup_title") if new_tariff else None
 
-    new_expiry_time = int(key_obj.expiry_time or 0) or int(datetime.utcnow().timestamp() * 1000)
+    new_expiry_time = int(key_obj.expiry_time or 0) or int(datetime.now(UTC).timestamp() * 1000)
 
     await save_key_tariff_selection(session, user_id, email, tariff_id, selected_devices, selected_traffic_gb)
     await release_session_early(session)

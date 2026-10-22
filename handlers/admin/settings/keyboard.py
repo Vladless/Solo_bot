@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.money_config import get_currency_mode
-from settings.buttons import BACK
+from settings.buttons import ADMIN_ACCESS_SETTINGS, BACK, PAYMENT_CASHBOX_ENABLED
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from .settings_config import (
@@ -14,7 +14,10 @@ from .settings_config import (
     MONEY_FIELDS,
     NOTIFICATION_TIME_FIELDS,
     NOTIFICATION_TITLES,
+    PAYMENT_CASHBOX_GROUPS,
+    PAYMENT_CASHBOX_TITLES,
     PAYMENT_PROVIDER_TITLES,
+    SINGLE_SUBSCRIPTION_TITLES,
 )
 
 
@@ -29,17 +32,22 @@ def build_toggle_section_keyboard(
     columns: int,
     back_action: str = "settings",
     extra_rows: list[list[InlineKeyboardButton]] | None = None,
+    hidden_keys: frozenset[str] = frozenset(),
+    submenu_actions: dict[str, str] | None = None,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for index, key in enumerate(titles.keys(), start=1):
+        if key in hidden_keys:
+            continue
         title = titles[key]
         current_state = bool(state.get(key, False))
         prefix = "✅" if current_state else "❌"
+        submenu_action = (submenu_actions or {}).get(key)
         builder.button(
-            text=f"{prefix} {title}",
+            text=f"{prefix} {title}{' ›' if submenu_action else ''}",
             callback_data=AdminPanelCallback(
-                action=action,
+                action=submenu_action or action,
                 page=index,
             ).pack(),
         )
@@ -60,7 +68,7 @@ def build_toggle_section_keyboard(
     return builder.as_markup()
 
 
-def build_settings_kb() -> InlineKeyboardMarkup:
+def build_settings_kb(*, show_access: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.button(
@@ -99,8 +107,13 @@ def build_settings_kb() -> InlineKeyboardMarkup:
         text="🌀 Remnawave",
         callback_data=AdminPanelCallback(action="settings_remnawave").pack(),
     )
+    if show_access:
+        builder.button(
+            text=ADMIN_ACCESS_SETTINGS,
+            callback_data=AdminPanelCallback(action="settings_access").pack(),
+        )
 
-    builder.adjust(2, 2, 2, 2, 1)
+    builder.adjust(2)
     builder.row(build_admin_back_btn())
 
     return builder.as_markup()
@@ -122,18 +135,42 @@ def build_settings_buttons_kb(buttons_state: dict[str, bool]) -> InlineKeyboardM
 
 
 def build_settings_cashboxes_kb(providers_state: dict[str, bool]) -> InlineKeyboardMarkup:
+    """Собирает список касс с переходом к настройкам."""
+    builder = InlineKeyboardBuilder()
+    for index, (cashbox, providers) in enumerate(PAYMENT_CASHBOX_GROUPS.items(), start=1):
+        enabled = any(providers_state.get(provider, False) for provider in providers)
+        builder.button(
+            text=f"{'✅' if enabled else '❌'} {PAYMENT_CASHBOX_TITLES[cashbox]}",
+            callback_data=AdminPanelCallback(action="settings_cashbox", page=index).pack(),
+        )
+    builder.adjust(2)
     order_button = InlineKeyboardButton(
         text="📋 Порядок касс",
         callback_data=AdminPanelCallback(action="settings_providers_order").pack(),
     )
-    return build_toggle_section_keyboard(
-        titles=PAYMENT_PROVIDER_TITLES,
-        state=providers_state,
-        action="settings_cashbox_toggle",
-        columns=2,
-        back_action="settings",
-        extra_rows=[[order_button]],
-    )
+    builder.row(order_button)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings").pack()))
+    return builder.as_markup()
+
+
+def build_settings_cashbox_kb(cashbox: str, providers_state: dict[str, bool]) -> InlineKeyboardMarkup:
+    """Собирает способы оплаты выбранной кассы."""
+    providers = PAYMENT_CASHBOX_GROUPS[cashbox]
+    keys = list(PAYMENT_PROVIDER_TITLES)
+    builder = InlineKeyboardBuilder()
+    for provider in providers:
+        enabled = bool(providers_state.get(provider, False))
+        title = PAYMENT_PROVIDER_TITLES[provider] if len(providers) > 1 else PAYMENT_CASHBOX_ENABLED
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{'✅' if enabled else '❌'} {title}",
+                callback_data=AdminPanelCallback(
+                    action="settings_cashbox_toggle", page=keys.index(provider) + 1
+                ).pack(),
+            )
+        )
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings_cashboxes").pack()))
+    return builder.as_markup()
 
 
 def build_providers_order_kb(sorted_names: list[str]) -> InlineKeyboardMarkup:
@@ -248,6 +285,19 @@ def build_settings_modes_kb(modes_state: dict[str, bool]) -> InlineKeyboardMarku
         action="settings_modes_toggle",
         columns=2,
         back_action="settings",
+        hidden_keys=frozenset({"SINGLE_SUBSCRIPTION_OPEN_PROFILE"}),
+        submenu_actions={"SINGLE_SUBSCRIPTION_MODE": "settings_single_sub"},
+    )
+
+
+def build_settings_single_subscription_kb(modes_state: dict[str, bool]) -> InlineKeyboardMarkup:
+    """Собирает настройки режима одной подписки."""
+    return build_toggle_section_keyboard(
+        titles=SINGLE_SUBSCRIPTION_TITLES,
+        state=modes_state,
+        action="settings_single_toggle",
+        columns=1,
+        back_action="settings_modes",
     )
 
 
@@ -316,6 +366,12 @@ def build_settings_remnawave_kb(
     load_monitor_enabled: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="➕ Установка нод (beta)",
+            callback_data=AdminPanelCallback(action="rw_install").pack(),
+        )
+    )
     builder.row(
         InlineKeyboardButton(
             text=f"{'✅' if node_enabled else '❌'} Проверка нод",

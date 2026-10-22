@@ -2,7 +2,7 @@ import asyncio
 import re
 
 from base64 import b64encode
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from io import BytesIO
 from math import ceil
 from typing import Any
@@ -46,7 +46,7 @@ from api.v2.schemas.web_public import (
     AccountKeyResetHwidResponse,
     AccountKeyResponse,
 )
-from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, NOTIFICATIONS_CONFIG, PAYMENTS_CONFIG, TARIFFS_CONFIG
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, PAYMENTS_CONFIG, TARIFFS_CONFIG
 from core.settings.tariffs_config import normalize_tariff_config
 from database import (
     check_server_name_by_cluster,
@@ -81,9 +81,10 @@ from services.operations import (
     renew_key_in_cluster,
 )
 from services.operations.aggregated_links import make_aggregated_link
-from services.payments.payment_links import PaymentLinkRequest, create_payment_link
+from services.payments.payment_links import PaymentLinkRequest, create_payment_link, store_provider_checkout
 from services.payments.providers import get_web_link_provider_ids
 from services.tariffs import calculate_config_price
+from services.tariffs.renewal_window import is_renewal_available, renewal_available_from_ms
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key, get_key_tariff_addons_state
 from settings.buttons import CONNECT_DEVICE, ROUTER_BUTTON, TV_BUTTON
 from settings.config import (
@@ -93,7 +94,6 @@ from settings.config import (
     QRCODE,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
-    RENEW_BUTTON_BEFORE_DAYS,
     USE_COUNTRY_SELECTION,
 )
 
@@ -103,7 +103,9 @@ router = generate_crud_router(
     schema_response=KeyResponse,
     schema_create=KeyBase,
     schema_update=KeyUpdate,
-    identifier_field="tg_id",
+    identifier_field="user_id",
+    parameter_name="tg_id",
+    telegram_path_to_user_id=True,
     extra_get_by_email=True,
     enabled_methods=["get_all", "get_one", "get_by_email", "get_all_by_field"],
 )
@@ -152,15 +154,11 @@ async def key_stats(
 
 
 def _renew_available_from_ms(expiry_time_ms: int) -> int:
-    renew_before_days = int(NOTIFICATIONS_CONFIG.get("RENEW_BUTTON_BEFORE_DAYS", RENEW_BUTTON_BEFORE_DAYS))
-    return int(expiry_time_ms) - renew_before_days * 86_400_000
+    return renewal_available_from_ms(expiry_time_ms)
 
 
 def _is_renew_available(expiry_time_ms: int) -> bool:
-    if not expiry_time_ms:
-        return True
-    now_ms = int(datetime.utcnow().timestamp() * 1000)
-    return now_ms >= _renew_available_from_ms(expiry_time_ms)
+    return is_renewal_available(expiry_time_ms)
 
 
 def _key_actions_config() -> AccountKeyActionsConfigResponse:
@@ -286,11 +284,7 @@ async def _resolve_available_location_servers(session: AsyncSession, db_key: Key
 
 
 async def resolve_user_squad_uuids(session: AsyncSession, billing_user_id: int) -> set[str]:
-    """Сквады Remnawave, доступные юзеру: кластеры его ключей → все remnawave-серверы
-    этих кластеров → Server.inbound_id (= UUID внутреннего сквада). Учитывает, что
-    Key.server_id может быть как именем сервера, так и именем кластера.
-    Используется блоком «Статус серверов», чтобы показывать только серверы тарифа юзера.
-    """
+    """Возвращает UUID сквадов Remnawave, доступных по подпискам клиента."""
     keys = (await session.execute(select(Key).where(Key.user_id == billing_user_id))).scalars().all()
     if not keys:
         return set()

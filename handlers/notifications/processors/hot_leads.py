@@ -58,7 +58,7 @@ async def process_hot_leads(bot: Bot, session: AsyncSession):
             chat_id = await notify_telegram_chat_id(session, user_id)
             if not is_telegram_chat_id(chat_id):
                 return False
-            return await send_notification(bot, chat_id, None, text, keyboard)
+            return await send_notification(bot, chat_id, None, text, keyboard, user_id=user_id)
 
         for user_id in lead_ids:
             expired_at = expiry_by_user[user_id]

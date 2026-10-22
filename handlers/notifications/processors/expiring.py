@@ -8,7 +8,10 @@ import pytz
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import add_notification, check_notification_time_bulk, check_notifications_bulk
+from database.access.resolution import UserId, notify_telegram_chat_id
+from database.tariffs import get_tariffs
 from database.web_notifications import notify_web
 from handlers.notifications.context import NotificationContext
 from handlers.notifications.keyboards import (
@@ -25,7 +28,7 @@ from handlers.notifications.sender import (
 )
 from handlers.utils import get_russian_month, render_text
 from logger import logger
-from middlewares.session import wrap_session
+from middlewares.session import release_session_early, wrap_session
 from services.formatting import build_renewal_done_text
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 from settings.config import EXECUTOR_POOL_SIZE
@@ -49,18 +52,24 @@ async def process_expiring_keys(
     max_threshold = int((datetime.now(moscow_tz) + timedelta(hours=max_hours)).timestamp() * 1000)
     expiring_keys = [k for k in keys if k.expiry_time and min_threshold < k.expiry_time <= max_threshold]
 
+    if notify_type == "key_24h" and bool(NOTIFICATIONS_CONFIG.get("EXPIRY_24H_SKIP_TRIAL_ENABLED", False)):
+        trial_ids = {tariff["id"] for tariff in await get_tariffs(ctx.session, group_code="trial")}
+        expiring_keys = [key for key in expiring_keys if key.tariff_id not in trial_ids]
+
     if not expiring_keys:
         return
 
     logger.info(f"[{notify_type}] Найдено {len(expiring_keys)} истекающих ключей")
 
-    tg_ids = [k.tg_id for k in expiring_keys]
+    user_ids = [UserId(k.user_id) for k in expiring_keys]
     emails = [k.email or "" for k in expiring_keys]
-    allowed = await check_notifications_bulk(ctx.session, notify_type, max_hours, tg_ids=tg_ids, emails=emails)
-    allowed_set = {(u["tg_id"], u["email"]) for u in allowed}
+    allowed = await check_notifications_bulk(ctx.session, notify_type, max_hours, user_ids=user_ids, emails=emails)
+    allowed_set = {(u["user_id"], u["email"]) for u in allowed}
 
     notify_pairs = [
-        (k.tg_id, f"{(k.email or '')}_{notify_type}") for k in expiring_keys if (k.tg_id, k.email or "") in allowed_set
+        (UserId(k.user_id), f"{(k.email or '')}_{notify_type}")
+        for k in expiring_keys
+        if (k.user_id, k.email or "") in allowed_set
     ]
     can_notify_set = await check_notification_time_bulk(ctx.session, notify_pairs, max_hours)
 
@@ -68,13 +77,13 @@ async def process_expiring_keys(
     simple_notify = []
 
     for key in expiring_keys:
-        tg_id = key.tg_id
+        owner_ref = UserId(key.user_id)
         email = key.email or ""
         notification_id = f"{email}_{notify_type}"
 
-        if (tg_id, email) not in allowed_set:
+        if (owner_ref, email) not in allowed_set:
             continue
-        if (tg_id, notification_id) not in can_notify_set:
+        if (owner_ref, notification_id) not in can_notify_set:
             continue
 
         if notify_renew_enabled:
@@ -95,6 +104,7 @@ async def _process_renew_candidates(
     photo: str,
     sessionmaker: async_sessionmaker | None,
 ):
+    await release_session_early(ctx.session)
     use_parallel = sessionmaker is not None and EXECUTOR_POOL_SIZE > 1
     rate_limiter = NotificationRateLimiter(max_rate=30, window=1.0)
 
@@ -137,7 +147,7 @@ async def _process_renew_candidates(
             continue
 
         key, notification_id, renewal_result = item
-        tg_id = key.tg_id
+        owner_ref = UserId(key.user_id)
 
         await rate_limiter.acquire()
 
@@ -148,7 +158,7 @@ async def _process_renew_candidates(
         else:
             await _send_expiry_warning(ctx, key, photo)
 
-        await add_notification(ctx.session, tg_id, notification_id)
+        await add_notification(ctx.session, owner_ref, notification_id)
 
 
 def _build_expiry_text(email: str, expiry_data: dict, cannot_renew: bool = False) -> str:
@@ -168,7 +178,8 @@ def _build_expiry_text(email: str, expiry_data: dict, cannot_renew: bool = False
 async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], photo: str, notify_type: str):
     messages = []
     for key, notification_id in items:
-        tg_id = key.tg_id
+        owner_ref = UserId(key.user_id)
+        tg_id = await notify_telegram_chat_id(ctx.session, owner_ref)
         email = key.email or ""
 
         expiry_data = await prepare_key_expiry_data(key, ctx.session, ctx.current_time)
@@ -176,6 +187,7 @@ async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], ph
         keyboard = build_notification_kb(email, getattr(key, "client_id", None))
         messages.append({
             "tg_id": tg_id,
+            "user_id": owner_ref,
             "text": text,
             "photo": photo,
             "keyboard": keyboard,
@@ -187,7 +199,7 @@ async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], ph
     if messages:
         results = await send_messages_with_limit(ctx.bot, messages)
         for msg, result in zip(messages, results, strict=False):
-            await add_notification(ctx.session, msg["tg_id"], msg["notification_id"])
+            await add_notification(ctx.session, msg["user_id"], msg["notification_id"])
             if result:
                 logger.info(f"Уведомление {notify_type} отправлено {msg['tg_id']}")
 
@@ -197,7 +209,7 @@ async def _notify_web_expiry(ctx: NotificationContext, key) -> None:
     email = key.email or ""
     await notify_web(
         ctx.session,
-        user_ref=key.tg_id,
+        user_ref=UserId(key.user_id),
         type="key_expiry",
         template_vars={"email": email},
         data={"email": email, "client_id": getattr(key, "client_id", None)},
@@ -209,7 +221,8 @@ async def _send_expiry_warning(ctx: NotificationContext, key, photo: str) -> boo
     text = _build_expiry_text(key.email or "", expiry_data)
     keyboard = build_notification_kb(key.email or "", getattr(key, "client_id", None))
     await _notify_web_expiry(ctx, key)
-    return await send_notification(ctx.bot, key.tg_id, photo, text, keyboard)
+    chat_id = await notify_telegram_chat_id(ctx.session, UserId(key.user_id))
+    return await send_notification(ctx.bot, chat_id, photo, text, keyboard, user_id=UserId(key.user_id))
 
 
 async def _send_change_tariff(ctx: NotificationContext, key, photo: str) -> bool:
@@ -217,7 +230,8 @@ async def _send_change_tariff(ctx: NotificationContext, key, photo: str) -> bool
     text = _build_expiry_text(key.email or "", expiry_data, cannot_renew=True)
     keyboard = build_change_tariff_kb(key.email or "", getattr(key, "client_id", None))
     await _notify_web_expiry(ctx, key)
-    return await send_notification(ctx.bot, key.tg_id, photo, text, keyboard)
+    chat_id = await notify_telegram_chat_id(ctx.session, UserId(key.user_id))
+    return await send_notification(ctx.bot, chat_id, photo, text, keyboard, user_id=UserId(key.user_id))
 
 
 async def _send_renewed(ctx: NotificationContext, key, tariff: dict, new_expiry_time: int) -> bool:
@@ -249,9 +263,10 @@ async def _send_renewed(ctx: NotificationContext, key, tariff: dict, new_expiry_
     keyboard = build_notification_expired_kb()
     await notify_web(
         ctx.session,
-        user_ref=key.tg_id,
+        user_ref=UserId(key.user_id),
         type="key_renewed",
         template_vars={"email": key.email or "", "expiry": formatted_expiry_date},
         data={"email": key.email or "", "client_id": getattr(key, "client_id", None)},
     )
-    return await send_notification(ctx.bot, key.tg_id, "pic_renewed.jpg", text, keyboard)
+    chat_id = await notify_telegram_chat_id(ctx.session, UserId(key.user_id))
+    return await send_notification(ctx.bot, chat_id, "pic_renewed.jpg", text, keyboard, user_id=UserId(key.user_id))

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import distinct, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.admin_permissions import require_admin_action
 from api.depends import get_session, verify_identity_admin, verify_identity_admin_short
 from api.shared.broadcast_admin import (
     BroadcastLaunchPayload,
@@ -39,6 +40,11 @@ from database.scheduled_broadcasts import (
     mark_scheduled_broadcast_sent,
     start_scheduled_broadcast,
     update_scheduled_broadcast,
+)
+from filters.admin_actions import BULK_ACTION_PERMISSIONS
+from filters.permissions import (
+    PERM_KEY_CREATE,
+    PERM_KEY_VIEW,
 )
 from handlers.admin.sender.scheduled_service import (
     execute_broadcast_payload,
@@ -83,6 +89,7 @@ async def bulk_preview(
     session: AsyncSession = Depends(get_session),
 ):
     """Сколько ключей попадает под фильтр (без действия)."""
+    await require_admin_action(session, identity, PERM_KEY_VIEW)
     from handlers.admin.bulk.query import fetch_matching_keys
 
     keys = await fetch_matching_keys(session, payload.model_dump(exclude_none=True))
@@ -96,6 +103,9 @@ async def bulk_apply(
     session: AsyncSession = Depends(get_session),
 ):
     """Массовое действие над ключами по фильтру."""
+    permission = BULK_ACTION_PERMISSIONS.get(payload.action)
+    if permission is not None:
+        await require_admin_action(session, identity, permission)
     from handlers.admin.bulk.operations import (
         bulk_add_days,
         bulk_add_gb,
@@ -192,6 +202,7 @@ async def restore_trials(
     session: AsyncSession = Depends(get_session),
 ):
     """Сбрасывает trial=0 у пользователей без ключей."""
+    await require_admin_action(session, identity, PERM_KEY_CREATE)
     await _admin_rate_limit(identity, "restore_trials", max_calls=3, window_sec=300)
     stmt = (
         update(User)

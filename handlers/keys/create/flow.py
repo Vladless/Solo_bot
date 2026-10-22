@@ -18,7 +18,7 @@ from database import (
     get_tariffs_for_cluster,
     get_trial,
 )
-from database.access.resolution import notify_telegram_chat_id
+from database.access.resolution import TelegramId, UserId, notify_telegram_chat_id
 from database.models import Admin
 from database.notifications import check_cold_lead_discount, check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, get_tariffs
@@ -79,12 +79,13 @@ async def handle_key_creation(
     session: AsyncSession,
     message_or_query: Message | CallbackQuery,
 ):
+    if not isinstance(tg_id, UserId | TelegramId):
+        tg_id = TelegramId(tg_id)
     state_data = await state.get_data()
     if state_data.get("key_creation_in_progress"):
         logger.warning(f"[AntiSpam] Пользователь {tg_id} повторно нажал на покупку — игнор.")
         return
 
-    # Buying a new key must not inherit a renewal mode left in FSM storage.
     from handlers.tariffs.buy.config import clear_user_renewal_context
 
     await clear_user_renewal_context(state)

@@ -6,7 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.executor import spawn
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
-from database.access.resolution import resolve_uid_cached, resolve_user_optional
+from database.access.resolution import (
+    TelegramId,
+    UserId,
+    resolve_uid_cached,
+    resolve_user_optional,
+    user_ref_cache_key,
+    user_ref_cache_keys,
+)
+from database.cache_purge import defer_purge, is_purge_pending
 from database.models import (
     BlockedUser,
     CouponUsage,
@@ -24,6 +32,8 @@ from database.models import (
     WebNotification,
     WebPushSubscription,
 )
+from database.partners import delete_partner_user_data
+from database.yookassa_autopay import delete_recurring_user_data
 from logger import logger
 from settings.cache_config import (
     BALANCE_CACHE_TTL_SEC,
@@ -39,16 +49,13 @@ def invalidate_user_snapshot(tg_id: int) -> None:
     try:
         asyncio.get_running_loop()
         spawn(cache_delete(cache_key("user_snapshot", tg_id)))
+        spawn(cache_delete(user_ref_cache_key("user_snapshot", UserId(tg_id))))
     except RuntimeError:
         return
 
 
 def exclude_shadow_placeholders():
-    """Фильтр для статистики: убирает записи, заведённые массовым теневым баном.
-
-    Такой клиент создаётся только ради внешнего ключа бана и ни разу не заходил
-    в бота — профиль пустой. Реальные клиенты, забаненные позже, остаются.
-    """
+    """Возвращает фильтр без теневых заглушек клиентов."""
     return not_(
         and_(
             User.first_name.is_(None),
@@ -88,7 +95,7 @@ async def add_user(
     from database.access.resolution import invalidate_uid_cache
 
     await invalidate_uid_cache(tg_id, inserted_id)
-    await cache_set(cache_key("user_exists", tg_id), True, USER_EXISTS_CACHE_TTL_SEC)
+    await cache_set(user_ref_cache_key("user_exists", tg_id), True, USER_EXISTS_CACHE_TTL_SEC)
     logger.info(f"[DB] Новый пользователь добавлен: tg_id={tg_id} id={inserted_id} (source: {source_code})")
     try:
         from services.admin_notify import notify_new_client
@@ -101,16 +108,20 @@ async def add_user(
 
 async def invalidate_balance_cache(tg_id: int) -> None:
     await cache_delete(cache_key("balance", tg_id))
+    await cache_delete(user_ref_cache_key("balance", UserId(tg_id)))
 
 
 async def invalidate_profile_cache(tg_id: int) -> None:
     await cache_delete(cache_key("profile_data", tg_id))
+    await cache_delete(user_ref_cache_key("profile_data", UserId(tg_id)))
 
 
 async def update_balance(
     session: AsyncSession,
     legacy_user_ref: int,
     amount: float,
+    *,
+    allow_negative: bool = False,
 ) -> float | None:
     u = await resolve_user_optional(session, legacy_user_ref)
     if u is None:
@@ -119,7 +130,7 @@ async def update_balance(
     uid = u.id
     amount = float(amount)
     stmt = update(User).values(balance=func.coalesce(User.balance, 0) + amount).returning(User.balance)
-    if amount < 0:
+    if amount < 0 and not allow_negative:
         stmt = stmt.where(User.id == uid, func.coalesce(User.balance, 0) >= -amount)
     else:
         stmt = stmt.where(User.id == uid)
@@ -132,6 +143,16 @@ async def update_balance(
             logger.info(f"[DB] Баланс пользователя id={uid} не изменён: пользователь не найден")
         return None
     logger.info(f"[DB] Баланс пользователя id={uid} обновлён: {new_balance - amount} → {new_balance}")
+    refs = {uid, u.tg_id} - {None}
+    defer_purge(
+        session,
+        *(
+            key
+            for prefix in ("balance", "profile_data")
+            for ref in refs
+            for key in (cache_key(prefix, ref), user_ref_cache_key(prefix, UserId(ref)))
+        ),
+    )
     await invalidate_balance_cache(uid)
     await invalidate_profile_cache(uid)
     if u.tg_id is not None:
@@ -141,12 +162,15 @@ async def update_balance(
 
 
 async def check_user_exists(session: AsyncSession, legacy_user_ref: int) -> bool:
-    cached = await cache_get(cache_key("user_exists", legacy_user_ref))
+    ckey = user_ref_cache_key("user_exists", legacy_user_ref)
+    pending = is_purge_pending(session, ckey)
+    cached = None if pending else await cache_get(ckey)
     if isinstance(cached, bool):
         return cached
     u = await resolve_user_optional(session, legacy_user_ref)
     value = u is not None
-    await cache_set(cache_key("user_exists", legacy_user_ref), value, USER_EXISTS_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(ckey, value, USER_EXISTS_CACHE_TTL_SEC)
     return value
 
 
@@ -154,7 +178,9 @@ async def get_balance(session: AsyncSession, legacy_user_ref: int) -> float:
     uid = await resolve_uid_cached(session, legacy_user_ref)
     if uid is None:
         return 0.0
-    cached = await cache_get(cache_key("balance", uid))
+    ckey = user_ref_cache_key("balance", UserId(uid))
+    pending = is_purge_pending(session, ckey)
+    cached = None if pending else await cache_get(ckey)
     if cached is not None:
         try:
             return round(float(cached), 1)
@@ -163,8 +189,19 @@ async def get_balance(session: AsyncSession, legacy_user_ref: int) -> float:
     result = await session.execute(select(func.coalesce(User.balance, 0.0)).where(User.id == uid))
     balance = result.scalar_one_or_none()
     value = round(float(balance or 0.0), 1)
-    await cache_set(cache_key("balance", uid), value, BALANCE_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(ckey, value, BALANCE_CACHE_TTL_SEC)
     return value
+
+
+async def get_locked_balance(session: AsyncSession, user_id: UserId) -> float | None:
+    """Читает актуальный баланс под блокировкой клиента."""
+    if not isinstance(user_id, UserId):
+        raise TypeError("Expected UserId")
+    value = await session.scalar(
+        select(func.coalesce(User.balance, 0.0)).where(User.id == int(user_id)).with_for_update()
+    )
+    return float(value) if value is not None else None
 
 
 async def set_user_balance(
@@ -178,42 +215,53 @@ async def set_user_balance(
     uid = u.id
     balance = float(balance)
     await session.execute(update(User).where(User.id == uid).values(balance=balance))
+    defer_purge(
+        session,
+        *(
+            key
+            for prefix in ("balance", "profile_data")
+            for ref in {uid, u.tg_id} - {None}
+            for key in (cache_key(prefix, ref), user_ref_cache_key(prefix, UserId(ref)))
+        ),
+    )
     await invalidate_balance_cache(uid)
     await invalidate_profile_cache(uid)
 
 
 async def get_user_preferred_currency(session: AsyncSession, tg_id: int) -> str | None:
-    """Предпочитаемая валюта пользователя по ``tg_id``, если установлена."""
-    ckey = cache_key("pref_ccy", tg_id)
-    cached = await cache_get(ckey)
+    """Возвращает предпочитаемую валюту клиента."""
+    ckey = user_ref_cache_key("pref_ccy", tg_id)
+    pending = is_purge_pending(session, ckey)
+    cached = None if pending else await cache_get(ckey)
     if isinstance(cached, str):
         return cached or None
-    result = await session.execute(select(User.preferred_currency).where(User.tg_id == int(tg_id)))
+    field = User.id if isinstance(tg_id, UserId) else User.tg_id
+    result = await session.execute(select(User.preferred_currency).where(field == int(tg_id)))
     value = result.scalar()
-    await cache_set(ckey, value or "", PREFERRED_CURRENCY_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(ckey, value or "", PREFERRED_CURRENCY_CACHE_TTL_SEC)
     return value
 
 
 async def mark_trial_started_if_eligible(session: AsyncSession, tg_id: int) -> None:
-    """Переводит `trial` в 1, только если текущее значение in [0, -1] (пользователь
-    ещё не использовал триал). Условный update без пред-чтения — атомарно на уровне БД.
-
-    Используется в `services.operations.creation.create_key_on_cluster` после
-    успешного создания ключа.
-    """
-    await session.execute(update(User).where(User.tg_id == tg_id, User.trial.in_([0, -1])).values(trial=1))
+    """Отмечает начало ещё не использованного пробного периода."""
+    field = User.id if isinstance(tg_id, UserId) else User.tg_id
+    await session.execute(update(User).where(field == tg_id, User.trial.in_([0, -1])).values(trial=1))
 
 
 async def update_trial(session: AsyncSession, legacy_user_ref: int, status: int):
-    from database.cache_purge import defer_purge
-
     u = await resolve_user_optional(session, legacy_user_ref)
     if u is None:
         return
     uid = u.id
     await session.execute(update(User).where(User.id == uid).values(trial=status))
     refs = [uid] if u.tg_id is None else [uid, u.tg_id]
-    keys = [cache_key(name, ref) for ref in refs for name in ("profile_data", "user_snapshot")]
+    keys = [
+        key
+        for ref in refs
+        for name in ("profile_data", "user_snapshot")
+        for key in (cache_key(name, ref), user_ref_cache_key(name, UserId(ref)))
+    ]
     if not defer_purge(session, *keys):
         await invalidate_profile_cache(uid)
         invalidate_user_snapshot(uid)
@@ -221,6 +269,30 @@ async def update_trial(session: AsyncSession, legacy_user_ref: int, status: int)
             await invalidate_profile_cache(u.tg_id)
             invalidate_user_snapshot(u.tg_id)
     logger.info(f"[DB] Триал статус обновлён для пользователя id={uid}: {status}")
+
+
+async def grant_extended_trial_for_users(session: AsyncSession, user_ids: list[int]) -> None:
+    """Разрешает расширенный пробный период, если обычный ещё не использован."""
+    if not user_ids:
+        return
+    rows = (
+        await session.execute(
+            update(User)
+            .where(User.id.in_(user_ids), User.trial.in_([0, -1]))
+            .values(trial=-1)
+            .returning(User.id, User.tg_id)
+        )
+    ).all()
+    keys = [
+        key
+        for uid, tg_id in rows
+        for ref in ({uid, tg_id} - {None})
+        for name in ("profile_data", "user_snapshot")
+        for key in (cache_key(name, ref), user_ref_cache_key(name, UserId(ref)))
+    ]
+    if not defer_purge(session, *keys):
+        for key in keys:
+            await cache_delete(key)
 
 
 async def get_trial(session: AsyncSession, legacy_user_ref: int) -> int:
@@ -233,10 +305,7 @@ async def get_trial(session: AsyncSession, legacy_user_ref: int) -> int:
 
 
 async def get_balance_trial_key_count(session: AsyncSession, legacy_user_ref: int) -> tuple[float, int, int]:
-    """
-    Один запрос: баланс, триал и число ключей пользователя (для профиля при промахе кэша).
-    Возвращает (balance_rub, trial_status, key_count).
-    """
+    """Возвращает баланс, статус триала и число ключей клиента."""
     uid = await resolve_uid_cached(session, legacy_user_ref)
     if uid is None:
         return 0.0, 0, 0
@@ -334,6 +403,11 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
     u = await resolve_user_optional(session, legacy_user_ref)
     if u is None:
         return
+    u = await session.scalar(
+        select(User).where(User.id == u.id).with_for_update().execution_options(populate_existing=True)
+    )
+    if u is None:
+        return
     uid = u.id
     tg_ref = u.tg_id
 
@@ -351,34 +425,39 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
     if u.tg_id is not None:
         await session.execute(update(Gift).where(Gift.recipient_tg_id == u.tg_id).values(recipient_tg_id=None))
         await session.execute(update(Gift).where(Gift.sender_tg_id == u.tg_id).values(sender_tg_id=None))
-        await session.execute(update(Payment).where(Payment.tg_id == u.tg_id).values(tg_id=None))
-    await session.execute(delete(Payment).where(Payment.user_id == uid))
+    payment_scope = Payment.user_id == uid
+    if u.tg_id is not None:
+        payment_scope |= and_(Payment.user_id.is_(None), Payment.tg_id == u.tg_id)
+    receipts = (
+        (
+            await session.execute(
+                select(Payment).where(payment_scope).with_for_update().execution_options(populate_existing=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for payment in receipts:
+        payment.user_id = None
+        payment.tg_id = None
+        payment.metadata_ = {**(payment.metadata_ or {}), "owner_deleted": True}
     await session.execute(
         delete(Referral).where(or_(Referral.referrer_user_id == uid, Referral.referred_user_id == uid))
     )
     await session.execute(delete(CouponUsage).where(CouponUsage.user_id == uid))
     if u.tg_id is not None:
         await session.execute(update(Key).where(Key.tg_id == u.tg_id).values(tg_id=None))
-    await delete_key(session, uid)
-    await session.execute(
-        delete(TemporaryData).where(
-            or_(
-                TemporaryData.user_id == uid,
-                TemporaryData.tg_id == u.tg_id,
-            )
-        )
-    )
-    await session.execute(
-        delete(BlockedUser).where(
-            or_(
-                BlockedUser.user_id == uid,
-                BlockedUser.tg_id == u.tg_id,
-            )
-        )
-    )
+    await delete_key(session, UserId(uid))
+    await session.execute(delete(TemporaryData).where(TemporaryData.user_id == uid))
+    await session.execute(delete(BlockedUser).where(BlockedUser.user_id == uid))
+    await delete_recurring_user_data(session, uid)
+    await delete_partner_user_data(session, uid)
 
-    await session.execute(delete(WebPushSubscription).where(WebPushSubscription.user_id == uid))
-    await session.execute(delete(WebNotification).where(WebNotification.user_id == uid))
+    for model in (WebPushSubscription, WebNotification):
+        scope = (model.user_id == uid) & model.identity_id.is_(None)
+        if identity_id is not None:
+            scope |= model.identity_id == identity_id
+        await session.execute(delete(model).where(scope))
     await session.execute(
         update(ScheduledBroadcast).where(ScheduledBroadcast.created_by_user_id == uid).values(created_by_user_id=None)
     )
@@ -401,6 +480,12 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
         for ref in refs
         for name in ("uref", "user_exists", "profile_data", "user_snapshot", "balance")
     ]
+    keys.extend(user_ref_cache_keys(*refs))
+    keys.extend(
+        user_ref_cache_key(name, UserId(ref))
+        for ref in refs
+        for name in ("profile_data", "user_snapshot", "balance", "key_count", "keys_list")
+    )
     if not defer_purge(session, *keys):
         await invalidate_uid_cache(*refs)
         for ref in refs:
@@ -415,7 +500,9 @@ async def get_user_snapshot(session: AsyncSession, legacy_user_ref: int) -> tupl
     uid = await resolve_uid_cached(session, legacy_user_ref)
     if uid is None:
         return None
-    cached = await cache_get(cache_key("user_snapshot", uid))
+    ckey = user_ref_cache_key("user_snapshot", UserId(uid))
+    pending = is_purge_pending(session, ckey)
+    cached = None if pending else await cache_get(ckey)
     if isinstance(cached, list) and len(cached) == 2:
         return (int(cached[0]), int(cached[1]))
     if isinstance(cached, tuple) and len(cached) == 2:
@@ -426,7 +513,8 @@ async def get_user_snapshot(session: AsyncSession, legacy_user_ref: int) -> tupl
     if row is None:
         return None
     value = (int(row[0]), int(row[1]))
-    await cache_set(cache_key("user_snapshot", uid), [value[0], value[1]], USER_SNAPSHOT_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(ckey, [value[0], value[1]], USER_SNAPSHOT_CACHE_TTL_SEC)
     return value
 
 
@@ -452,8 +540,30 @@ async def upsert_source_if_empty(
     return changed_tg_id is not None
 
 
+async def get_user_language(session: AsyncSession, user_ref: int) -> str | None:
+    """Возвращает язык клиента с учётом типа ссылки."""
+    ref = user_ref if isinstance(user_ref, UserId) else TelegramId(user_ref)
+    user = await resolve_user_optional(session, ref)
+    return user.language_code if user is not None else None
+
+
+async def get_billing_user_id_for_identity(
+    session: AsyncSession, identity_id: str, legacy_tg_id: int | None = None
+) -> UserId | None:
+    """Находит расчётного клиента указанной идентичности."""
+    user_id = await session.scalar(select(User.id).where(User.identity_id == identity_id))
+    if user_id is None and legacy_tg_id is not None and int(legacy_tg_id) > 0:
+        user_id = await session.scalar(
+            select(User.id).where(
+                User.tg_id == int(legacy_tg_id),
+                (User.identity_id.is_(None)) | (User.identity_id == identity_id),
+            )
+        )
+    return UserId(user_id) if user_id is not None else None
+
+
 async def set_source_if_empty(session: AsyncSession, user_id: int, source_code: str) -> bool:
-    """Метка источника существующему клиенту — по users.id, без обращения к tg_id."""
+    """Заполняет пустой источник клиента по users.id."""
     if not source_code:
         return False
     res = await session.execute(

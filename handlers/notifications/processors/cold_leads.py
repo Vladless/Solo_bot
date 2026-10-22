@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import check_notification_time_bulk, get_cold_lead_notification_flags, get_cold_leads
+from database.access.resolution import UserId
 from database.notifications import bulk_add_notifications
 from handlers.notifications.keyboards import build_cold_lead_discount_kb
 from handlers.notifications.sender import chat_ids_for_user_ids, send_messages_with_limit
@@ -16,19 +17,28 @@ _DEFAULT_INTERVAL_HOURS = 48
 _MESSAGES_PER_SECOND = 30
 
 
-async def _bulk_send(bot: Bot, session: AsyncSession, messages: list[dict]) -> int:
+async def _bulk_send(
+    bot: Bot,
+    session: AsyncSession,
+    messages: list[dict],
+    *,
+    notification_type: str | None = None,
+) -> int:
     if not messages:
         return 0
     chat_ids = await chat_ids_for_user_ids(session, [m["user_id"] for m in messages])
     outbound = [
-        {"tg_id": chat_ids[m["user_id"]], "text": m["text"], "keyboard": m["keyboard"]}
+        {"user_id": m["user_id"], "tg_id": chat_ids[m["user_id"]], "text": m["text"], "keyboard": m["keyboard"]}
         for m in messages
         if m["user_id"] in chat_ids
     ]
     if not outbound:
         return 0
     results = await send_messages_with_limit(bot, outbound, messages_per_second=_MESSAGES_PER_SECOND)
-    return sum(1 for r in results if r)
+    delivered = [UserId(msg["user_id"]) for msg, sent in zip(outbound, results, strict=True) if sent]
+    if delivered and notification_type is not None:
+        await bulk_add_notifications(session, [(uid, notification_type) for uid in delivered], commit=True)
+    return len(delivered)
 
 
 async def process_cold_leads(bot: Bot, session: AsyncSession):
@@ -97,20 +107,10 @@ async def process_cold_leads(bot: Bot, session: AsyncSession):
         notified = 0
 
         if step2_messages:
-            await bulk_add_notifications(
-                session,
-                [(m["user_id"], "cold_lead_step_2") for m in step2_messages],
-                commit=True,
-            )
-            notified += await _bulk_send(bot, session, step2_messages)
+            notified += await _bulk_send(bot, session, step2_messages, notification_type="cold_lead_step_2")
 
         if step3_messages:
-            await bulk_add_notifications(
-                session,
-                [(m["user_id"], "cold_lead_step_3") for m in step3_messages],
-                commit=True,
-            )
-            notified += await _bulk_send(bot, session, step3_messages)
+            notified += await _bulk_send(bot, session, step3_messages, notification_type="cold_lead_step_3")
 
         logger.info(f"[ColdLeads] Отправлено: {notified}")
 

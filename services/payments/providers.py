@@ -1,5 +1,6 @@
 from typing import Any
 
+from core.settings.kassa2328_config import KASSA2328_INVOICE_CURRENCY
 from hooks.hooks import run_hooks
 
 
@@ -8,6 +9,13 @@ PROVIDERS_BASE: dict[str, dict[str, Any]] = {
         "currency": "RUB",
         "value": "pay_yookassa",
         "fast": "process_custom_amount_input",
+        "order": 1,
+    },
+    "YOOKASSA_SBP": {
+        "currency": "RUB",
+        "value": "pay_yookassa_sbp",
+        "fast": "process_custom_amount_input_sbp",
+        "module": "yookassa",
         "order": 1,
     },
     "YOOMONEY": {
@@ -129,10 +137,47 @@ PROVIDERS_BASE: dict[str, dict[str, Any]] = {
         "fast": "process_custom_amount_input_stars",
         "order": 19,
     },
+    "YOOKASSA_AUTOPAY": {
+        "currency": "RUB",
+        "value": "pay_yookassa_autopay",
+        "fast": "process_fast_renewal_flow",
+        "module": "yookassa_autopay",
+        "order": 20,
+    },
+    "KASSA2328": {
+        "currency": KASSA2328_INVOICE_CURRENCY,
+        "menu_currency": "USD",
+        "value": "pay_2328",
+        "fast": "handle_custom_amount_input_kassa2328",
+        "module": "kassa2328",
+        "order": 21,
+    },
+    "PAYHOT_CARDS": {
+        "currency": "RUB",
+        "value": "pay_payhot_cards",
+        "fast": "handle_custom_amount_input_payhot_cards",
+        "module": "payhot",
+        "order": 22,
+    },
+    "PAYHOT_SBP": {
+        "currency": "RUB",
+        "value": "pay_payhot_sbp",
+        "fast": "handle_custom_amount_input_payhot_sbp",
+        "module": "payhot",
+        "order": 23,
+    },
+    "PAYHOT_SBERPAY": {
+        "currency": "RUB",
+        "value": "pay_payhot_sberpay",
+        "fast": "handle_custom_amount_input_payhot_sberpay",
+        "module": "payhot",
+        "order": 24,
+    },
 }
 
 WEB_LINK_PROVIDER_IDS = (
     "YOOKASSA",
+    "YOOKASSA_SBP",
     "YOOMONEY",
     "ROBOKASSA",
     "KASSAI_CARDS",
@@ -149,6 +194,11 @@ WEB_LINK_PROVIDER_IDS = (
     "HELEKET",
     "FREEKASSA",
     "CRYPTOBOT",
+    "YOOKASSA_AUTOPAY",
+    "KASSA2328",
+    "PAYHOT_CARDS",
+    "PAYHOT_SBP",
+    "PAYHOT_SBERPAY",
 )
 
 TELEGRAM_ONLY_PROVIDER_IDS = (
@@ -171,7 +221,7 @@ def get_web_link_provider_ids() -> tuple[str, ...]:
 
 
 def _get_effective_order(name: str, cfg: dict[str, Any]) -> int:
-    """Возвращает эффективный порядок провайдера (админ > модуль > дефолт)."""
+    """Определяет приоритет кассы по настройкам и данным модуля."""
     from core.settings.providers_order_config import PROVIDERS_ORDER
 
     if name in PROVIDERS_ORDER:
@@ -180,13 +230,18 @@ def _get_effective_order(name: str, cfg: dict[str, Any]) -> int:
 
 
 def _sort_providers(providers: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Сортирует провайдеров по полю 'order' (меньше = выше)."""
+    """Сортирует кассы по возрастанию приоритета."""
     return dict(sorted(providers.items(), key=lambda item: _get_effective_order(item[0], item[1])))
 
 
 def sort_provider_names(names: list[str], providers_map: dict[str, dict[str, Any]]) -> list[str]:
-    """Сортирует список имён провайдеров по их 'order' из providers_map."""
+    """Сортирует платёжные кассы по настроенному порядку."""
     return sorted(names, key=lambda n: _get_effective_order(n, providers_map.get(n) or {}))
+
+
+def get_provider_menu_currency(provider: dict[str, Any]) -> str:
+    """Возвращает раздел меню для платёжной кассы."""
+    return str(provider.get("menu_currency") or provider.get("currency") or "").upper()
 
 
 def get_providers(flags: dict[str, bool]) -> dict[str, dict[str, Any]]:
@@ -211,4 +266,6 @@ async def get_providers_with_hooks(flags: dict[str, bool]) -> dict[str, dict[str
                 base = dict(providers.get(name, {}))
                 base.update(patch)
                 providers[name] = base
+    if "YOOKASSA_AUTOPAY" in providers:
+        providers["YOOKASSA_AUTOPAY"]["enabled"] = bool(flags.get("YOOKASSA_AUTOPAY"))
     return _sort_providers(providers)

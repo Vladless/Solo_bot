@@ -1,7 +1,6 @@
 from sqlalchemy import and_, desc, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.bootstrap import BUTTONS_CONFIG
 from core.redis_cache import cache_delete, cache_delete_pattern, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_uid_cached, resolve_user_optional
 from database.models import Referral
@@ -82,6 +81,8 @@ async def mark_referral_reward_issued(session: AsyncSession, referred_legacy: in
 
 
 async def get_total_referral_bonus(session: AsyncSession, referrer_legacy: int, max_levels: int) -> float:
+    from core.settings.buttons_config import BUTTONS_CONFIG
+
     referral_enabled = bool(BUTTONS_CONFIG.get("REFERRAL_BUTTON_ENABLED", True))
     if not referral_enabled:
         logger.debug("Реферальная программа отключена, бонусы не начисляются")

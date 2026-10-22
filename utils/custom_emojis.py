@@ -24,7 +24,7 @@ def _set_parse_mode_none(kwargs: dict[str, Any]) -> None:
 
 
 def _get_protected_ranges(text: str) -> list[tuple[int, int]]:
-    """Return ranges inside <code> and <pre> tags to skip replacements."""
+    """Возвращает участки внутри тегов code и pre, исключённые из замены."""
     ranges: list[tuple[int, int]] = []
     for match in _CODE_BLOCK_RE.finditer(text):
         ranges.append((match.start(1), match.end(1)))
@@ -41,12 +41,12 @@ def _is_in_ranges(pos: int, ranges: list[tuple[int, int]]) -> bool:
 
 
 def _utf16_len(text: str) -> int:
-    """Length of string in UTF-16 code units."""
+    """Возвращает длину строки в кодовых единицах UTF-16."""
     return len(text.encode("utf-16-le")) // 2
 
 
 async def _fetch_placeholder(emoji_id: str) -> str:
-    """Resolve a custom emoji id to a visible placeholder emoji."""
+    """Находит обычный эмодзи для отображения вместо пользовательского."""
     if emoji_id in _PLACEHOLDER_CACHE:
         return _PLACEHOLDER_CACHE[emoji_id]
 
@@ -73,7 +73,7 @@ async def _fetch_placeholder(emoji_id: str) -> str:
 
 
 async def _replace_markers(text: str) -> tuple[str, list[MessageEntity]]:
-    """Replace markers with placeholders and build custom emoji entities."""
+    """Заменяет маркеры эмодзи и создаёт объекты разметки пользовательских эмодзи."""
     if not text:
         return text, []
 
@@ -119,7 +119,7 @@ async def _replace_markers(text: str) -> tuple[str, list[MessageEntity]]:
 
 
 def _parse_html_entities(text: str) -> list[MessageEntity]:
-    """Parse simple HTML tags to entities (bold/italic/etc, links)."""
+    """Преобразует поддерживаемые HTML-теги в объекты разметки Telegram."""
     entities: list[MessageEntity] = []
 
     link_open = re.compile(r'<a href="([^"]+)"\s*>|<a href=\'([^\']+)\'\s*>')
@@ -182,7 +182,7 @@ def _parse_html_entities(text: str) -> list[MessageEntity]:
 async def _process_text(
     text: str, entities: list[MessageEntity] | None = None
 ) -> tuple[str, list[MessageEntity] | None]:
-    """Apply custom emoji markers and merge entities."""
+    """Обрабатывает маркеры эмодзи и объединяет разметку сообщения."""
     processed, custom_entities = await _replace_markers(text)
     if not custom_entities:
         return text, entities
@@ -272,7 +272,7 @@ async def _process_text(
 
 
 def patch_bot_methods() -> bool:
-    """Patch Message methods to auto-handle custom emojis."""
+    """Подключает обработку пользовательских эмодзи к методам сообщений."""
     global _BOT
     try:
         from aiogram.types import Message
@@ -398,7 +398,7 @@ def patch_bot_methods() -> bool:
 
 
 def initialize_custom_emojis() -> bool:
-    """Initialize custom emoji support."""
+    """Инициализирует поддержку пользовательских эмодзи."""
     try:
         return patch_bot_methods()
     except Exception as e:

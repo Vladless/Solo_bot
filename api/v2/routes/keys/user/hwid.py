@@ -1,4 +1,6 @@
-from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
+from settings.texts import MY_DEVICES_UNAVAILABLE_TEXT
+
+from .._common import *
 from .._common import (
     _key_actions_config,
     user_router,
@@ -38,6 +40,8 @@ async def user_key_reset_hwid(
 
     async def _reset_devices(api):
         devices = await api.get_user_hwid_devices(client_id, username=key_email)
+        if devices is None:
+            return None
         if not devices:
             return 0, 0
         reset_local = 0
@@ -51,8 +55,10 @@ async def user_key_reset_hwid(
         session,
         server_id,
         _reset_devices,
-        fallback_any=True,
         timeout_sec=12.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=getattr(db_key, "remnawave_link", None) or getattr(db_key, "key", None),
     )
     if reset_result is None:
         raise HTTPException(status_code=502, detail="Не удалось выполнить сброс устройств")
@@ -63,7 +69,6 @@ async def user_key_reset_hwid(
         session,
         server_id,
         str(client_id),
-        fallback_any=True,
     )
     from core.redis_cache import cache_delete, cache_key
 
@@ -110,9 +115,13 @@ async def user_key_devices(
         session,
         server_id,
         _list,
-        fallback_any=True,
         timeout_sec=12.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=getattr(db_key, "remnawave_link", None) or getattr(db_key, "key", None),
     )
+    if devices is None:
+        raise HTTPException(status_code=502, detail=MY_DEVICES_UNAVAILABLE_TEXT)
     if not devices:
         response = {"devices": [], "total": 0}
         await cache_set(devices_key, response, 60)
@@ -175,8 +184,10 @@ async def user_key_delete_device(
         session,
         server_id,
         _delete,
-        fallback_any=True,
         timeout_sec=12.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=getattr(db_key, "remnawave_link", None) or getattr(db_key, "key", None),
     )
     if not ok:
         raise HTTPException(status_code=502, detail="Не удалось отвязать устройство")
@@ -184,7 +195,6 @@ async def user_key_delete_device(
         session,
         server_id,
         str(client_id),
-        fallback_any=True,
     )
     from core.redis_cache import cache_delete, cache_key
 

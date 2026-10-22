@@ -6,6 +6,7 @@ from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_all_keys
+from database.access.resolution import UserId
 from database.models import Key, Tariff, User
 from database.models.users import BlockedUser, ManualBan
 from logger import logger
@@ -22,7 +23,7 @@ async def preload_notification_data(session: AsyncSession) -> dict:
         .outerjoin(User, Key.user_id == User.id)
         .where(
             Key.is_frozen.is_(False),
-            ~exists().where(BlockedUser.tg_id == Key.tg_id),
+            ~exists().where(BlockedUser.user_id == Key.user_id),
             ~exists().where(
                 ManualBan.user_id == Key.user_id,
                 or_(ManualBan.until.is_(None), ManualBan.until > datetime.now(timezone.utc)),
@@ -51,7 +52,7 @@ async def preload_notification_data(session: AsyncSession) -> dict:
         if tariff and tariff.id not in tariffs_cache:
             tariffs_cache[tariff.id] = dict(tariff.__dict__)
 
-        balances_cache[key.tg_id] = float(balance)
+        balances_cache[UserId(key.user_id)] = float(balance)
 
     return {
         "keys_data": keys_data,

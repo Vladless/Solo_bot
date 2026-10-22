@@ -18,11 +18,10 @@ from logger import logger
 from settings.buttons import SUB_CHANELL, SUB_CHANELL_DONE
 from settings.cache_config import (
     SUBSCRIPTION_CACHE_SUBSCRIBED_TTL_SEC,
-    SUBSCRIPTION_CACHE_UNSUBSCRIBED_TTL_SEC,
     SUBSCRIPTION_GET_CHAT_MEMBER_TIMEOUT_SEC,
 )
 from settings.config import CHANNEL_EXISTS, CHANNEL_ID, CHANNEL_REQUIRED, CHANNEL_URL
-from settings.texts import SUBSCRIPTION_REQUIRED_MSG
+from settings.texts import SUBSCRIPTION_CHECK_ERROR_MSG, SUBSCRIPTION_REQUIRED_MSG
 
 
 class SubscriptionMiddleware(BaseMiddleware):
@@ -72,9 +71,6 @@ class SubscriptionMiddleware(BaseMiddleware):
         cached = await cache_get(ckey)
         if cached is True:
             return await handler(event, data)
-        if cached is False:
-            await self._store_user_state(data, message, from_user)
-            return await self._ask_to_subscribe(message)
 
         try:
             member = await asyncio.wait_for(
@@ -83,7 +79,6 @@ class SubscriptionMiddleware(BaseMiddleware):
             )
             if member.status not in ("member", "administrator", "creator"):
                 logger.info(f"[SubMiddleware] Пользователь {tg_id} не подписан")
-                await cache_set(ckey, False, SUBSCRIPTION_CACHE_UNSUBSCRIBED_TTL_SEC)
                 await self._store_user_state(data, message, from_user)
                 return await self._ask_to_subscribe(message)
             await cache_set(ckey, True, SUBSCRIPTION_CACHE_SUBSCRIBED_TTL_SEC)
@@ -92,7 +87,7 @@ class SubscriptionMiddleware(BaseMiddleware):
         except (TelegramBadRequest, TelegramForbiddenError) as e:
             logger.warning(f"[SubMiddleware] Ошибка при проверке подписки {tg_id}: {e}")
             await self._store_user_state(data, message, from_user)
-            return await self._ask_to_subscribe(message)
+            return await self._ask_to_subscribe(message, text=SUBSCRIPTION_CHECK_ERROR_MSG)
 
         return await handler(event, data)
 
@@ -120,13 +115,13 @@ class SubscriptionMiddleware(BaseMiddleware):
             user_data=user_data,
         )
 
-    async def _ask_to_subscribe(self, message: Message):
+    async def _ask_to_subscribe(self, message: Message, text: str = SUBSCRIPTION_REQUIRED_MSG):
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
         builder.row(InlineKeyboardButton(text=SUB_CHANELL_DONE, callback_data="check_subscription"))
 
         await edit_or_send_message(
             target_message=message,
-            text=SUBSCRIPTION_REQUIRED_MSG,
+            text=text,
             reply_markup=builder.as_markup(),
         )

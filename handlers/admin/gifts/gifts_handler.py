@@ -152,13 +152,12 @@ async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "gift_limit_unlimited", IsAdminFilter())
-async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot: Bot):
+async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot: Bot, session: AsyncSession):
     from handlers.payments.gifts import finalize_gift
 
     data = await state.get_data()
-    session: AsyncSession = callback.bot["session"]
     await state.clear()
-    await finalize_gift(callback.message, session, bot, data, is_unlimited=True)
+    await finalize_gift(callback.message, session, bot, data, is_unlimited=True, actor=callback.from_user)
 
 
 @router.message(GiftCreationState.waiting_for_limit_input_or_unlimited, IsAdminFilter())

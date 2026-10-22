@@ -13,7 +13,7 @@ from api.v1.schemas import (
     TrackingSourceResponse,
 )
 from database import get_tracking_source_stats
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import (
     Admin,
     BlockedUser,
@@ -48,7 +48,7 @@ async def get_payments_by_tg_id(
     admin: Admin = Depends(verify_admin_token),
     session: AsyncSession = Depends(get_session),
 ):
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, TelegramId(tg_id))
     if u is None:
         raise HTTPException(status_code=404, detail="Payments not found")
     result = await session.execute(select(Payment).where(Payment.user_id == u.id))

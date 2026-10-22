@@ -1,10 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import UserId, resolve_user_optional
 from database.models import TemporaryData
 from logger import logger
 
@@ -36,12 +36,9 @@ async def create_temporary_data(session: AsyncSession, legacy_user_ref: int, sta
 async def get_temporary_data(session: AsyncSession, legacy_user_ref: int) -> dict | None:
     u = await resolve_user_optional(session, legacy_user_ref)
     if u is not None:
-        stmt = select(TemporaryData).where(
-            or_(
-                TemporaryData.user_id == u.id,
-                TemporaryData.tg_id == u.tg_id,
-            )
-        )
+        stmt = select(TemporaryData).where(TemporaryData.user_id == u.id)
+    elif isinstance(legacy_user_ref, UserId):
+        return None
     else:
         stmt = select(TemporaryData).where(TemporaryData.tg_id == legacy_user_ref)
     result = await session.execute(stmt)
@@ -54,14 +51,9 @@ async def get_temporary_data(session: AsyncSession, legacy_user_ref: int) -> dic
 async def clear_temporary_data(session: AsyncSession, legacy_user_ref: int):
     u = await resolve_user_optional(session, legacy_user_ref)
     if u is not None:
-        await session.execute(
-            delete(TemporaryData).where(
-                or_(
-                    TemporaryData.user_id == u.id,
-                    TemporaryData.tg_id == u.tg_id,
-                )
-            )
-        )
+        await session.execute(delete(TemporaryData).where(TemporaryData.user_id == u.id))
+    elif isinstance(legacy_user_ref, UserId):
+        return
     else:
         await session.execute(delete(TemporaryData).where(TemporaryData.tg_id == legacy_user_ref))
     logger.info(f"🗑 Временные данные очищены для {legacy_user_ref}")

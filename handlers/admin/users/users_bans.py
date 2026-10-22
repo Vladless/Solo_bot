@@ -8,7 +8,7 @@ from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import UserId, resolve_user_optional
 from database.models import ManualBan
 from filters.admin import IsAdminFilter
 from middlewares.ban_checker import invalidate_ban_cache
@@ -62,7 +62,7 @@ async def handle_ban_forever_reason_input(message: Message, state: FSMContext, s
         reason = None
 
     user_data = await state.get_data()
-    user_id = user_data.get("user_id")
+    user_id = UserId(user_data["user_id"]) if user_data.get("user_id") is not None else None
 
     u = await resolve_user_optional(session, user_id)
     if u is None:
@@ -133,7 +133,7 @@ async def handle_ban_reason_input(message: Message, state: FSMContext):
     await state.set_state(BanUserStates.waiting_for_ban_duration)
 
     user_data = await state.get_data()
-    user_id = user_data.get("user_id")
+    user_id = UserId(user_data["user_id"]) if user_data.get("user_id") is not None else None
 
     kb = InlineKeyboardBuilder()
     kb.row(build_editor_btn(BACK, user_id=user_id, edit=True))
@@ -147,7 +147,7 @@ async def handle_ban_reason_input(message: Message, state: FSMContext):
 @router.message(BanUserStates.waiting_for_ban_duration, IsAdminFilter())
 async def handle_ban_duration_input(message: Message, state: FSMContext, session: AsyncSession):
     user_data = await state.get_data()
-    user_id = user_data.get("user_id")
+    user_id = UserId(user_data["user_id"]) if user_data.get("user_id") is not None else None
     reason = user_data.get("reason")
     if reason == "-":
         reason = None

@@ -13,10 +13,12 @@ from .payments import Payment
 from .polls import Poll, PollMessage, PollVote
 from .rate_limit import RateLimitCounter
 from .referrals import Referral
+from .remnawave_install import RemnawaveInstall
 from .servers import Server, ServerSpecialgroup, ServerSubgroup
 from .subscription_events import DailySubscriptionMetric, SubscriptionEvent
 from .tariffs import Tariff, TariffSubgroupSetting
 from .tickets import Ticket, TicketMessage
+from .traffic_notifications import TrafficNotificationState
 from .users import BlockedUser, ManualBan, TemporaryData, TrackingSource, User
 from .web import (
     WebBlock,
@@ -32,6 +34,14 @@ from .web import (
     WebPushSubscription,
     WebTheme,
 )
+from .yookassa_autopay import (
+    YooKassaAutopayAttempt,
+    YooKassaLog,
+    YooKassaPayment,
+    YooKassaSavedCard,
+    YooKassaSubscription,
+)
+from .yookassa_refunds import RefundOperation
 
 
 __all__ = [
@@ -65,6 +75,7 @@ __all__ = [
     "Referral",
     "Notification",
     "ScheduledBroadcast",
+    "TrafficNotificationState",
     "Poll",
     "RateLimitCounter",
     "PollMessage",
@@ -83,4 +94,11 @@ __all__ = [
     "WebPushSubscription",
     "WebNotification",
     "WebFlow",
+    "YooKassaSavedCard",
+    "YooKassaSubscription",
+    "YooKassaPayment",
+    "YooKassaLog",
+    "YooKassaAutopayAttempt",
+    "RefundOperation",
+    "RemnawaveInstall",
 ]

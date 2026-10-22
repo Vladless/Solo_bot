@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import get_tariff_by_id
+from database.access.resolution import TelegramId
 from database.notifications import check_cold_lead_discount, check_hot_lead_discount
 from handlers.utils import edit_or_send_message, safe_answer_callback
 from hooks.processors import process_check_discount_validity
@@ -32,7 +33,7 @@ CREATING_KEY_BUTTON_TEXT = "⏳ Подождите..."
 @router.callback_query(F.data.startswith("select_tariff_plan|"))
 async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state: FSMContext):
     """Обрабатывает выбор тарифа пользователем."""
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
     tariff_id = int(callback_query.data.split("|")[1])
 
     logger.info("[TARIFF_CFG] select_tariff_plan: tg_id={} tariff_id={}", tg_id, tariff_id)

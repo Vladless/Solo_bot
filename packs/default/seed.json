@@ -3146,7 +3146,7 @@
         "mobileCol": 0,
         "mobileRow": 0,
         "emailLabel": "E-mail",
-        "forgotHref": "/reset-password",
+        "forgotHref": "/forgot-password",
         "fineColSpan": 32,
         "fineRowSpan": 48,
         "forgotLabel": "Забыли пароль?",

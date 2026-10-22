@@ -9,7 +9,6 @@ import type { TypedBlockViewProps } from "@/components/constructor/blockContent/
 import {
   useDefaultTheme,
   btnSolid,
-  btnSecondary,
   linkBtn,
   DefaultPanel,
   f,
@@ -20,7 +19,8 @@ import {
 } from "..";
 import { useAccountMutations } from "@/components/constructor/blockContent/account/useAccountMutations";
 import { isApiError } from "@/lib/api";
-import { usePayoutHistory, usePayoutMethod, savePayoutMethod } from "@/components/constructor/blockContent/payouts/payoutData";
+import { usePayoutHistory, usePayoutMethod } from "@/components/constructor/blockContent/payouts/payoutData";
+import { PayoutMethodEditor } from "@/components/constructor/blockContent/payouts/PayoutMethodEditor";
 import { DefaultBody, DefaultEmptyState, DefaultFooter } from "../layout";
 
 const SCHEMA = {
@@ -71,39 +71,7 @@ export function DefaultPayoutRequestBlockView({ block, context }: TypedBlockView
 
   const [setupOpen, setSetupOpen] = useState(false);
   const screenFlip = useScreenFlip(setupOpen ? "setup" : "request", PAYOUT_SCREENS);
-  const [setupMethod, setSetupMethod] = useState("");
-  const [requisites, setRequisites] = useState("");
-  const [setupBusy, setSetupBusy] = useState(false);
-  const [setupError, setSetupError] = useState("");
-
-  const openSetup = () => {
-    setSetupError("");
-    setRequisites("");
-    setSetupMethod(method.state.method || availableMethods[0]?.key || "");
-    setSetupOpen(true);
-  };
-
-  const saveMethod = async () => {
-    if (isPreview || setupBusy) return;
-    if (!setupMethod || !requisites.trim()) {
-      setSetupError(cfg.requisitesRequiredText);
-      return;
-    }
-    setSetupBusy(true);
-    setSetupError("");
-    try {
-      await savePayoutMethod(setupMethod, requisites.trim());
-      await method.refetch();
-      setSetupOpen(false);
-      setRequisites("");
-    } catch (err) {
-      setSetupError(isApiError(err) && err.message ? err.message : cfg.errorText);
-    } finally {
-      setSetupBusy(false);
-    }
-  };
-
-  const selectedHint = availableMethods.find((m) => m.key === setupMethod)?.hint ?? "";
+  const openSetup = () => { if (!isPreview) setSetupOpen(true); };
 
   const onSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
@@ -151,53 +119,18 @@ export function DefaultPayoutRequestBlockView({ block, context }: TypedBlockView
       }
       return (
         <DefaultBody t={t} gap={t.space.smPlus}>
-          <div style={{ fontSize: t.font.sm, color: t.inkDim }}>{cfg.methodSelectLabel}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: t.space.sm }}>
-            {availableMethods.map((m) => {
-              const active = m.key === setupMethod;
-              return (
-                <button
-                  key={m.key}
-                  type="button"
-                  onClick={() => { setSetupMethod(m.key); setSetupError(""); }}
-                  style={{ ...(active ? btnSolid(t) : btnSecondary(t)), minHeight: 40, cursor: "pointer" }}
-                >
-                  {m.label}
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ fontSize: t.font.sm, color: t.inkDim, marginTop: 4 }}>{cfg.requisitesLabel}</div>
-          <input
-            value={requisites}
-            onChange={(e) => { setRequisites(e.target.value); if (setupError) setSetupError(""); }}
-            placeholder={selectedHint}
-            disabled={setupBusy}
-            style={{
-              minHeight: t.px(CONTROL_H),
-              boxSizing: "border-box",
-              background: t.innerBg,
-              border: "none",
-              borderRadius: CONTROL_R,
-              color: t.ink,
-              fontFamily: t.monoFont,
-              padding: "0 16px",
-              outline: "none",
-              fontSize: t.font.smPlus,
-            }}
+          <PayoutMethodEditor
+            state={method.state}
+            disabled={isPreview}
+            onSaved={async () => { await method.refetch(); setSetupOpen(false); }}
+            onCancel={configured ? () => setSetupOpen(false) : undefined}
+            inputStyle={{ background: t.innerBg, color: t.ink, border: "none", borderRadius: CONTROL_R, fontFamily: t.monoFont, fontSize: t.font.smPlus }}
+            buttonStyle={btnSolid(t)}
+            textStyle={{ color: t.inkDim, fontSize: t.font.sm }}
+            errorStyle={{ color: t.error, fontSize: t.font.xs }}
+            labels={{ method: cfg.methodSelectLabel, requisites: cfg.requisitesLabel, required: cfg.requisitesRequiredText,
+              save: cfg.saveMethodLabel, saving: cfg.savingMethodLabel, cancel: cfg.cancelLabel }}
           />
-          {selectedHint ? <div style={{ fontSize: t.font.xs, color: t.inkMute }}>{selectedHint}</div> : null}
-          {setupError ? <div style={{ fontSize: t.font.xs, color: t.error }}>{setupError}</div> : null}
-          <DefaultFooter t={t}>
-            <button type="button" onClick={() => void saveMethod()} disabled={setupBusy} style={{ ...btnSolid(t), flex: "1 1 auto", justifyContent: "center", cursor: "pointer" }}>
-              {setupBusy ? cfg.savingMethodLabel : cfg.saveMethodLabel}
-            </button>
-            {configured ? (
-              <button type="button" onClick={() => { setSetupOpen(false); setSetupError(""); }} disabled={setupBusy} style={{ ...btnSecondary(t), flex: "0 0 auto", cursor: "pointer" }}>
-                {cfg.cancelLabel}
-              </button>
-            ) : null}
-          </DefaultFooter>
         </DefaultBody>
       );
     }
@@ -211,6 +144,7 @@ export function DefaultPayoutRequestBlockView({ block, context }: TypedBlockView
             {availableMethods.length > 0 ? (
               <button
                 type="button"
+                disabled={isPreview}
                 onClick={openSetup}
                 style={{ ...btnSolid(t), width: "100%", justifyContent: "center", cursor: "pointer" }}
               >
@@ -225,7 +159,7 @@ export function DefaultPayoutRequestBlockView({ block, context }: TypedBlockView
       <DefaultBody t={t} gap={t.space.smPlus}>
         <div style={{ display: "flex", alignItems: "center", gap: t.space.sm, fontSize: t.font.xs, color: t.inkDim, flexWrap: "wrap" }}>
           <span>{cfg.methodSavedFmt.replace("{method}", method.state.method_label || "").replace("{masked}", method.state.masked || "")}</span>
-          <button type="button" onClick={openSetup} style={{ ...linkBtn(t), cursor: "pointer" }}>{cfg.changeMethodLabel}</button>
+          <button type="button" disabled={isPreview} onClick={openSetup} style={{ ...linkBtn(t), cursor: "pointer" }}>{cfg.changeMethodLabel}</button>
         </div>
         <DefaultFooter t={t} stack>
           <input

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import ScheduledBroadcast
 
 
@@ -39,7 +39,7 @@ async def create_scheduled_broadcast(
     created_by_uid = None
     mirror_tg = created_by_tg_id
     if created_by_tg_id is not None:
-        cu = await resolve_user_optional(session, created_by_tg_id)
+        cu = await resolve_user_optional(session, TelegramId(created_by_tg_id))
         if cu is not None:
             created_by_uid = cu.id
             mirror_tg = cu.tg_id

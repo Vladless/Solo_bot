@@ -19,6 +19,7 @@ from handlers.notifications.processors.expiring import process_expiring_keys
 from handlers.notifications.processors.hot_leads import process_hot_leads
 from handlers.notifications.processors.inactive_trial import process_inactive_trial
 from handlers.notifications.processors.returning import process_returning
+from handlers.notifications.processors.traffic import process_traffic_notifications
 from handlers.notifications.processors.zero_traffic import process_zero_traffic
 from hooks.hooks import run_hooks
 from logger import logger
@@ -150,6 +151,11 @@ async def _run_cycle(bot: Bot, sessionmaker: async_sessionmaker):
                 await process_zero_traffic(bot, session, current_time, keys)
             except Exception as e:
                 logger.error(f"Ошибка zero_traffic: {e}")
+
+        try:
+            await process_traffic_notifications(ctx, keys)
+        except Exception as error:
+            logger.error(f"Ошибка traffic_notifications: {error}")
 
         try:
             await run_hooks("periodic_notifications", bot=bot, session=session, keys=keys)

@@ -225,7 +225,15 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
             logger.warning(f"[SKIP] Пользователь не найден в БД: tg_id={tg_id}, client_id={client_id}")
             continue
 
-        existing = (await session.execute(select(Key).where(Key.client_id == client_id))).scalar_one_or_none()
+        existing = (
+            await session.execute(select(Key).where(Key.user_id == user_id, Key.client_id == client_id))
+        ).scalar_one_or_none()
+
+        if existing is None:
+            foreign_owner = await session.scalar(select(Key.user_id).where(Key.client_id == client_id).limit(1))
+            if foreign_owner is not None:
+                logger.warning(f"[SKIP] UUID {client_id} уже принадлежит другому клиенту")
+                continue
 
         if existing is not None:
             changes = actualize_remnawave_key(existing, user)

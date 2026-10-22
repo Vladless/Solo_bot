@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.access.resolution import UserId
 from database.models import Key, Notification, SubscriptionEvent
 
 
@@ -10,11 +11,7 @@ RETURNING_NOTIFICATION_TYPE = "returning"
 
 
 async def get_returning_targets(session: AsyncSession, min_days: int, max_days: int) -> list[int]:
-    """Давно ушедшие клиенты («второй эшелон» после горячих лидов): подписка истекла/удалена
-    [min_days; max_days] дней назад (по умолчанию 60–180 — заведомо позже отработки горячих
-    лидов), активной подписки нет, после истечения не возвращались, и им ещё не слали «возврат».
-
-    Возможно только благодаря журналу subscription_events (ключ уже удалён)."""
+    """Возвращает ушедших клиентов для напоминания о возвращении."""
     now = datetime.utcnow()
     lo = now - timedelta(days=max_days)
     hi = now - timedelta(days=min_days)
@@ -41,4 +38,4 @@ async def get_returning_targets(session: AsyncSession, min_days: int, max_days: 
         .distinct()
     )
     result = await session.execute(stmt)
-    return list(result.scalars().all())
+    return [UserId(uid) for uid in result.scalars().all()]

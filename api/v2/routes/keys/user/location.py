@@ -1,4 +1,7 @@
-from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
+from database.access.resolution import subscription_owner_ref
+from settings.config import SUPERNODE
+
+from .._common import *
 from .._common import (
     _key_actions_config,
     _resolve_available_location_servers,
@@ -69,29 +72,6 @@ async def user_key_change_location(
     old_server_info = (
         await session.execute(select(Server).where(Server.server_name == current_server).limit(1))
     ).scalar_one_or_none()
-    if old_server_info:
-        old_panel_type = str(getattr(old_server_info, "panel_type", "") or "").lower()
-        try:
-            if old_panel_type == "3x-ui":
-                xui = await get_xui_instance(str(getattr(old_server_info, "api_url", "") or ""))
-                await delete_client(
-                    xui,
-                    int(getattr(old_server_info, "inbound_id", 0) or 0),
-                    email,
-                    str(getattr(db_key, "client_id", "") or ""),
-                )
-            elif old_panel_type == "remnawave":
-                remna_del = RemnawaveAPI(str(getattr(old_server_info, "api_url", "") or ""))
-                if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    await remna_del.delete_user(
-                        str(getattr(db_key, "client_id", "") or ""),
-                        username=str(getattr(db_key, "email", "") or "") or None,
-                    )
-        except Exception as exc:
-            logger.warning(
-                f"[Site:Subs] Не удалось снести подписку {getattr(db_key, 'client_id', '')} "
-                f"со старой панели {old_panel_type} при смене локации: {exc}"
-            )
     target_server_info = (
         await session.execute(select(Server).where(Server.server_name == target_server).limit(1))
     ).scalar_one_or_none()
@@ -120,6 +100,20 @@ async def user_key_change_location(
         await is_full_remnawave_cluster(target_cluster_name, session) if target_cluster_name else False
     )
     panel_type = str(getattr(target_server_info, "panel_type", "") or "").lower()
+    old_panel_type = str(getattr(old_server_info, "panel_type", "") or "").lower()
+    same_api = bool(old_server_info) and (
+        str(getattr(old_server_info, "api_url", "") or "").rstrip("/")
+        == str(getattr(target_server_info, "api_url", "") or "").rstrip("/")
+    )
+    same_panel_client = (
+        same_api
+        and old_panel_type == panel_type
+        and (
+            panel_type == "remnawave"
+            or str(getattr(old_server_info, "inbound_id", "") or "")
+            == str(getattr(target_server_info, "inbound_id", "") or "")
+        )
+    )
     remnawave_link = None
     if panel_type == "remnawave" or full_remnawave_cluster:
         remna = RemnawaveAPI(str(getattr(target_server_info, "api_url", "") or ""))
@@ -145,7 +139,19 @@ async def user_key_change_location(
             user_data["hwidDeviceLimit"] = device_limit
         if external_squad_uuid:
             user_data["externalSquadUuid"] = external_squad_uuid
-        result = await remna.create_user(user_data)
+        if same_api and old_panel_type == "remnawave":
+            updated = await remna.update_user(
+                uuid=key_client_id,
+                lookup_username=email,
+                expire_at=expire_at,
+                active_user_inbounds=user_data["activeInternalSquads"],
+                traffic_limit_bytes=traffic_limit_bytes,
+                hwid_device_limit=device_limit,
+                external_squad_uuid=external_squad_uuid,
+            )
+            result = {"uuid": key_client_id, "username": email} if updated else None
+        else:
+            result = await remna.create_user(user_data)
         if not result:
             raise HTTPException(status_code=502, detail="Не удалось создать подписку в новой локации")
         key_client_id = str(result.get("vlessUuid") or result.get("uuid") or key_client_id)
@@ -172,14 +178,14 @@ async def user_key_change_location(
                 if not remnawave_link:
                     remnawave_link = sub.get("subscriptionUrl")
     if panel_type == "3x-ui":
-        await create_client_on_server(
+        confirmed = await create_client_on_server(
             {
                 "api_url": str(getattr(target_server_info, "api_url", "") or ""),
                 "inbound_id": getattr(target_server_info, "inbound_id", None),
                 "server_name": str(getattr(target_server_info, "server_name", "") or ""),
                 "panel_type": str(getattr(target_server_info, "panel_type", "") or ""),
             },
-            int(key_details.get("tg_id") or 0),
+            billing_user_id,
             key_client_id,
             email,
             expiry_timestamp,
@@ -189,7 +195,10 @@ async def user_key_change_location(
             is_trial=False,
             total_traffic_limit_bytes=traffic_limit_bytes,
             device_limit_value=device_limit,
+            reuse_existing=True,
         )
+        if confirmed is not True:
+            raise HTTPException(status_code=502, detail="Не удалось создать подписку в новой локации")
     subgroup_code = tariff.get("subgroup_title") if tariff and tariff.get("subgroup_title") else None
     public_link = await make_aggregated_link(
         session=session,
@@ -206,11 +215,35 @@ async def user_key_change_location(
         cluster_id=target_cluster_name or target_server,
         email=email,
         client_id=key_client_id,
-        tg_id=int(key_details.get("tg_id") or 0),
+        tg_id=await subscription_owner_ref(session, billing_user_id),
         subgroup_code=subgroup_code,
         remna_link_override=remnawave_link,
         plan=int(tariff_id) if tariff_id else None,
     )
+    if old_server_info and not same_panel_client:
+        old_panel_type = str(getattr(old_server_info, "panel_type", "") or "").lower()
+        try:
+            if old_panel_type == "3x-ui":
+                xui = await get_xui_instance(str(getattr(old_server_info, "api_url", "") or ""))
+                panel_email = f"{email}_{old_server_info.server_name.lower()}" if SUPERNODE else email
+                await delete_client(
+                    xui,
+                    int(getattr(old_server_info, "inbound_id", 0) or 0),
+                    panel_email,
+                    str(getattr(db_key, "client_id", "") or ""),
+                )
+            elif old_panel_type == "remnawave":
+                remna_del = RemnawaveAPI(str(getattr(old_server_info, "api_url", "") or ""))
+                if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                    await remna_del.delete_user(
+                        str(getattr(db_key, "client_id", "") or ""),
+                        username=str(getattr(db_key, "email", "") or "") or None,
+                    )
+        except Exception as exc:
+            logger.warning(
+                f"[Site:Subs] Не удалось снести подписку {getattr(db_key, 'client_id', '')} "
+                f"со старой панели {old_panel_type} при смене локации: {exc}"
+            )
     db_key.server_id = target_server
     db_key.client_id = key_client_id
     db_key.key = public_link if isinstance(public_link, str) and public_link.strip() else None

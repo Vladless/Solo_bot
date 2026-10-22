@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import BUTTONS_CONFIG
 from database import get_clusters, get_key_expiry_presets
+from database.access.resolution import TelegramId, UserId
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from services.formatting import format_days
@@ -21,9 +22,40 @@ from ..panel.keyboard import build_admin_back_btn
 class LegacyTgRefAlias:
     """Принимает tg_id вместо user_id: кнопки сторонних модулей."""
 
+    def __init__(self, **values) -> None:
+        is_telegram = "tg_id" in values and "user_id" not in values
+        ref = values.get("user_id", values.get("tg_id"))
+        super().__init__(**values)
+        ref_type = TelegramId if is_telegram or isinstance(ref, TelegramId) else UserId
+        object.__setattr__(self, "user_id", ref_type(self.user_id))
+
+    def _encode_value(self, key, value):
+        if key == "user_id":
+            ref = self.user_id
+            prefix = "u" if isinstance(ref, UserId) else "t" if isinstance(ref, TelegramId) else ""
+            return f"{prefix}{int(ref)}"
+        return super()._encode_value(key, value)
+
+    @classmethod
+    def unpack(cls, value):
+        parts = value.split(cls.__separator__)
+        legacy_prefix = {"admin_user": "admin_users", "admin_user_key": "admin_users_key"}.get(cls.__prefix__)
+        if parts[0] == legacy_prefix:
+            parts[0] = cls.__prefix__
+        index = list(cls.model_fields).index("user_id") + 1
+        ref_type = int
+        if len(parts) == len(cls.model_fields) + 1:
+            ref = parts[index]
+            if ref.startswith(("u", "t")):
+                ref_type = UserId if ref.startswith("u") else TelegramId
+                parts[index] = ref[1:]
+        result = super().unpack(cls.__separator__.join(parts))
+        object.__setattr__(result, "user_id", ref_type(result.user_id))
+        return result
+
     @property
     def tg_id(self) -> int:
-        """Ref из кнопки под старым именем."""
+        """Возвращает идентификатор клиента под прежним именем."""
         return self.user_id
 
     @model_validator(mode="before")
@@ -36,14 +68,14 @@ class LegacyTgRefAlias:
         return values
 
 
-class AdminUserEditorCallback(LegacyTgRefAlias, CallbackData, prefix="admin_users"):
+class AdminUserEditorCallback(LegacyTgRefAlias, CallbackData, prefix="admin_user"):
     action: str
     user_id: int
     data: str | int | None = None
     edit: bool = False
 
 
-class AdminUserKeyEditorCallback(LegacyTgRefAlias, CallbackData, prefix="admin_users_key"):
+class AdminUserKeyEditorCallback(LegacyTgRefAlias, CallbackData, prefix="admin_user_key"):
     action: str
     user_id: int
     data: str
@@ -476,9 +508,11 @@ def build_editor_btn(text: str, user_id: int, edit: bool = False) -> InlineKeybo
 async def build_cluster_selection_kb(session, user_id: int, key_ref: str, action: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     clusters = await get_clusters(session)
+    if action == "confirm_admin_key_reissue":
+        action = "admin_key_reissue"
 
     for cluster_id in clusters:
-        builder.button(text=cluster_id, callback_data=f"{action}|{user_id}|{key_ref}|{cluster_id}")
+        builder.button(text=cluster_id, callback_data=f"{action}|u{int(user_id)}|{key_ref}|{cluster_id}")
 
     builder.button(
         text=BACK, callback_data=AdminUserEditorCallback(action="users_key_edit", user_id=user_id, data=key_ref).pack()
@@ -535,7 +569,7 @@ def build_user_gifts_kb(user_id: int, gifts: list, page: int = 0) -> InlineKeybo
         row_buttons.append(
             InlineKeyboardButton(
                 text=f"Удалить {created_str}",
-                callback_data=f"user_gift_del|{user_id}|{gift.gift_id}|{page}",
+                callback_data=f"user_gift_del|u{int(user_id)}|{gift.gift_id}|{page}",
             )
         )
         if len(row_buttons) == 1:
@@ -550,7 +584,7 @@ def build_user_gifts_kb(user_id: int, gifts: list, page: int = 0) -> InlineKeybo
             nav_buttons.append(
                 InlineKeyboardButton(
                     text="◀️",
-                    callback_data=f"user_gift_page|{user_id}|{page - 1}",
+                    callback_data=f"user_gift_page|u{int(user_id)}|{page - 1}",
                 )
             )
         nav_buttons.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
@@ -558,7 +592,7 @@ def build_user_gifts_kb(user_id: int, gifts: list, page: int = 0) -> InlineKeybo
             nav_buttons.append(
                 InlineKeyboardButton(
                     text="▶️",
-                    callback_data=f"user_gift_page|{user_id}|{page + 1}",
+                    callback_data=f"user_gift_page|u{int(user_id)}|{page + 1}",
                 )
             )
         builder.row(*nav_buttons)
@@ -662,14 +696,14 @@ def build_gift_delete_confirm_kb(user_id: int, gift_id: str, page: int = 0) -> I
     builder.row(
         InlineKeyboardButton(
             text="✅ Да, удалить",
-            callback_data=f"user_gift_del_c|{user_id}|{gift_id}",
+            callback_data=f"user_gift_del_c|u{int(user_id)}|{gift_id}",
         )
     )
 
     builder.row(
         InlineKeyboardButton(
             text=BACK,
-            callback_data=f"user_gift_page|{user_id}|{page}",
+            callback_data=f"user_gift_page|u{int(user_id)}|{page}",
         )
     )
 

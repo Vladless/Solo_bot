@@ -9,6 +9,19 @@ async def notifications_loop(bot, sessionmaker) -> None:
     await periodic_notifications(bot, sessionmaker=sessionmaker)
 
 
+async def yookassa_autopay_loop(bot, sessionmaker) -> None:
+    from services.payments.yookassa_autopay.service import autopay_loop
+
+    await autopay_loop(bot, sessionmaker)
+
+
+async def yookassa_refunds_loop(bot, sessionmaker) -> None:
+    """Продолжает сверку отправленных возвратов YooKassa."""
+    from services.payments.yookassa.refunds import refunds_loop
+
+    await refunds_loop(bot, sessionmaker)
+
+
 async def scheduled_broadcasts_loop_task(bot, _sessionmaker) -> None:
     from handlers.admin.sender.scheduled_service import scheduled_broadcasts_loop
 
@@ -117,3 +130,10 @@ async def remnawave_monitor_loop(bot, sessionmaker) -> None:
     from services.remnawave_monitor import remnawave_monitor_loop as run_loop
 
     await run_loop(bot, sessionmaker)
+
+
+async def remnawave_installer_loop(bot, sessionmaker) -> None:
+    """Продолжает установку нод и ожидание DNS после перезапуска."""
+    from services.remnawave_installer.jobs import installer_loop
+
+    await installer_loop(bot, sessionmaker)

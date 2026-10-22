@@ -11,8 +11,12 @@ from database import (
     get_tariff_by_id,
 )
 from handlers.utils import edit_or_send_message, render_text
-from settings.buttons import MAIN_MENU
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.processors import process_process_callback_renew_key
+from services.tariffs.renewal_window import is_renewal_available, renewal_available_from_ms
+from settings.buttons import BACK, MAIN_MENU
 from settings.texts import (
+    RENEWAL_AVAILABLE_FROM,
     RENEWAL_SWITCH_CREDIT_DAYS,
     RENEWAL_SWITCH_CREDIT_KEEP,
     RENEWAL_SWITCH_CREDIT_REFUND,
@@ -22,6 +26,8 @@ from settings.texts import (
     RENEWAL_SWITCH_PAY_REFUND,
     RENEWAL_SWITCH_TEXT,
 )
+
+from .flow import normalize_expiry_ms
 
 
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -76,7 +82,39 @@ def _build_switch_text(*, old_label: str, new_label: str, quote) -> str:
     )
 
 
-from .flow import normalize_expiry_ms
+async def _maybe_show_renewal_unavailable(
+    callback_query: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    *,
+    record: dict,
+    is_switch: bool,
+) -> bool:
+    """Показывает срок открытия обычного продления."""
+    expiry_ms = normalize_expiry_ms(record.get("expiry_time"))
+    if is_switch or is_renewal_available(expiry_ms):
+        return False
+    from ..utils import build_key_callback
+
+    available_msk = datetime.fromtimestamp(renewal_available_from_ms(expiry_ms) / 1000, tz=moscow_tz)
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK,
+            callback_data=build_key_callback("view_key", str(record["client_id"]), str(record["email"])),
+        )
+    )
+    hook_commands = await process_process_callback_renew_key(
+        callback_query=callback_query, state=state, session=session
+    )
+    if hook_commands:
+        builder = insert_hook_buttons(builder, hook_commands)
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=RENEWAL_AVAILABLE_FROM.format(available_from=available_msk.strftime("%d.%m.%Y %H:%M")),
+        reply_markup=builder.as_markup(),
+    )
+    return True
 
 
 async def _maybe_show_switch_confirm(
@@ -103,12 +141,16 @@ async def _maybe_show_switch_confirm(
         current_tariff_id=record.get("tariff_id"),
         current_selected_device=record.get("selected_device_limit"),
         current_selected_traffic=record.get("selected_traffic_limit"),
+        current_device_limit=record.get("current_device_limit"),
+        current_traffic_limit=record.get("current_traffic_limit"),
         current_expiry_ms=normalize_expiry_ms(record.get("expiry_time")),
         now_ms=now_ms,
         new_tariff_id=int(new_tariff_id),
         new_selected_device=selected_device,
         new_selected_traffic=selected_traffic,
     )
+    if await _maybe_show_renewal_unavailable(callback_query, state, session, record=record, is_switch=quote.is_switch):
+        return True
     if not quote.is_switch or (quote.credit_rub <= 0 and quote.credit_days <= 0 and not quote.keeps_period):
         return False
 

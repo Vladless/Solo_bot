@@ -30,11 +30,7 @@ def _round2(x: Decimal) -> Decimal:
 
 
 async def to_rub(amount: float | Decimal, base: str, *, session: aiohttp.ClientSession | None = None) -> Decimal:
-    """
-    Переводит сумму ИЗ валюты base В РУБЛИ.
-    Использует get_rub_rate(base): base_per_rub, т.е. сколько единиц base в 1 рубле.
-    RUB = amount / base_per_rub.
-    """
+    """Переводит сумму из указанной валюты в рубли по текущему курсу."""
     rate = await get_rub_rate(base, session=session)
     return _q(Decimal(amount) / rate, prec=2)
 
@@ -103,9 +99,7 @@ async def convert_from_rub(
     *,
     session: aiohttp.ClientSession | None = None,
 ) -> Decimal:
-    """
-    Конвертирует сумму из RUB в валюту to_ccy, используя get_rub_rate(to_ccy).
-    """
+    """Переводит сумму из рублей в указанную валюту по текущему курсу."""
     amt = Decimal(str(amount_rub))
     ccy = to_ccy.upper()
     if ccy == "RUB":
@@ -179,12 +173,7 @@ async def money_for_user(
     language_code: str | None,
     force_currency: str | None = None,
 ) -> tuple[str, str, Decimal]:
-    """
-    Возвращает: (text, currency, value)
-    text: строка для показа пользователю, например "$12.34" или "1 234.00 ₽"
-    currency: "USD" или "RUB"
-    value: Decimal в выбранной валюте
-    """
+    """Возвращает текст цены, валюту и сумму с учётом предпочтений клиента."""
     from database.users import get_user_preferred_currency
 
     user_currency = await get_user_preferred_currency(db_session, tg_id)

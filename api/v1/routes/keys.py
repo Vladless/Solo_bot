@@ -4,11 +4,21 @@ from fastapi import Body, Depends, HTTPException, Path, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.admin_permissions import (
+    require_admin_action,
+    require_key_update_permissions,
+)
 from api.depends import get_session, verify_admin_token
 from api.v1.routes.base_crud import generate_crud_router
 from api.v1.schemas.keys import KeyBase, KeyCreateRequest, KeyResponse, KeyUpdate
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import Admin, Key, Tariff
+from filters.permissions import (
+    PERM_KEY_CREATE,
+    PERM_KEY_DELETE,
+    PERM_KEY_TRAFFIC,
+    PERM_KEY_VIEW,
+)
 from logger import logger
 from services.operations import create_key_on_cluster, delete_key_from_cluster, renew_key_in_cluster
 
@@ -18,7 +28,9 @@ router = generate_crud_router(
     schema_response=KeyResponse,
     schema_create=KeyBase,
     schema_update=KeyUpdate,
-    identifier_field="tg_id",
+    identifier_field="user_id",
+    parameter_name="tg_id",
+    telegram_path_to_user_id=True,
     extra_get_by_email=True,
     enabled_methods=["get_all", "get_one", "get_by_email", "get_all_by_field"],
 )
@@ -30,6 +42,7 @@ async def delete_key_by_email(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
+    await require_admin_action(session, admin, PERM_KEY_DELETE)
     result = await session.execute(select(Key).where(Key.email == email))
     db_key = result.scalar_one_or_none()
 
@@ -58,12 +71,13 @@ async def get_router_keys_by_tg_id(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
+    await require_admin_action(session, admin, PERM_KEY_VIEW)
     tariffs_result = await session.execute(select(Tariff.id).where(Tariff.group_code == "routers"))
     tariff_ids = [row[0] for row in tariffs_result.all()]
     if not tariff_ids:
         return []
 
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, TelegramId(tg_id))
     if u is None:
         return []
     keys_result = await session.execute(select(Key).where(Key.user_id == u.id, Key.tariff_id.in_(tariff_ids)))
@@ -78,6 +92,8 @@ async def edit_key_by_email(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
+    await require_key_update_permissions(session, admin, key_update.model_dump(exclude_unset=True))
+    await require_admin_action(session, admin, PERM_KEY_TRAFFIC, PERM_KEY_VIEW)
     result = await session.execute(select(Key).where(Key.email == email))
     db_key = result.scalar_one_or_none()
     if not db_key:
@@ -97,7 +113,7 @@ async def edit_key_by_email(
 
     try:
         new_expiry_time = db_key.expiry_time
-        await renew_key_in_cluster(
+        renewed = await renew_key_in_cluster(
             cluster_id=db_key.server_id,
             email=db_key.email,
             client_id=db_key.client_id,
@@ -107,6 +123,8 @@ async def edit_key_by_email(
             hwid_device_limit=getattr(db_key, "device_limit", None),
             reset_traffic=True,
         )
+        if not renewed:
+            raise RuntimeError("Изменение подписки на панели не подтверждено")
 
         logger.info(f"[Site:Subs] Подписка обновлена: {db_key.client_id}")
         return db_key
@@ -122,10 +140,11 @@ async def create_key_api(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
+    await require_admin_action(session, admin, PERM_KEY_CREATE)
     try:
         await create_key_on_cluster(
             cluster_id=payload.cluster_id,
-            tg_id=payload.tg_id,
+            tg_id=TelegramId(payload.tg_id),
             client_id=payload.client_id,
             email=payload.email or f"{payload.tg_id}_key",
             expiry_timestamp=payload.expiry_timestamp,

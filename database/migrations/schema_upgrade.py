@@ -201,9 +201,7 @@ async def _safe_set_not_null(conn: AsyncConnection, table: str, column: str) -> 
 
 
 async def _index_exists(conn: AsyncConnection, table: str, index: str) -> bool:
-    """Есть ли индекс с таким именем. Имена индексов в схеме общие, поэтому таблица здесь не условие:
-    занятое имя не даст создать индекс даже на другой таблице.
-    """
+    """Проверяет наличие индекса с указанным именем в схеме."""
     r = await conn.execute(
         text(
             """
@@ -312,13 +310,7 @@ async def _migration_v2_add_user_id_columns(conn: AsyncConnection) -> None:
 
 
 async def _backfill_users_from_table(conn: AsyncConnection, table: str, tg_col: str = "tg_id") -> int:
-    """Auto-создание users для orphan tg_id'ов из указанной таблицы.
-
-    Legacy клиенты обновляются с TG-only схемы (где только tg_id), и в связанных
-    таблицах могут быть строки, ссылающиеся на tg_id, которого нет в users. Вместо
-    удаления таких строк — создаём минимальную users-запись, чтобы FK/NOT NULL
-    проходили и данные сохранялись.
-    """
+    """Создаёт недостающих владельцев старых записей по Telegram ID."""
     if not await _table_exists(conn, table):
         return 0
     if not await _column_exists(conn, table, tg_col):
@@ -907,11 +899,7 @@ async def _migration_v14_web_flow_graph_model(conn: AsyncConnection) -> None:
 
 
 async def _migration_v15_recover_orphan_users(conn: AsyncConnection) -> None:
-    """Safety net для клиентов, прошедших v3/v11 со старой логикой.
-
-    Обходит все таблицы, где может быть orphan tg_id, создаёт недостающих юзеров
-    и повторно заполняет user_id. Идемпотентно: если orphan'ов нет — no-op.
-    """
+    """Восстанавливает недостающих клиентов и заполняет ссылки на их записи."""
     logger.debug("[schema_upgrade] v15: Восстановление orphan tg_ids в users")
 
     if not await _table_exists(conn, "users") or not await _column_exists(conn, "users", "id"):
@@ -978,12 +966,7 @@ async def _migration_v15_recover_orphan_users(conn: AsyncConnection) -> None:
 
 
 async def _migration_v19_keys_tg_id_nullable(conn: AsyncConnection) -> None:
-    """Снимает NOT NULL с keys.tg_id и переносит PK на (user_id, client_id).
-
-    Старый PK (tg_id, client_id) не позволяет создавать подписки для web-only
-    пользователей, у которых tg_id=NULL. user_id у ключа есть всегда (FK на
-    users.id), поэтому делаем его новым компонентом PK.
-    """
+    """Разрешает ключи без Telegram и переносит первичный ключ на владельца и подписку."""
     logger.debug("[schema_upgrade] v19: keys.tg_id nullable, PK на (user_id, client_id)")
 
     if not await _table_exists(conn, "keys"):
@@ -1085,12 +1068,7 @@ async def _migration_v24_add_identity_sessions(conn: AsyncConnection) -> None:
 
 
 async def _migration_v51_drop_tg_id_foreign_keys(conn: AsyncConnection) -> None:
-    """Снимает внешние ключи, смотрящие на users.tg_id.
-
-    Связь владельца и так держится на user_id. А эти ключи только мешали:
-    обнулить users.tg_id при отвязке Telegram база не давала, пока на него
-    ссылались, — приходилось руками гасить зеркала во всех таблицах.
-    """
+    """Удаляет внешние ключи на Telegram ID, сохраняя связи через ID клиента."""
     logger.debug("[schema_upgrade] v51: снятие внешних ключей на users.tg_id")
     if not await _table_exists(conn, "users"):
         return
@@ -1189,13 +1167,7 @@ async def _drop_index_if_free(conn: AsyncConnection, table: str, index: str) -> 
 
 
 async def _migration_v55_drop_duplicate_indexes(conn: AsyncConnection) -> None:
-    """Снимает индексы, которые дублируют уже существующие.
-
-    `users` пишется почти на каждом апдейте, `audit_events` — на каждое событие, и каждый
-    лишний btree обслуживается при каждой записи. Здесь только доказуемые дубли: индекс по
-    той же колонке, что у первичного ключа или уникального ограничения, и одноколоночный
-    индекс, который является префиксом существующего составного.
-    """
+    """Удаляет индексы, дублирующие существующие индексы и ограничения."""
     logger.debug("[schema_upgrade] v55: снятие дублирующих индексов")
     duplicates = (
         ("users", "ix_users_id"),
@@ -1209,12 +1181,7 @@ async def _migration_v55_drop_duplicate_indexes(conn: AsyncConnection) -> None:
 
 
 async def _migration_v56_drop_low_cardinality_indexes(conn: AsyncConnection) -> None:
-    """Снимает индексы audit_events по колонкам с несколькими значениями.
-
-    `channel`, `event_type`, `entity_type` принимают единицы разных значений: выборка по
-    такому условию задевает слишком большую долю таблицы, и планировщик берёт seq scan.
-    Пользы на чтении нет, а на каждую запись в журнал тратится обслуживание трёх btree.
-    """
+    """Удаляет индексы журнала по полям с малым числом уникальных значений."""
     logger.debug("[schema_upgrade] v56: снятие индексов audit_events по низкой кардинальности")
     if not await _table_exists(conn, "audit_events"):
         return

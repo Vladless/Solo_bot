@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -42,12 +43,20 @@ from settings.config import (
 DOCKER_POSTGRES_CONTAINER = "solobot-postgres"
 
 
+def _remove_incomplete_backup(path: Path) -> None:
+    """Удаляет неполный файл после ошибки бэкапа."""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as error:
+        logger.warning("[Backup] Неполный файл не удалён: {}: {}", path, error)
+
+
 def _s3_configured() -> bool:
     return bool(BACKUP_S3_ENDPOINT and BACKUP_S3_ACCESS_KEY and BACKUP_S3_SECRET_KEY and BACKUP_S3_BUCKET)
 
 
 def _parse_destination() -> tuple[str | None, int | None]:
-    """Парсит BACKUP_DESTINATION в (chat_id, thread_id)."""
+    """Разбирает получателя резервной копии на чат и тему."""
     raw = BACKUP_DESTINATION.strip()
     if not raw:
         return None, None
@@ -58,30 +67,38 @@ def _parse_destination() -> tuple[str | None, int | None]:
 
 
 def _find_docker_postgres_container() -> str | None:
+    """Находит запущенный контейнер PostgreSQL на хосте."""
     if shutil.which("docker") is None:
         return None
-    result = subprocess.run(
-        ["docker", "inspect", "-f", "{{.State.Running}}", DOCKER_POSTGRES_CONTAINER],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", DOCKER_POSTGRES_CONTAINER],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
     if result.returncode == 0 and result.stdout.strip().lower() == "true":
         return DOCKER_POSTGRES_CONTAINER
     return None
 
 
-def _get_postgres_execution_target() -> tuple[str, str | None]:
+def _get_postgres_execution_target(client: str = "pg_dump") -> tuple[str, str | None]:
+    """Выбирает локальный клиент или клиент контейнера БД."""
+    if os.environ.get("SOLOBOT_IN_DOCKER") == "1" or os.path.exists("/.dockerenv"):
+        return "host", None
     if PG_IN_DOCKER:
         container = _find_docker_postgres_container()
         if container:
             return "docker", container
-        raise FileNotFoundError(
-            f"PostgreSQL настроен на Docker, но контейнер '{DOCKER_POSTGRES_CONTAINER}' не найден или не запущен"
-        )
+        if shutil.which(client) is not None:
+            return "host", None
+        raise FileNotFoundError(f"Не найден {client}, а контейнер PostgreSQL '{DOCKER_POSTGRES_CONTAINER}' недоступен")
     return "host", None
 
 
 def _create_database_backup_via_docker(filename: Path, container: str) -> None:
+    """Сохраняет дамп клиентом контейнера PostgreSQL."""
     with open(filename, "wb") as dump_file:
         result = subprocess.run(
             [
@@ -89,6 +106,8 @@ def _create_database_backup_via_docker(filename: Path, container: str) -> None:
                 "exec",
                 "-e",
                 f"PGPASSWORD={DB_PASSWORD}",
+                "-e",
+                "LC_ALL=C",
                 container,
                 "pg_dump",
                 "-U",
@@ -99,6 +118,7 @@ def _create_database_backup_via_docker(filename: Path, container: str) -> None:
                 "5432",
                 "-F",
                 "c",
+                "--no-password",
                 DB_NAME,
             ],
             stdout=dump_file,
@@ -109,10 +129,7 @@ def _create_database_backup_via_docker(filename: Path, container: str) -> None:
 
 
 async def backup_database(bot_instance: Bot | None = None) -> Exception | None:
-    """
-    Создает резервную копию и отправляет в S3 или Telegram.
-    Блокирующие операции выполняются в пуле потоков/процессов.
-    """
+    """Создаёт резервную копию и отправляет в S3 или Telegram."""
     from core.executor import run_io
 
     if BACKUP_CREATE_ARCHIVE:
@@ -149,7 +166,8 @@ async def backup_database(bot_instance: Bot | None = None) -> Exception | None:
 
 
 def _create_database_backup() -> tuple[str | None, Exception | None]:
-    date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    """Создаёт дамп БД через настроенное подключение."""
+    date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S-%f")
     pid_suffix = os.getpid()
 
     backup_dir = Path(BACK_DIR)
@@ -166,6 +184,8 @@ def _create_database_backup() -> tuple[str | None, Exception | None]:
         elif shutil.which("pg_dump") is not None:
             env = os.environ.copy()
             env["PGPASSWORD"] = DB_PASSWORD
+            env["LC_ALL"] = "C"
+            env.setdefault("PGCONNECT_TIMEOUT", "10")
             subprocess.run(
                 [
                     "pg_dump",
@@ -174,9 +194,10 @@ def _create_database_backup() -> tuple[str | None, Exception | None]:
                     "-h",
                     PG_HOST,
                     "-p",
-                    PG_PORT,
+                    str(PG_PORT),
                     "-F",
                     "c",
+                    "--no-password",
                     "-f",
                     str(filename),
                     DB_NAME,
@@ -186,21 +207,35 @@ def _create_database_backup() -> tuple[str | None, Exception | None]:
                 text=True,
                 env=env,
             )
-            logger.info("[Backup] БД создана через host pg_dump: {}", filename)
+            logger.info("[Backup] БД создана локальным pg_dump: {}", filename)
         else:
-            raise FileNotFoundError("PostgreSQL недоступен: не найден контейнер и отсутствует host pg_dump")
+            raise FileNotFoundError(
+                "pg_dump не найден. Пересоберите образ бота с PostgreSQL client или установите клиент на хосте."
+            )
+        if not filename.is_file() or filename.stat().st_size == 0:
+            raise RuntimeError("pg_dump не создал непустой файл дампа")
         return str(filename), None
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.decode("utf-8", errors="replace") if isinstance(e.stderr, bytes) else e.stderr
         logger.error("[Backup] pg_dump: {}", stderr)
+        _remove_incomplete_backup(filename)
+        if "server version mismatch" in (stderr or "").lower():
+            version = re.search(r"server version:\s*(\d+)", stderr or "")
+            major = version.group(1) if version else "версия_сервера"
+            return None, RuntimeError(
+                "Версия pg_dump несовместима с сервером PostgreSQL. "
+                f"Установите клиент версии сервера; для Docker пересоберите образ с POSTGRES_CLIENT_MAJOR={major}."
+            )
         return None, e
     except Exception as e:
         logger.error("[Backup] Непредвиденная ошибка: {}", e)
+        _remove_incomplete_backup(filename)
         return None, e
 
 
 def _create_backup_archive() -> tuple[str | None, Exception | None]:
-    date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    """Создаёт архив со всеми выбранными частями бэкапа."""
+    date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S-%f")
     pid_suffix = os.getpid()
     backup_dir = Path(BACK_DIR)
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -215,10 +250,11 @@ def _create_backup_archive() -> tuple[str | None, Exception | None]:
             if BACKUP_INCLUDE_DB:
                 db_backup_path, db_exception = _create_database_backup()
                 if db_exception:
-                    logger.warning("[Backup] БД для архива не создана: {}", db_exception)
-                elif db_backup_path and os.path.exists(db_backup_path):
-                    tar.add(db_backup_path, arcname=f"{archive_folder}/database.sql")
-                    logger.info("[Backup] БД добавлена в архив")
+                    raise db_exception
+                if not db_backup_path or not os.path.isfile(db_backup_path) or os.path.getsize(db_backup_path) == 0:
+                    raise RuntimeError("Дамп БД для архива не создан")
+                tar.add(db_backup_path, arcname=f"{archive_folder}/database.sql")
+                logger.info("[Backup] БД добавлена в архив")
 
             if BACKUP_INCLUDE_CONFIG:
                 config_path = project_root / "settings" / "config.py"
@@ -255,6 +291,11 @@ def _create_backup_archive() -> tuple[str | None, Exception | None]:
                 else:
                     logger.info("[Backup] web_uploads/ пуста или не найдена")
 
+                packs_dir = project_root / "static" / "web_packs"
+                if packs_dir.is_dir():
+                    tar.add(packs_dir, arcname=f"{archive_folder}/web_packs")
+                    logger.info("[Backup] web_packs/ в архив")
+
         logger.info("[Backup] Архив создан: {}", archive_path)
 
         if db_backup_path and os.path.exists(db_backup_path) and db_backup_path != str(archive_path):
@@ -268,6 +309,7 @@ def _create_backup_archive() -> tuple[str | None, Exception | None]:
 
     except Exception as e:
         logger.error("[Backup] Ошибка создания архива: {}", e)
+        _remove_incomplete_backup(archive_path)
         return None, e
 
 
@@ -313,7 +355,7 @@ def _create_s3_client():
 
 
 def _upload_to_s3(backup_file_path: str) -> Exception | None:
-    """Загружает бекап в S3 и чистит старые (синхронно, вызывается через run_io)."""
+    """Загружает резервную копию в S3 и удаляет старые."""
     try:
         s3 = _create_s3_client()
         prefix = BACKUP_S3_PATH.strip("/")
@@ -330,7 +372,7 @@ def _upload_to_s3(backup_file_path: str) -> Exception | None:
 
 
 def _cleanup_s3_backups(s3, prefix: str) -> None:
-    """Удаляет старые бекапы в S3, оставляя BACKUP_S3_KEEP последних."""
+    """Удаляет старые резервные копии из S3, сохраняя заданное число последних."""
     if BACKUP_S3_KEEP <= 0:
         return
 
@@ -353,7 +395,8 @@ def _cleanup_s3_backups(s3, prefix: str) -> None:
 
 
 async def create_backup_and_send_to_admins(client) -> None:
-    await client.login()
+    if client.client.token is None:
+        await client.login()
     await client.database.export()
 
 
@@ -361,11 +404,7 @@ MAX_DUMP_PARTS = 12
 
 
 async def _send_dump_in_parts(active_bot, targets, kw_base: dict, db_path: str, limit: int) -> int:
-    """Режет дамп на куски под лимит Telegram и отправляет их по очереди.
-
-    pg_dump -Fc уже сжат внутри, поэтому упаковать его меньше не выйдет —
-    остаётся резать. Собирается обратно обычным `cat part* > dump.sql`.
-    """
+    """Делит дамп на части и отправляет их в Telegram."""
     total = os.path.getsize(db_path)
     parts = (total + limit - 1) // limit
     if parts > MAX_DUMP_PARTS:
@@ -390,11 +429,7 @@ async def _send_dump_in_parts(active_bot, targets, kw_base: dict, db_path: str, 
 
 
 async def _send_dump_alongside(active_bot, archive_path: str, chat_id, thread_id, limit: int) -> None:
-    """Отправляет дамп базы отдельным файлом рядом с архивом.
-
-    Архив может раздуться картинками и загрузками, а восстановление держится
-    на базе — она не должна зависеть от веса папки.
-    """
+    """Отправляет дамп базы отдельным файлом рядом с архивом."""
     targets = [chat_id] if chat_id else list(ADMIN_ID)
     kw_base: dict = {"parse_mode": "HTML"}
     if chat_id and thread_id:

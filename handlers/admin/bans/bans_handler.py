@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import delete_user_data
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, UserId, resolve_user_optional
 from database.models import BlockedUser, Key, ManualBan, User
 from database.users import add_user
 from filters.admin import HasPermission, IsAdminFilter
@@ -141,8 +141,8 @@ async def handle_bans_delete_banned(callback_query: CallbackQuery, session: Asyn
             )
             return
 
-        for tg_id in blocked_ids:
-            await delete_user_data(session, tg_id)
+        for user_id in blocked_ids:
+            await delete_user_data(session, UserId(user_id))
 
         await callback_query.message.answer(
             text=menu_text("Баны", f"🗑️ Удалены данные о {len(blocked_ids)} клиентах и связанных записях."),
@@ -169,11 +169,10 @@ async def handle_shadow_bans_export(callback_query: CallbackQuery, session: Asyn
 
         csv_output = io.StringIO()
         writer = csv.writer(csv_output)
-        writer.writerow(["tg_id", "banned_at", "banned_by", "until"])
+        writer.writerow(["tg_id", "banned_at", "banned_by", "until", "user_id"])
 
         for row in rows:
-            display_id = row.tg_id if row.tg_id is not None else row.user_id
-            writer.writerow([display_id, row.banned_at, row.banned_by, row.until])
+            writer.writerow([row.tg_id, row.banned_at, row.banned_by, row.until, row.user_id])
 
         csv_output.seek(0)
         document = BufferedInputFile(file=csv_output.getvalue().encode("utf-8"), filename="shadow_bans.csv")
@@ -210,11 +209,10 @@ async def handle_manual_bans_export(callback_query: CallbackQuery, session: Asyn
 
         csv_output = io.StringIO()
         writer = csv.writer(csv_output)
-        writer.writerow(["tg_id", "banned_at", "reason", "until", "banned_by"])
+        writer.writerow(["tg_id", "banned_at", "reason", "until", "banned_by", "user_id"])
 
         for row in rows:
-            display_id = row.tg_id if row.tg_id is not None else row.user_id
-            writer.writerow([display_id, row.banned_at, row.reason, row.until, row.banned_by])
+            writer.writerow([row.tg_id, row.banned_at, row.reason, row.until, row.banned_by, row.user_id])
 
         csv_output.seek(0)
         document = BufferedInputFile(file=csv_output.getvalue().encode("utf-8"), filename="manual_bans.csv")
@@ -383,11 +381,11 @@ async def handle_preemptive_ids_input(message: Message, state: FSMContext, sessi
     rows = []
     cache_tg_ids = []
     for raw_tg in tg_ids:
-        u = await resolve_user_optional(session, raw_tg)
+        u = await resolve_user_optional(session, TelegramId(raw_tg))
         if u is None:
             await add_user(session, raw_tg)
             await session.flush()
-            u = await resolve_user_optional(session, raw_tg)
+            u = await resolve_user_optional(session, TelegramId(raw_tg))
         if u is None:
             continue
         rows.append({

@@ -1,6 +1,7 @@
 import hmac
 
 from core.redis_cache import (
+    cache_compare_and_delete,
     cache_delete,
     cache_get,
     cache_incr,
@@ -72,8 +73,7 @@ class EmailCodeFlow:
             return False
         if not hmac.compare_digest(stored.strip(), (code or "").strip()):
             return False
-        await cache_delete(key)
-        return True
+        return await cache_compare_and_delete(key, stored)
 
 
 login_codes = EmailCodeFlow("web_login")

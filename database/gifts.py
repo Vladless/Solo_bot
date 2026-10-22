@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.access.resolution import resolve_user_optional
@@ -52,13 +52,23 @@ async def store_gift_link(
 
 
 async def get_gift_locked(session: AsyncSession, gift_id: str) -> Gift | None:
-    """SELECT FOR UPDATE по gift_id — берёт row-lock для atomic redemption.
-
-    Используется в `services.gifts.redeem_gift` чтобы два параллельных запроса
-    на активацию одного и того же подарка не смогли обойти проверку `is_used`.
-    """
+    """Блокирует подарок для безопасной активации."""
     result = await session.execute(select(Gift).where(Gift.gift_id == gift_id).with_for_update())
     return result.scalar_one_or_none()
+
+
+async def delete_gift_for_user(session: AsyncSession, gift_id: str, user_id: int) -> bool:
+    """Удаляет подарок только его владельца по каноническому users.id."""
+    gift = (
+        await session.execute(
+            select(Gift).where(Gift.gift_id == gift_id, Gift.sender_user_id == user_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if gift is None:
+        return False
+    await session.execute(delete(GiftUsage).where(GiftUsage.gift_id == gift_id))
+    result = await session.execute(delete(Gift).where(Gift.gift_id == gift_id, Gift.sender_user_id == user_id))
+    return bool(result.rowcount)
 
 
 async def get_gift_usage(session: AsyncSession, gift_id: str, user_id: int) -> GiftUsage | None:
@@ -73,7 +83,7 @@ async def get_gift_usage(session: AsyncSession, gift_id: str, user_id: int) -> G
 
 
 async def count_gift_usages(session: AsyncSession, gift_id: str) -> int:
-    """Сколько раз подарок был активирован (для `is_unlimited=False` с лимитом)."""
+    """Считает активации подарка."""
     result = await session.execute(select(func.count()).select_from(GiftUsage).where(GiftUsage.gift_id == gift_id))
     return int(result.scalar_one() or 0)
 
@@ -84,7 +94,7 @@ async def record_gift_usage(
     user_id: int,
     tg_id: int | None,
 ) -> None:
-    """Вставляет запись о применении подарка. Композитный ключ (gift_id, user_id)."""
+    """Сохраняет использование подарка клиентом."""
     await session.execute(
         insert(GiftUsage).values(
             gift_id=gift_id,
@@ -100,10 +110,7 @@ async def mark_gift_fully_redeemed(
     recipient_user_id: int,
     recipient_tg_id: int | None,
 ) -> None:
-    """Помечает подарок как полностью использованный (is_used=True) и фиксирует получателя.
-
-    Вызывается для non-unlimited подарков, когда набрали max_usages.
-    """
+    """Отмечает подарок использованным и сохраняет получателя."""
     await session.execute(
         update(Gift)
         .where(Gift.gift_id == gift_id)

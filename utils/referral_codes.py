@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import re
 
+from database.access.resolution import TelegramId, UserId
 from settings.config import API_TOKEN, WEBHOOK_SECRET_TOKEN
 
 
@@ -41,6 +42,7 @@ def encode_partner_code(user_id: int) -> str:
 
 
 def decode_referral_code(value: str | None) -> int | None:
+    """Декодирует реферальный код в ID клиента или Telegram ID."""
     token = str(value or "").strip()
     if not token:
         return None
@@ -60,17 +62,18 @@ def decode_referral_code(value: str | None) -> int | None:
         mask = hmac.new(secret, b"ref-mask-v1", hashlib.sha256).digest()[:8]
         raw = bytes(a ^ b for a, b in zip(obfuscated, mask, strict=False))
         parsed = int.from_bytes(raw, byteorder="big", signed=False)
-        return parsed if parsed > 0 else None
+        return UserId(parsed) if parsed > 0 else None
     if token.startswith("p1_"):
         return None
     match = re.fullmatch(r"\d+", token)
     if not match:
         return None
     parsed = int(match.group(0))
-    return parsed if parsed > 0 else None
+    return TelegramId(parsed) if parsed > 0 else None
 
 
 def decode_partner_code(value: str | None) -> int | None:
+    """Декодирует партнёрский код в ID клиента или Telegram ID."""
     token = str(value or "").strip()
     if not token:
         return None
@@ -90,11 +93,11 @@ def decode_partner_code(value: str | None) -> int | None:
         mask = hmac.new(secret, b"partner-mask-v1", hashlib.sha256).digest()[:8]
         raw = bytes(a ^ b for a, b in zip(obfuscated, mask, strict=False))
         parsed = int.from_bytes(raw, byteorder="big", signed=False)
-        return parsed if parsed > 0 else None
+        return UserId(parsed) if parsed > 0 else None
     if token.startswith("r1_"):
         return decode_referral_code(token)
     match = re.fullmatch(r"\d+", token)
     if not match:
         return None
     parsed = int(match.group(0))
-    return parsed if parsed > 0 else None
+    return TelegramId(parsed) if parsed > 0 else None

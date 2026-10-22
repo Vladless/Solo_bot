@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_temporary_data
+from database.access.resolution import TelegramId
 from database.models import User
 from handlers.payments.keyboards import balance_fallback_kb
 from handlers.utils import edit_or_send_message
@@ -36,7 +37,7 @@ async def _handle_custom_amount_input_overpay(
 ):
     message = event.message
     from_user = event.from_user
-    tg_id = from_user.id
+    tg_id = TelegramId(from_user.id)
 
     temp_data = await get_temporary_data(session, tg_id)
     if not temp_data or temp_data["state"] not in ALLOWED_TEMP_PAYMENT_STATES:

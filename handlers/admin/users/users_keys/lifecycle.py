@@ -1,5 +1,11 @@
+from database.access.resolution import UserId
+from database.keys import lock_owned_key_for_operation
+from filters.admin_actions import admin_action_allowed
+from filters.permissions import PERM_KEY_VIEW
+from middlewares.session import operation_session
+
 from ...panel.headers import card, menu_text, quote, section
-from ._common import *  # noqa: F401,F403
+from ._common import *
 from .edit import handle_key_edit
 
 
@@ -69,10 +75,12 @@ async def handle_update_key(
     )
 
 
-@router.callback_query(F.data.startswith("confirm_admin_key_reissue|"), IsAdminFilter())
-async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: AsyncSession, state: FSMContext):
-    _, user_id, key_ref, cluster_id = callback_query.data.split("|")
-    user_id = int(user_id)
+@router.callback_query(F.data.startswith(("confirm_admin_key_reissue|", "admin_key_reissue|")), IsAdminFilter())
+async def confirm_admin_key_reissue(
+    callback_query: CallbackQuery, session: AsyncSession, state: FSMContext, admin_user_ref: int
+):
+    _, _, key_ref, cluster_id = callback_query.data.split("|")
+    user_id = admin_user_ref
     key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
@@ -125,7 +133,7 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
             for country in sorted(unique_countries):
                 builder.button(
                     text=country,
-                    callback_data=f"admin_reissue_country|{user_id}|{key_ref}|{country}",
+                    callback_data=f"admin_reissue_server|u{int(user_id)}|{key_ref}|{country}",
                 )
             builder.row(
                 InlineKeyboardButton(
@@ -165,10 +173,12 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
         await callback_query.message.answer(menu_text("Подписка", f"❌ Ошибка: {e}"))
 
 
-@router.callback_query(F.data.startswith("admin_reissue_country|"), IsAdminFilter())
-async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSession, state: FSMContext):
-    _, user_id, key_ref, country = callback_query.data.split("|")
-    user_id = int(user_id)
+@router.callback_query(F.data.startswith(("admin_reissue_country|", "admin_reissue_server|")), IsAdminFilter())
+async def admin_reissue_country(
+    callback_query: CallbackQuery, session: AsyncSession, state: FSMContext, admin_user_ref: int
+):
+    _, _, key_ref, country = callback_query.data.split("|")
+    user_id = admin_user_ref
     key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
@@ -272,7 +282,7 @@ async def handle_recreate_key_start(
     builder.row(
         InlineKeyboardButton(
             text="✅ Пересоздать",
-            callback_data=f"confirm_recreate|{user_id}|{key_ref}",
+            callback_data=f"confirm_recreate|u{int(user_id)}|{key_ref}",
         )
     )
     builder.row(
@@ -289,9 +299,10 @@ async def handle_recreate_key_start(
 async def handle_recreate_key_confirm(
     callback_query: CallbackQuery,
     session: AsyncSession,
+    admin_user_ref: int,
 ):
-    _, user_id, key_ref = callback_query.data.split("|")
-    user_id = int(user_id)
+    _, _, key_ref = callback_query.data.split("|")
+    user_id = admin_user_ref
 
     try:
         key_obj = await resolve_callback_key(session, user_id, key_ref)
@@ -451,7 +462,9 @@ async def handle_recreate_key_confirm(
             card(
                 section("🔗 Новая", new_link),
                 section("🗑 Старая", old_link),
-            ),
+            )
+            if admin_action_allowed(PERM_KEY_VIEW)
+            else "",
         )
 
         builder = InlineKeyboardBuilder()
@@ -542,32 +555,42 @@ async def handle_delete_key_confirm(
         await callback_query.answer("Данные устарели", show_alert=True)
         return
 
-    if not client_id:
-        key_obj = await get_key_by_email(session, email, int(callback_data.user_id))
-        client_id = key_obj.client_id if key_obj else None
+    key_obj = await get_key_by_email(session, email, callback_data.user_id)
+    if key_obj is None or (client_id and client_id != key_obj.client_id):
+        await callback_query.answer("Данные устарели. Откройте подписку заново.", show_alert=True)
+        return
+    client_id = key_obj.client_id
 
     kb = build_editor_kb(callback_data.user_id)
 
-    if client_id:
-        clusters = await get_servers(session=session)
-        await release_session_early(session)
-
-        async def delete_key_from_servers():
-            tasks = []
-            for cluster_name, cluster_servers in clusters.items():
-                for _ in cluster_servers:
-                    tasks.append(delete_key_from_cluster(cluster_name, email, client_id, session))
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-        await delete_key_from_servers()
-        await delete_key(session, client_id)
-
-        await callback_query.message.edit_text(text=menu_text("Подписка", "✅ Ключ удалён."), reply_markup=kb)
-    else:
+    if not client_id:
         await callback_query.message.edit_text(
             text=menu_text("Подписка", "❌ Подписка не найдена — возможно, уже удалена."),
             reply_markup=kb,
         )
+        return
+
+    await release_session_early(session)
+    try:
+        async with operation_session(session) as operation:
+            key_obj = await lock_owned_key_for_operation(operation, UserId(callback_data.user_id), client_id, email)
+            if key_obj is None:
+                await callback_query.answer("Данные устарели. Откройте подписку заново.", show_alert=True)
+                return
+            clusters = await get_servers(session=operation)
+            if not clusters:
+                raise ValueError("Нет настроенных панелей для подтверждения удаления")
+            for cluster_name in clusters:
+                await delete_key_from_cluster(cluster_name, email, client_id, operation)
+            await delete_key(operation, client_id, user_id=key_obj.user_id)
+    except Exception as exc:
+        logger.error(f"Не удалось удалить подписку {client_id}: {exc}")
+        await callback_query.message.edit_text(
+            text=menu_text("Подписка", "❌ Не все панели подтвердили удаление. Запись сохранена, повторите попытку."),
+            reply_markup=kb,
+        )
+        return
+    await callback_query.message.edit_text(text=menu_text("Подписка", "✅ Ключ удалён."), reply_markup=kb)
 
 
 @router.callback_query(
@@ -596,34 +619,32 @@ async def handle_delete_user_confirm(
 ):
     user_id = callback_data.user_id
 
-    key_records = [(row.email, row.client_id) for row in await get_keys(session, user_id)]
     await release_session_early(session)
-
-    async def delete_keys_from_servers():
-        try:
-            tasks = []
-            servers = await get_servers(session=session)
-            for email, client_id in key_records:
-                for cluster_id, _cluster in servers.items():
-                    tasks.append(delete_key_from_cluster(cluster_id, email, client_id, session))
-            await asyncio.gather(*tasks, return_exceptions=True)
-        except Exception as e:
-            logger.error(f"Ошибка при удалении ключей с серверов для пользователя {user_id}: {e}")
-
-    await delete_keys_from_servers()
-
     try:
-        await delete_user_data(session, user_id)
+        async with operation_session(session) as operation:
+            key_records = [(row.email, row.client_id) for row in await get_keys(operation, UserId(user_id))]
+            servers = await get_servers(session=operation)
+            if key_records and not servers:
+                raise ValueError("Нет настроенных панелей для подтверждения удаления")
+            for email, client_id in key_records:
+                if await lock_owned_key_for_operation(operation, UserId(user_id), client_id, email) is None:
+                    raise ValueError("Подписки клиента изменились, повторите удаление")
+                for cluster_id in servers:
+                    await delete_key_from_cluster(cluster_id, email, client_id, operation)
+            await delete_user_data(operation, UserId(user_id))
+    except Exception as exc:
+        logger.error(f"Ошибка при удалении клиента {user_id}: {exc}")
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", f"🗑️ Клиент {user_id} был удален."),
+            text=menu_text(
+                "Подписка", f"❌ Не удалось полностью удалить клиента {user_id}. Запись сохранена, повторите попытку."
+            ),
             reply_markup=build_admin_back_kb(),
         )
-    except Exception as e:
-        logger.error(f"Ошибка при удалении данных из базы данных для пользователя {user_id}: {e}")
-        await callback_query.message.edit_text(
-            text=menu_text("Подписка", f"❌ Не удалось удалить клиента {user_id}. Попробуйте ещё раз."),
-            reply_markup=build_admin_back_kb(),
-        )
+        return
+    await callback_query.message.edit_text(
+        text=menu_text("Подписка", f"🗑️ Клиент {user_id} был удален."),
+        reply_markup=build_admin_back_kb(),
+    )
 
 
 @router.callback_query(
@@ -762,7 +783,11 @@ async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMCon
 @router.callback_query(UserEditorState.selecting_duration, IsAdminFilter())
 async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    user_id = data.get("user_id", callback_query.from_user.id)
+    stored_user_id = data.get("user_id")
+    if stored_user_id is None:
+        await callback_query.answer("Сессия устарела. Откройте карточку клиента заново.", show_alert=True)
+        return
+    user_id = UserId(stored_user_id)
 
     use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
 

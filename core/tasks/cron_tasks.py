@@ -40,12 +40,7 @@ async def sweep_stale_payments_job() -> None:
 
 
 def run_in_own_loop(job: Callable[[], Coroutine[object, object, object]]) -> None:
-    """Точка входа процессного cron: свой движок и свой event loop.
-
-    APScheduler запускает такие задачи форком, и дочерний процесс наследует пул соединений
-    родителя. Работать с ними нельзя: сокеты общие, а цикл, в котором их открыли, чужой.
-    Старый движок не диспоузим — его сокеты принадлежат родителю.
-    """
+    """Запускает задачу в отдельном цикле событий с новым движком базы данных."""
     from database.db import reset_async_db_engine
 
     reset_async_db_engine()

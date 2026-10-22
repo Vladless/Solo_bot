@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.depends import get_session, verify_admin_token
 from api.v1.routes.base_crud import generate_crud_router
 from api.v1.schemas import ReferralResponse
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import Admin, Referral
 
 
@@ -28,8 +28,8 @@ async def delete_one_referral(
     admin: Admin = Depends(verify_admin_token),
     session: AsyncSession = Depends(get_session),
 ):
-    ru_ref = await resolve_user_optional(session, referrer_tg_id)
-    rd_ref = await resolve_user_optional(session, referred_tg_id)
+    ru_ref = await resolve_user_optional(session, TelegramId(referrer_tg_id))
+    rd_ref = await resolve_user_optional(session, TelegramId(referred_tg_id))
     if ru_ref is None or rd_ref is None:
         raise HTTPException(status_code=404, detail="Referral not found")
     result = await session.execute(

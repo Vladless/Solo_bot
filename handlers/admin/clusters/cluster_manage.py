@@ -198,14 +198,12 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 return
 
             items: list[tuple[str, str]] = []
-            client_ids: list[str] = []
             for key in keys:
                 if not key.client_id:
                     continue
                 new_expiry = key.expiry_time + add_ms
                 expire_iso = datetime.utcfromtimestamp(new_expiry // 1000).isoformat() + "Z"
                 items.append((key.client_id, expire_iso, key.email))
-                client_ids.append(key.client_id)
 
             if not items:
                 await message.answer(menu_text("Кластер", "❌ Нет валидных подписок для продления."))
@@ -216,18 +214,23 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
 
             remna = remnawave_panel.RemnawaveAPI(api_url)
             try:
-                affected = await remna.bulk_set_expiry(items, username=REMNAWAVE_LOGIN, password=REMNAWAVE_PASSWORD)
+                confirmed_ids = await remna.bulk_set_expiry(
+                    items, username=REMNAWAVE_LOGIN, password=REMNAWAVE_PASSWORD, return_client_ids=True
+                )
+                affected = len(confirmed_ids)
             finally:
                 await remna.aclose()
 
-            db_updated = await _extend_keys_expiry_batched(session, client_ids, add_ms)
+            db_updated = await _extend_keys_expiry_batched(session, confirmed_ids, add_ms)
             logger.info(f"[Cluster Extend] Remnawave fast: панель={affected}, БД={db_updated}")
 
             await message.answer(
                 menu_text(
                     "Кластер",
-                    f"✅ Подписки в кластере <b>{cluster_name}</b> продлены на {days} дн.",
-                    section("📊 Обновлено", f"Панель: {affected}", f"База: {db_updated}"),
+                    f"Продление кластера <b>{cluster_name}</b> на {days} дн.",
+                    section(
+                        "📊 Обновлено", f"Панель: {affected}", f"База: {db_updated}", f"Ошибок: {len(items) - affected}"
+                    ),
                 )
             )
             await state.clear()
@@ -265,7 +268,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 traffic_limit = key.current_traffic_limit
 
             try:
-                await renew_key_in_cluster(
+                confirmed = await renew_key_in_cluster(
                     cluster_name,
                     email=key.email,
                     client_id=key.client_id,
@@ -278,7 +281,9 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                     old_subgroup=key_subgroup,
                     plan=key.tariff_id,
                 )
-                await update_key_expiry(session, key.client_id, new_expiry)
+                if not confirmed:
+                    raise RuntimeError("Продление на панели не подтверждено")
+                await update_key_expiry(session, key.client_id, new_expiry, user_id=key.user_id)
                 renewed += 1
             except Exception as renew_err:
                 failed += 1

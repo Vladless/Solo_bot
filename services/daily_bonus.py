@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.settings.bonus_config import DailyBonusRules, resolve_daily_bonus_rules
 from database import daily_bonus as db
+from database.access.resolution import UserId
 from database.payments import add_payment
 from database.users import get_balance, update_balance
 from logger import logger
@@ -60,7 +61,7 @@ def _ladder_length(rules: DailyBonusRules) -> int:
 
 
 def next_streak(last_claim_at: datetime | None, streak: int, rules: DailyBonusRules, now: datetime) -> int:
-    """Номер дня серии для следующей выдачи: серия рвётся при перерыве и начинается заново после последней ступени."""
+    """Рассчитывает следующий день серии бонусов."""
     if last_claim_at is None:
         return 1
     if rules.streak_keep_hours > 0 and now - last_claim_at > timedelta(hours=rules.streak_keep_hours):
@@ -73,19 +74,19 @@ def next_streak(last_claim_at: datetime | None, streak: int, rules: DailyBonusRu
 
 
 def amount_for_streak(rules: DailyBonusRules, streak_day: int) -> float:
-    """Сумма бонуса по режиму: фиксированная, случайная из диапазона или по лестнице серии."""
+    """Рассчитывает сумму бонуса по режиму и дню серии."""
     if rules.mode == "streak" and rules.ladder:
         index = min(max(1, streak_day), len(rules.ladder)) - 1
         return float(rules.ladder[index])
     if rules.mode == "range" and rules.max_amount > 0:
         low = min(rules.min_amount, rules.max_amount)
         high = max(rules.min_amount, rules.max_amount)
-        return round(random.uniform(low, high), 2)  # noqa: S311
+        return round(random.uniform(low, high), 2)
     return float(rules.amount)
 
 
 def display_amounts(rules: DailyBonusRules, streak_day: int) -> tuple[float, float, float]:
-    """Что показать до выдачи: (ожидаемая сумма, минимум, максимум)."""
+    """Возвращает ожидаемую, минимальную и максимальную суммы бонуса."""
     if rules.mode == "streak" and rules.ladder:
         index = min(max(1, streak_day), len(rules.ladder)) - 1
         value = float(rules.ladder[index])
@@ -107,7 +108,7 @@ async def get_daily_bonus_state(
     *,
     now: datetime | None = None,
 ) -> DailyBonusState:
-    """Состояние ежедневного бонуса: доступен ли, сколько дадут и когда следующий."""
+    """Возвращает доступность, сумму и время следующего бонуса."""
     rules = resolve_daily_bonus_rules()
     moment = now or datetime.utcnow()
     last = await db.get_last_claim(session, user_id)
@@ -178,7 +179,8 @@ async def claim_daily_bonus(
     tg_id: int | None = None,
     source: str = "web",
 ) -> DailyBonusClaimResult:
-    """Начисляет ежедневный бонус на баланс. Отказ по правилам возвращается как ok=False с причиной."""
+    """Начисляет ежедневный бонус на баланс."""
+    user_id = UserId(user_id)
     rules = resolve_daily_bonus_rules()
     if not rules.enabled:
         state = await get_daily_bonus_state(session, user_id)
@@ -194,7 +196,7 @@ async def claim_daily_bonus(
     if amount <= 0:
         raise ValidationError("Сумма бонуса не настроена")
 
-    new_balance = await update_balance(session, int(user_id), amount)
+    new_balance = await update_balance(session, user_id, amount)
     if new_balance is None:
         raise ValidationError("Не удалось начислить бонус")
     await db.insert_claim(session, user_id, tg_id, amount, state.streak_next, source, moment)

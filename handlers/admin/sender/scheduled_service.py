@@ -11,6 +11,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from core.settings.modes_config import resolve_protect_content
 from database import async_session_maker, save_blocked_user_ids
+from database.bans import save_blocked_user_pairs
 from database.models import ScheduledBroadcast
 from database.scheduled_broadcasts import (
     SCHEDULED_BROADCAST_STATUS_CANCELLED,
@@ -146,6 +147,7 @@ async def execute_broadcast_payload(payload: dict, bot: Bot | None = None) -> di
                 payload["send_to"],
                 payload.get("cluster_name"),
                 channel=channel,
+                canonical=True,
             )
             await session.commit()
         if not tg_ids:
@@ -160,7 +162,7 @@ async def execute_broadcast_payload(payload: dict, bot: Bot | None = None) -> di
         )
         messages = [
             {
-                "tg_id": tg_id,
+                "user_id": int(tg_id),
                 "text": payload["text"],
                 "photo": payload.get("photo"),
                 "keyboard": keyboard,
@@ -177,11 +179,14 @@ async def execute_broadcast_payload(payload: dict, bot: Bot | None = None) -> di
             workers=clamp_broadcast_workers(payload.get("workers")),
             channel=payload.get("channel", "both"),
         )
-        blocked_ids = stats.get("blocked_user_ids") or []
-        if blocked_ids:
+        blocked_pairs = stats.get("blocked_user_pairs") or []
+        paired_chats = {tg for _, tg in blocked_pairs}
+        blocked_ids = [tg for tg in stats.get("blocked_user_ids", []) if tg not in paired_chats]
+        if blocked_ids or blocked_pairs:
             async with async_session_maker() as session:
                 try:
                     await save_blocked_user_ids(session, blocked_ids)
+                    await save_blocked_user_pairs(session, blocked_pairs)
                     await session.commit()
                 except Exception as e:
                     logger.warning("[Broadcast] Ошибка сохранения blocked_ids: {}", e)

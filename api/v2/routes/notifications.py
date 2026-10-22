@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_token
+from api.shared.billing_actor import resolve_billing_user_id
 from database import web_notifications as wn_db
 from database.models import Identity
 
@@ -34,10 +35,11 @@ class NotificationsResponse(BaseModel):
 @router.post("/push/subscribe", tags=["Notifications"])
 async def push_subscribe(
     body: PushSubscribeRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     identity: Identity = Depends(verify_identity_token),
 ):
-    user_id = identity.tg_id or 0
+    user_id = await resolve_billing_user_id(request, identity, session)
 
     await wn_db.upsert_push_subscription(
         session,
@@ -101,7 +103,7 @@ async def read_one_notification(
     session: AsyncSession = Depends(get_session),
     identity: Identity = Depends(verify_identity_token),
 ):
-    """Пометить одно уведомление прочитанным. 404 если не найдено или не принадлежит юзеру."""
+    """Помечает уведомление текущего пользователя прочитанным."""
     ok = await wn_db.mark_one_read_for_identity(session, identity.id, notification_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Уведомление не найдено")
@@ -114,7 +116,7 @@ async def delete_one_notification(
     session: AsyncSession = Depends(get_session),
     identity: Identity = Depends(verify_identity_token),
 ):
-    """Удалить одно уведомление. 404 если не найдено или не принадлежит юзеру."""
+    """Удаляет уведомление текущего пользователя."""
     ok = await wn_db.delete_one_for_identity(session, identity.id, notification_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Уведомление не найдено")

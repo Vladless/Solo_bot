@@ -13,10 +13,11 @@ import { PickOptionsView } from "./PickOptionsView";
 import { SwitchView } from "./SwitchView";
 import { useTariffPanel } from "./useTariffPanel";
 import { useBlockPrefetch } from "@/lib/block-navigation";
+import { AccountKeyAutopay } from "../../../../_shared/AccountKeyAutopay";
 
 
 
-export function DefaultTariffPanelBlockView({ block, context }: TypedBlockViewProps<"defaultTariffPanel">) {
+export function DefaultTariffPanelBlockView({ block, context, editMode }: TypedBlockViewProps<"defaultTariffPanel">) {
   const {
     wrap,
     t,
@@ -623,9 +624,10 @@ export function DefaultTariffPanelBlockView({ block, context }: TypedBlockViewPr
       <div key="hero-main" ref={mergeRefs(revealRef, screenFlip)} className={`${ELEMENT_FILL_CLASS}${panelModeFadeClass}`} style={{ ...panelStyle(t), background: gradient, color: onAccent, position: "relative", ...decor }}>
         <div aria-hidden style={{ position: "absolute", top: -60, right: -40, width: 200, height: 200, borderRadius: 999, background: hexToRgba(onAccent, 0.08), pointerEvents: "none" }} />
         <div aria-hidden style={{ position: "absolute", bottom: -70, right: 40, width: 160, height: 160, borderRadius: 999, background: hexToRgba(onAccent, 0.07), pointerEvents: "none" }} />
-        <div style={{ ...panelBodyStyle(t), position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", gap: t.space.md }}>
+        <div style={{ ...panelBodyStyle(t), position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", gap: t.space.md, overflowY: "auto" }}>
           {expiryUrgentBanner}
-          {heroBody}
+          <div style={{ display: "flex", flexDirection: "column", gap: t.space.md, flex: "1 0 auto" }}>{heroBody}</div>
+          <AccountKeyAutopay clientId={activeKey?.client_id} disabled={isPreview || editMode} embedded style={{ color: onAccent, fontFamily: t.monoFont, fontSize: t.font.sm, flexShrink: 0 }} />
         </div>
         <DefaultQrModal
           t={t}

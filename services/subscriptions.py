@@ -16,12 +16,14 @@ from database import get_key_details, get_servers
 from database.servers import get_enabled_server_subscription_url
 from handlers.utils import convert_to_bytes
 from logger import logger
+from services.subscription_links import subscription_tail_matches
 from settings.cache_config import (
     SUBSCRIPTION_HANDLER_CONCURRENCY,
     SUBSCRIPTION_RESPONSE_CACHE_TTL_SEC,
 )
 from settings.config import (
     PROJECT_NAME,
+    PUBLIC_LINK,
     RANDOM_SUBSCRIPTIONS,
     SUPERNODE,
     SUPPORT_CHAT_URL,
@@ -52,11 +54,7 @@ async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[
 
 
 def _config_identity(line: str) -> str:
-    """Что делает строку подписки отдельным сервером: адрес и параметры без подписи.
-
-    В подписи панель отдаёт название и остаток трафика — они меняются между запросами,
-    поэтому сравнение целых строк одну и ту же точку считает разными.
-    """
+    """Определяет конфигурацию подписки без изменяемой подписи."""
     return line.split("#", 1)[0].strip()
 
 
@@ -91,7 +89,7 @@ async def combine_unique_lines(
 
 
 def _unique_keep_order(values: list[str]) -> list[str]:
-    """Один адрес подписки запрашиваем один раз: у соседних inbound одной панели он общий."""
+    """Удаляет повторяющиеся адреса с сохранением порядка."""
     seen: set[str] = set()
     result: list[str] = []
     for value in values:
@@ -278,18 +276,20 @@ async def handle_subscription(request: web.Request) -> web.Response:
         return web.Response(text="❌ Неверные параметры запроса.", status=400)
 
     cache_key_sub = cache_key("sub_response", email, tg_id)
-    cached = await cache_get(cache_key_sub)
-    if isinstance(cached, dict) and "b" in cached and "h" in cached:
-        return web.Response(text=cached["b"], headers=cached["h"])
-
     sessionmaker = request.app["sessionmaker"]
 
     async with _subscription_semaphore:
         async with sessionmaker() as session:
             try:
                 key = await get_key_details(session, email)
-                if not key or int(tg_id) != int(key["tg_id"]):
+                if not key or not subscription_tail_matches(
+                    tg_id, key.get("tg_id"), key.get("key"), email, PUBLIC_LINK
+                ):
                     return web.Response(text="❌ Подписка не найдена. Получите свой ключ в боте.", status=404)
+
+                cached = await cache_get(cache_key_sub)
+                if isinstance(cached, dict) and "b" in cached and "h" in cached:
+                    return web.Response(text=cached["b"], headers=cached["h"])
 
                 expiry_time_ms = key["expiry_time"]
                 server_id = key["server_id"]

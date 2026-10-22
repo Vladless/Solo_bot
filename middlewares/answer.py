@@ -10,10 +10,7 @@ from bot import bot
 
 
 class EarlyCallbackAnswerMiddleware(BaseMiddleware):
-    """
-    Регистрируется первым в цепочке update. Для CallbackQuery сразу вызывает
-    answer_callback_query.
-    """
+    """Сразу подтверждает нажатие кнопки перед обработкой события."""
 
     async def __call__(
         self,

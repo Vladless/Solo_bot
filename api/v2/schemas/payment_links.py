@@ -12,9 +12,21 @@ class PaymentLinkCreateRequest(BaseModel):
         default=None,
         description="Идентификатор кассы: ROBOKASSA, FREEKASSA, YOOKASSA, YOOMONEY, KASSAI_CARDS, KASSAI_SBP, HELEKET и др. Если не задан — берётся первый доступный.",
     )
+    payhot_customer_phone: str | None = Field(None, max_length=32)
     success_url: str | None = Field(None, description="URL перенаправления после успешной оплаты")
     failure_url: str | None = Field(None, description="URL перенаправления после неуспешной оплаты")
     metadata: dict[str, Any] | None = Field(None, description="Дополнительные данные")
+    accepted_gross_amount: float | None = Field(None, gt=0)
+
+
+class PaymentAmountQuote(BaseModel):
+    provider_id: str
+    currency: str
+    net_amount: str
+    fee_amount: str
+    gross_amount: str
+    fee_percent: str
+    message: str = ""
 
 
 class PaymentLinkCreateResponse(BaseModel):
@@ -22,6 +34,7 @@ class PaymentLinkCreateResponse(BaseModel):
     payment_id: str | None = None
     payment_url: str | None = None
     error: str | None = None
+    amount_quote: PaymentAmountQuote | None = None
 
 
 class PaymentLinkStatusResponse(BaseModel):

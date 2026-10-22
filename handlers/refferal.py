@@ -22,7 +22,7 @@ from database import (
     get_referral_by_referred_id,
     get_referral_stats,
 )
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, UserId, resolve_user_optional
 from database.tariffs import get_tariffs
 from logger import logger
 from services.formatting import format_days, get_referral_link
@@ -48,6 +48,7 @@ from settings.texts import (
     TOP_REFERRALS_ROW,
     TOP_REFERRALS_TEXT,
 )
+from utils.referral_codes import decode_referral_code
 
 from .utils import edit_or_send_message, render_text, safe_answer_inline_query
 
@@ -59,11 +60,11 @@ router = Router()
 @router.message(F.text == "/invite")
 async def invite_handler(callback_query_or_message: Message | CallbackQuery, session: AsyncSession):
     if isinstance(callback_query_or_message, CallbackQuery):
-        chat_id = callback_query_or_message.message.chat.id
+        chat_id = TelegramId(callback_query_or_message.from_user.id)
         target_message = callback_query_or_message.message
         language_code = callback_query_or_message.from_user.language_code
     else:
-        chat_id = callback_query_or_message.chat.id
+        chat_id = TelegramId(callback_query_or_message.from_user.id)
         target_message = callback_query_or_message
         language_code = callback_query_or_message.from_user.language_code
 
@@ -185,7 +186,7 @@ async def show_referral_qr(callback_query: CallbackQuery):
 
 @router.callback_query(F.data == "top_referrals")
 async def top_referrals_handler(callback_query: CallbackQuery, session: AsyncSession):
-    user_id = callback_query.from_user.id
+    user_id = TelegramId(callback_query.from_user.id)
     from database.referrals import get_referral_position, get_top_referrals, get_user_referral_count
 
     user_referral_count = await get_user_referral_count(session, user_id)
@@ -227,18 +228,27 @@ async def top_referrals_handler(callback_query: CallbackQuery, session: AsyncSes
 
 
 async def handle_referral_link(
-    referral_code: str,
+    referral_code: str | int,
     message: Message,
     state: FSMContext,
     session: AsyncSession,
     user_data: dict | None = None,
 ):
     try:
-        referrer_tg_id = int(referral_code)
+        referrer_ref = (
+            referral_code
+            if isinstance(referral_code, UserId | TelegramId)
+            else decode_referral_code(str(referral_code))
+        )
+        referrer = await resolve_user_optional(session, referrer_ref) if referrer_ref is not None else None
+        if referrer is None:
+            await message.answer("❌ Код приглашения недействителен.")
+            return
         user = user_data or message.from_user or message.chat
-        user_id = user["tg_id"] if isinstance(user, dict) else user.id
+        user_id = TelegramId(user["tg_id"] if isinstance(user, dict) else user.id)
+        referred_user = await resolve_user_optional(session, user_id)
 
-        if referrer_tg_id == user_id:
+        if referred_user is not None and referrer.id == referred_user.id:
             await message.answer("❌ Вы не можете быть реферальной ссылкой самого себя.")
             return
 
@@ -264,19 +274,19 @@ async def handle_referral_link(
             await message.answer("❌ Вы уже зарегистрированы и не можете стать рефералом.")
             return
 
-        await add_referral(session, user_id, referrer_tg_id)
+        await add_referral(session, UserId(inserted), UserId(referrer.id))
 
         try:
-            ref_notifier = await resolve_user_optional(session, referrer_tg_id)
-            if ref_notifier is not None and ref_notifier.tg_id is not None:
+            if referrer.tg_id is not None and referrer.tg_id > 0:
                 await bot.send_message(
-                    int(ref_notifier.tg_id),
+                    int(referrer.tg_id),
                     NEW_REFERRAL_NOTIFICATION.format(referred_id=user_id),
                 )
         except Exception as error:
-            logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {error}")
+            logger.error(f"Не удалось отправить уведомление пригласившему (id={referrer.id}): {error}")
 
-        await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
+        referrer_label = referrer.tg_id if referrer.tg_id is not None else referrer.id
+        await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_label))
 
     except Exception as error:
         logger.error(f"Ошибка при обработке реферальной ссылки {referral_code}: {error}")

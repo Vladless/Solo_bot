@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.client_origin import client_origin
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
-from database.access.resolution import resolve_uid_cached, resolve_user_optional
+from database.access.resolution import UserId, resolve_uid_cached, resolve_user_optional, user_ref_cache_key
+from database.cache_purge import is_purge_pending
 from database.models import Key, Tariff, User
 from database.users import invalidate_profile_cache, invalidate_user_snapshot
 from logger import logger
@@ -36,6 +37,9 @@ async def _purge_keys_cache_ids(session: AsyncSession | None, *ids: int) -> None
             cache_key("key_count", i),
             cache_key("user_squads", i),
             cache_key("profile_data", i),
+            user_ref_cache_key("keys_list", UserId(i)),
+            user_ref_cache_key("key_count", UserId(i)),
+            user_ref_cache_key("profile_data", UserId(i)),
         )
         if defer_purge(session, *keys):
             continue
@@ -166,7 +170,7 @@ async def store_key(
     invalidate_user_snapshot(uid)
     if u.tg_id is not None:
         invalidate_user_snapshot(u.tg_id)
-    await invalidate_keys_list(session, uid)
+    await invalidate_keys_list(session, UserId(uid))
     await invalidate_key_details(email)
 
 
@@ -189,14 +193,16 @@ async def get_keys(session: AsyncSession, legacy_user_ref: int):
     uid = await resolve_uid_cached(session, legacy_user_ref)
     if uid is None:
         return []
-    ckey = cache_key("keys_list", uid)
-    cached = await cache_get(ckey)
+    ckey = user_ref_cache_key("keys_list", UserId(uid))
+    pending = is_purge_pending(session, ckey)
+    cached = None if pending else await cache_get(ckey)
     if isinstance(cached, list):
         return [SimpleNamespace(**d) for d in cached]
     result = await session.execute(select(Key).where(Key.user_id == uid))
     rows = result.scalars().all()
     serialized = [_key_to_cache_dict(k) for k in rows]
-    await cache_set(ckey, serialized, KEYS_LIST_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(ckey, serialized, KEYS_LIST_CACHE_TTL_SEC)
     return rows
 
 
@@ -212,6 +218,27 @@ async def get_key_by_server(session: AsyncSession, legacy_user_ref: int, client_
     stmt = select(Key).where(Key.user_id == uid, Key.client_id == client_id)
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def get_key_for_checkout(
+    session: AsyncSession,
+    user_id: UserId,
+    *,
+    client_id: str | None = None,
+    email: str | None = None,
+    lock: bool = True,
+) -> Key | None:
+    """Находит подписку владельца по согласованным реквизитам оплаты."""
+    if not client_id and not email:
+        return None
+    query = select(Key).where(Key.user_id == int(user_id))
+    if client_id:
+        query = query.where(Key.client_id == str(client_id))
+    if email:
+        query = query.where(Key.email == str(email))
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    return await session.scalar(query)
 
 
 async def get_key_by_email(session: AsyncSession, email: str, legacy_user_ref: int | None = None) -> Key | None:
@@ -234,6 +261,53 @@ async def get_key_by_client_id(session: AsyncSession, client_id: str, legacy_use
         stmt = stmt.where(Key.user_id == uid)
     result = await session.execute(stmt.limit(1))
     return result.scalar_one_or_none()
+
+
+async def resolve_current_key_owner(session: AsyncSession, client_id: str, email: str) -> UserId | None:
+    """Блокирует единственного текущего владельца ключа."""
+    if not client_id or not email:
+        return None
+    stmt = select(Key.user_id, Key.email).where(Key.client_id == client_id)
+    for _ in range(2):
+        rows = (await session.execute(stmt)).all()
+        if len(rows) != 1 or rows[0].email != email:
+            return None
+        user_id = int(rows[0].user_id)
+        owner = await session.scalar(select(User.id).where(User.id == user_id).with_for_update())
+        if owner is None:
+            continue
+        current = (await session.execute(stmt)).all()
+        if len(current) != 1 or current[0].email != email:
+            return None
+        if int(current[0].user_id) == user_id:
+            return UserId(user_id)
+    return None
+
+
+async def resolve_key_operation_owner(
+    session: AsyncSession, original_user_id: int, client_id: str, email: str
+) -> UserId | None:
+    """Проверяет владельца исходного ключа после внешнего вызова."""
+    current_uid = await resolve_current_key_owner(session, client_id, email)
+    if current_uid is None:
+        return None
+    if current_uid == int(original_user_id):
+        return current_uid
+    original_uid = await session.scalar(select(User.id).where(User.id == int(original_user_id)))
+    return current_uid if original_uid is None else None
+
+
+async def lock_owned_key_for_operation(session: AsyncSession, user_id: int, client_id: str, email: str) -> Key | None:
+    """Блокирует актуальный ключ исходного владельца."""
+    owner = await resolve_key_operation_owner(session, user_id, client_id, email)
+    if owner is None or int(owner) != int(user_id):
+        return None
+    return await session.scalar(
+        select(Key)
+        .where(Key.user_id == int(owner), Key.client_id == client_id, Key.email == email)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
 
 
 async def get_key_expiry_presets(session: AsyncSession, email: str) -> tuple[str | None, list[int]]:
@@ -266,9 +340,10 @@ async def get_key_expiry_presets(session: AsyncSession, email: str) -> tuple[str
 
 
 async def get_key_details(session: AsyncSession, email: str) -> dict | None:
-    """Возвращает подробную информацию о ключе по email. Горячие данные кэшируются в Redis."""
+    """Возвращает данные ключа по email с учётом кеша."""
     ckey = cache_key("key_details", email)
-    cached = await cache_get(ckey)
+    pending = is_purge_pending(session, ckey)
+    cached = None if pending else await cache_get(ckey)
     if isinstance(cached, dict):
         return cached
 
@@ -316,9 +391,10 @@ async def get_key_details(session: AsyncSession, email: str) -> dict | None:
         "current_device_limit": key.current_device_limit,
         "current_traffic_limit": key.current_traffic_limit,
     }
-    await cache_set(ckey, out, KEY_DETAILS_CACHE_TTL_SEC)
-    if key.client_id:
-        await cache_set(cache_key("key_email", key.client_id), email, KEY_DETAILS_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(ckey, out, KEY_DETAILS_CACHE_TTL_SEC)
+        if key.client_id:
+            await cache_set(cache_key("key_email", key.client_id), email, KEY_DETAILS_CACHE_TTL_SEC)
     return out
 
 
@@ -326,7 +402,9 @@ async def get_key_count(session: AsyncSession, legacy_user_ref: int) -> int:
     uid = await resolve_uid_cached(session, legacy_user_ref)
     if uid is None:
         return 0
-    cached = await cache_get(cache_key("key_count", uid))
+    ckey = user_ref_cache_key("key_count", UserId(uid))
+    pending = is_purge_pending(session, ckey)
+    cached = None if pending else await cache_get(ckey)
     if cached is not None:
         try:
             return int(cached)
@@ -334,7 +412,8 @@ async def get_key_count(session: AsyncSession, legacy_user_ref: int) -> int:
             pass
     result = await session.execute(select(func.count()).select_from(Key).where(Key.user_id == uid))
     count = result.scalar() or 0
-    await cache_set(cache_key("key_count", uid), count, KEY_COUNT_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(ckey, count, KEY_COUNT_CACHE_TTL_SEC)
     return count
 
 
@@ -345,22 +424,14 @@ async def get_key_by_user_and_email(session: AsyncSession, user_id: int, email: 
 
 
 async def delete_key_by_user_and_email(session: AsyncSession, user_id: int, email: str) -> None:
-    """Удаляет ключ по паре (users.id, email). Commit — ответственность caller'а."""
+    """Удаляет ключ клиента по users.id и email."""
     await session.execute(delete(Key).where(Key.user_id == int(user_id), Key.email == email))
 
 
 async def get_user_keys_with_servers_by_email(
     session: AsyncSession, user_id: int, email: str
 ) -> list[tuple[str, str, dict]]:
-    """Возвращает ключи пользователя + инфо о серверах (join Key × Server).
-
-    Каждый элемент — ``(client_id, server_id, server_info_dict)``. Join
-    делается по (Key.server_id == Server.server_name OR Server.cluster_name),
-    чтобы поддержать и country-mode (server_id = cluster), и cluster-mode
-    (server_id = server_name).
-
-    Используется в ``services.operations.traffic.get_user_traffic``.
-    """
+    """Возвращает ключи клиента с данными серверов."""
     from sqlalchemy import or_
 
     from database.models import Server
@@ -391,43 +462,25 @@ async def get_user_keys_with_servers_by_email(
 
 
 async def get_key_client_id_by_email_and_server(session: AsyncSession, email: str, server_id: str) -> str | None:
-    """Возвращает ``client_id`` первого ключа для пары (email, server_id).
-
-    Используется для remnawave traffic reset, где нам нужен только client_id,
-    без остальных полей ключа.
-    """
+    """Находит client_id ключа по email и серверу."""
     result = await session.execute(select(Key.client_id).where(Key.email == email, Key.server_id == server_id).limit(1))
     return result.scalar()
 
 
 async def count_keys_by_server_id(session: AsyncSession, server_id: str) -> int:
-    """Сколько всего ключей привязано к указанному server_id (кластеру или серверу).
-
-    Используется для проверки max_keys лимита. ``server_id`` — строка
-    (у ``keys.server_id`` колонка типа String, содержит либо cluster_name,
-    либо server_name в зависимости от страны/кластера).
-    """
+    """Считает ключи указанного сервера или кластера."""
     result = await session.execute(select(func.count()).select_from(Key).where(Key.server_id == server_id))
     return int(result.scalar() or 0)
 
 
 async def get_all_key_server_ids(session: AsyncSession) -> list[str]:
-    """Список всех ``server_id`` из таблицы keys (с повторениями).
-
-    Используется в ``services.clusters.select_cluster`` для подсчёта загрузки
-    кластеров. Возвращаем только server_id строки без подгрузки остальных
-    полей, чтобы не тянуть сотни мегабайт для огромных deployments.
-    """
+    """Возвращает server_id всех ключей."""
     result = await session.execute(select(Key.server_id))
     return [row[0] for row in result.all() if row[0] is not None]
 
 
 async def count_active_keys_for_user(session: AsyncSession, user_id: int) -> int:
-    """Количество незамороженных ключей у пользователя (по internal users.id).
-
-    Отличается от `get_key_count`: не кэшируется и явно исключает замороженные.
-    Используется в проверке "новый пользователь" для купонных правил.
-    """
+    """Считает незамороженные ключи клиента."""
     result = await session.execute(
         select(func.count()).select_from(Key).where(Key.user_id == int(user_id), Key.is_frozen.is_(False))
     )
@@ -435,7 +488,7 @@ async def count_active_keys_for_user(session: AsyncSession, user_id: int) -> int
 
 
 async def _log_key_deletions(session: AsyncSession, rows, client_ids) -> None:
-    """Пишет событие expired/deleted в журнал ДО удаления ключа (иначе данные теряются)."""
+    """Записывает события подписок перед удалением ключей."""
     try:
         from database.subscription_events import record_subscription_event
 
@@ -459,21 +512,22 @@ async def _log_key_deletions(session: AsyncSession, rows, client_ids) -> None:
         pass
 
 
-async def delete_key(session: AsyncSession, identifier: int | str):
+async def delete_key(session: AsyncSession, identifier: int | str, *, user_id: int | None = None):
     legacy_for_cache = None
     email_for_cache = None
     if isinstance(identifier, str):
+        scope = Key.client_id == identifier
+        if user_id is not None:
+            scope &= Key.user_id == int(user_id)
         res = await session.execute(
-            select(Key.user_id, Key.tg_id, Key.email, Key.tariff_id, Key.server_id, Key.expiry_time).where(
-                Key.client_id == identifier
-            )
+            select(Key.user_id, Key.tg_id, Key.email, Key.tariff_id, Key.server_id, Key.expiry_time).where(scope)
         )
         deleted_rows = res.all()
         if deleted_rows:
             legacy_for_cache, email_for_cache = deleted_rows[0].user_id, deleted_rows[0].email
         await _log_key_deletions(session, deleted_rows, [identifier] * len(deleted_rows))
         await cache_delete(cache_key("key_email", identifier))
-        await session.execute(delete(Key).where(Key.client_id == identifier))
+        await session.execute(delete(Key).where(scope))
     else:
         u = await resolve_user_optional(session, identifier)
         if u is None:
@@ -490,7 +544,7 @@ async def delete_key(session: AsyncSession, identifier: int | str):
         await session.execute(delete(Key).where(Key.user_id == u.id))
     if legacy_for_cache is not None:
         invalidate_user_snapshot(legacy_for_cache)
-        await invalidate_keys_list(session, legacy_for_cache)
+        await invalidate_keys_list(session, UserId(legacy_for_cache))
     if email_for_cache is not None:
         await invalidate_key_details(str(email_for_cache))
     logger.info(f"Ключ с идентификатором {identifier} удалён")
@@ -502,19 +556,22 @@ async def update_key_expiry(
     new_expiry_time: int,
     record_event: bool = True,
     price_rub: float | None = None,
+    *,
+    user_id: int | None = None,
 ):
+    scope = Key.client_id == client_id
+    if user_id is not None:
+        scope &= Key.user_id == int(user_id)
     try:
         ctx = (
-            await session.execute(
-                select(Key.user_id, Key.tg_id, Key.tariff_id, Key.server_id).where(Key.client_id == client_id).limit(1)
-            )
+            await session.execute(select(Key.user_id, Key.tg_id, Key.tariff_id, Key.server_id).where(scope).limit(1))
         ).first()
     except Exception:
         ctx = None
-    await session.execute(update(Key).where(Key.client_id == client_id).values(expiry_time=new_expiry_time))
+    await session.execute(update(Key).where(scope).values(expiry_time=new_expiry_time))
     await invalidate_key_details_by_client_id(session, client_id)
     logger.info(f"Срок действия ключа {client_id} обновлён до {new_expiry_time}")
-    if not record_event:
+    if not record_event or ctx is None:
         return
     try:
         from database.subscription_events import record_subscription_event
@@ -551,7 +608,7 @@ async def mark_key_as_frozen(session: AsyncSession, legacy_user_ref: int, client
         ),
         {"expiry": time_left, "user_id": u.id, "client_id": client_id},
     )
-    await invalidate_keys_list(session, u.id)
+    await invalidate_keys_list(session, UserId(u.id))
     await invalidate_key_details_by_client_id(session, client_id)
 
 
@@ -576,12 +633,15 @@ async def mark_key_as_unfrozen(
         ),
         {"expiry": new_expiry_time, "user_id": u.id, "client_id": client_id},
     )
-    await invalidate_keys_list(session, u.id)
+    await invalidate_keys_list(session, UserId(u.id))
     await invalidate_key_details_by_client_id(session, client_id)
 
 
-async def update_key_tariff(session: AsyncSession, client_id: str, tariff_id: int):
-    await session.execute(update(Key).where(Key.client_id == client_id).values(tariff_id=tariff_id))
+async def update_key_tariff(session: AsyncSession, client_id: str, tariff_id: int, *, user_id: int | None = None):
+    scope = Key.client_id == client_id
+    if user_id is not None:
+        scope &= Key.user_id == int(user_id)
+    await session.execute(update(Key).where(scope).values(tariff_id=tariff_id))
     await invalidate_key_details_by_client_id(session, client_id)
     logger.info(f"Тариф ключа {client_id} обновлён на {tariff_id}")
 
@@ -597,12 +657,7 @@ async def update_key_renewal_snapshot(
     current_traffic_limit: int | None = None,
     apply_limits: bool = True,
 ) -> None:
-    """Обновляет tariff_id и (опционально) лимиты ключа после продления.
-
-    ``apply_limits=True`` — выставить все четыре лимита (для non-configurable
-    тарифов). ``apply_limits=False`` — обновить только ``tariff_id``, лимиты
-    не трогать (configurable-тарифы обновляют их через `save_key_config_with_mode`).
-    """
+    """Обновляет тариф и при необходимости лимиты ключа."""
     values: dict = {"tariff_id": tariff_id}
     if apply_limits:
         values["selected_device_limit"] = selected_device_limit
@@ -622,12 +677,7 @@ async def update_key_post_creation_snapshot(
     selected_traffic_limit: int | None,
     selected_price_rub: int | None,
 ) -> None:
-    """Дозаписывает выбранные пользователем параметры ключа сразу после создания.
-
-    Используется из `services.keys.create_vpn_key_headless` — тариф/лимиты не
-    всегда известны на момент `create_key_on_cluster`, поэтому после него
-    идёт snapshot-апдейт для полей, которые нужны для отображения в UI.
-    """
+    """Сохраняет выбранные параметры созданного ключа."""
     await session.execute(
         update(Key)
         .where(Key.user_id == int(user_id), Key.email == email)
@@ -699,6 +749,7 @@ async def save_key_config_with_mode(
     has_device_choice: bool,
     has_traffic_choice: bool,
     config_mode: str,
+    user_id: int | None = None,
 ) -> None:
     values: dict = {}
 
@@ -720,7 +771,12 @@ async def save_key_config_with_mode(
     if not values:
         return
 
-    await session.execute(update(Key).where(Key.email == email).values(**values))
+    stmt = update(Key).where(Key.email == email)
+    if user_id is not None:
+        stmt = stmt.where(Key.user_id == int(user_id))
+    result = await session.execute(stmt.values(**values))
+    if user_id is not None and (result.rowcount or 0) != 1:
+        raise ValueError("Key owner changed while saving its configuration")
     await invalidate_key_details(email)
 
 
@@ -740,7 +796,7 @@ async def reset_key_tariff_state(session: AsyncSession, legacy_user_ref: int, em
             selected_price_rub=None,
         )
     )
-    await invalidate_keys_list(session, u.id)
+    await invalidate_keys_list(session, UserId(u.id))
     await invalidate_key_details(email)
 
 
@@ -772,7 +828,7 @@ async def save_key_tariff_selection(
             selected_price_rub=None,
         )
     )
-    await invalidate_keys_list(session, u.id)
+    await invalidate_keys_list(session, UserId(u.id))
     await invalidate_key_details(email)
 
 
@@ -799,18 +855,18 @@ async def save_admin_key_config(
     await invalidate_key_details(email)
 
 
-async def reset_key_current_limits_to_selected(session: AsyncSession, client_id: str):
+async def reset_key_current_limits_to_selected(session: AsyncSession, client_id: str, *, user_id: int | None = None):
     """Сбрасывает текущие лимиты к выбранным для ключа."""
+    scope = Key.client_id == client_id
+    if user_id is not None:
+        scope &= Key.user_id == int(user_id)
     await session.execute(
-        text(
-            """
-            UPDATE keys
-            SET current_device_limit = selected_device_limit,
-                current_traffic_limit = selected_traffic_limit
-            WHERE client_id = :client_id
-            """
-        ),
-        {"client_id": client_id},
+        update(Key)
+        .where(scope)
+        .values(
+            current_device_limit=Key.selected_device_limit,
+            current_traffic_limit=Key.selected_traffic_limit,
+        )
     )
     await invalidate_key_details_by_client_id(session, client_id)
     logger.info(f"Текущие лимиты ключа {client_id} сброшены к выбранным")

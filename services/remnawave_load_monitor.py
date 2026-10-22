@@ -331,7 +331,6 @@ async def run_load_monitor_cycle(bot=None) -> dict[str, Any]:
             return api
 
         try:
-            # First restore tags whose group, node membership, threshold, or tag was removed/changed.
             kept_managed: list[dict[str, Any]] = []
             for item in managed:
                 api_url = str(item.get("api_url") or "").rstrip("/")
@@ -512,7 +511,6 @@ async def run_load_monitor_cycle(bot=None) -> dict[str, Any]:
                         for host_api, host_uuid, host in candidate_hosts
                         if host_api == api_url and _host_matches_node(host, api_url, node_uuid, snapshots)
                     ]
-                    # Keep at least one host in the group's auto-selection pool.
                     if not node_hosts or active_candidates - len(node_hosts) < 1:
                         continue
                     api = await get_api(api_url)

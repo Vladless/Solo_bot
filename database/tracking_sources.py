@@ -4,14 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.client_origin import normalize_campaign
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from core.redis_cache import cache_get, cache_key, cache_set
+from database.access.resolution import UserId, resolve_user_optional
 from database.models import Payment, TrackingSource, User
-from database.users import upsert_source_if_empty
+from database.users import set_source_if_empty, upsert_source_if_empty
 from logger import logger
 from settings.cache_config import START_UTM_EXISTS_TTL_SEC as UTM_EXISTS_TTL_SEC
 
 
 async def is_known_tracking_source(session: AsyncSession, code: str) -> bool:
-    """Есть ли такой код источника. Ответ кешируется: проверка идёт на каждом входе клиента."""
+    """Проверяет существование кода рекламного источника."""
     if not code:
         return False
     key = cache_key("utm_exists", code)
@@ -26,20 +27,14 @@ async def is_known_tracking_source(session: AsyncSession, code: str) -> bool:
 
 
 async def attribute_source_if_known(session: AsyncSession, user_ref: int, code: str | None) -> bool:
-    """Ставит источник клиенту, если код известен и источник ещё не заполнен.
-
-    Клиента адресуем по `users.id`; upsert по tg остаётся для бота, где строки может ещё не быть.
-    """
+    """Заполняет пустой источник клиента известной рекламной меткой."""
     normalized = normalize_campaign(code)
     if not normalized or not await is_known_tracking_source(session, normalized):
         return False
-    from database.access.resolution import resolve_user_optional
-    from database.users import set_source_if_empty
-
-    user = await resolve_user_optional(session, int(user_ref))
+    user = await resolve_user_optional(session, user_ref)
     if user is not None:
         return await set_source_if_empty(session, int(user.id), normalized)
-    if int(user_ref) > 0:
+    if not isinstance(user_ref, UserId) and int(user_ref) > 0:
         return await upsert_source_if_empty(session, int(user_ref), normalized)
     return False
 
@@ -232,7 +227,7 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
     regs_rows = await session.execute(
         select(
             month_expr_regs,
-            func.count(func.distinct(User.tg_id)).label("cnt"),
+            func.count(func.distinct(User.id)).label("cnt"),
         )
         .where((User.source_code == code) & (User.created_at >= created_at))
         .group_by(month_expr_regs)
@@ -244,7 +239,7 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
     trials_rows = await session.execute(
         select(
             month_expr_trials,
-            func.count(func.distinct(User.tg_id)).label("cnt"),
+            func.count(func.distinct(User.id)).label("cnt"),
         )
         .where((User.source_code == code) & (User.trial == 1) & (User.created_at >= created_at))
         .group_by(month_expr_trials)

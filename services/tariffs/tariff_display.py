@@ -58,7 +58,7 @@ async def get_effective_limits_for_key(
     selected_traffic_gb: int | None,
     tariff: dict | None = None,
 ) -> tuple[int, int]:
-    """Возвращает лимиты устройств и трафика с учётом выбранных значений. tariff опционален — если передан, get_tariff_by_id не вызывается."""
+    """Возвращает лимиты устройств и трафика с учётом выбранных значений."""
     if tariff is None and tariff_id:
         tariff = await get_tariff_by_id(session, int(tariff_id))
 

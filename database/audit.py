@@ -16,7 +16,8 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
-from database.models import AuditEvent, Payment
+from database.access.resolution import UserId, public_tg_id
+from database.models import AuditEvent, Payment, User
 
 
 _AUDIT_TABLE_READY = False
@@ -76,13 +77,14 @@ async def fetch_successful_payment_rows_db(
     date_from: datetime,
     date_to: datetime,
     limit: int,
-) -> list[tuple[str, str, int | None, None]]:
+) -> list[tuple[str, str, int | None, str | None]]:
     success_at_expr = func.coalesce(
         cast(Payment.metadata_["status_changed_at"].astext, SQLADateTime),
         Payment.created_at,
     )
     stmt = (
-        select(Payment.payment_system, Payment.payment_id, Payment.user_id)
+        select(Payment.payment_system, Payment.payment_id, Payment.user_id, User.tg_id, User.identity_id)
+        .outerjoin(User, User.id == Payment.user_id)
         .where(
             Payment.status == "success",
             Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
@@ -93,10 +95,13 @@ async def fetch_successful_payment_rows_db(
         .limit(limit)
     )
     result = await session.execute(stmt)
-    return [
-        (f"payment_success:{payment_system or '-'}:{payment_id or '-'}", "success", tg_id, None)
-        for payment_system, payment_id, tg_id in result.all()
-    ]
+    rows = []
+    for payment_system, payment_id, user_id, tg_id, identity_id in result.all():
+        actor_ref = public_tg_id(tg_id)
+        if actor_ref is None and identity_id is None and user_id is not None:
+            actor_ref = UserId(user_id)
+        rows.append((f"payment_success:{payment_system or '-'}:{payment_id or '-'}", "success", actor_ref, identity_id))
+    return rows
 
 
 async def fetch_latest_audit_reset_db(
@@ -147,6 +152,14 @@ async def fetch_existing_audit_request_ids_db(
     return {rid for rid in result.scalars().all() if rid}
 
 
+async def audit_user_tg_ref_is_ambiguous(session: AsyncSession, identity_id: str | None, tg_id: int | None) -> bool:
+    """Проверяет коллизию старого Telegram-адреса с чужим users.id."""
+    if not identity_id or tg_id is None:
+        return False
+    row = (await session.execute(select(User.identity_id).where(User.id == tg_id))).first()
+    return row is not None and row.identity_id != identity_id
+
+
 async def fetch_audit_events_db(
     session: AsyncSession,
     *,
@@ -166,9 +179,36 @@ async def fetch_audit_events_db(
         actor_filters.append(and_(AuditEvent.entity_type == "identity", AuditEvent.entity_id == identity_id))
     if tg_id is not None:
         tg_id_str = str(tg_id)
-        actor_filters.append(AuditEvent.actor_tg_id == tg_id)
-        actor_filters.append(and_(AuditEvent.entity_type == "user", AuditEvent.entity_id == tg_id_str))
-        actor_filters.append(and_(AuditEvent.entity_type == "telegram_user", AuditEvent.entity_id == tg_id_str))
+        ambiguous_user_ref = await audit_user_tg_ref_is_ambiguous(session, identity_id, tg_id)
+        tg_filters = [
+            AuditEvent.actor_tg_id == tg_id,
+            and_(AuditEvent.entity_type == "telegram_user", AuditEvent.entity_id == tg_id_str),
+        ]
+        if not ambiguous_user_ref:
+            tg_filters.append(and_(AuditEvent.entity_type == "user", AuditEvent.entity_id == tg_id_str))
+        tg_match = or_(*tg_filters)
+        if identity_id:
+            tg_match = and_(
+                AuditEvent.actor_identity_id.is_(None),
+                tg_match,
+                or_(
+                    AuditEvent.entity_type.is_(None),
+                    AuditEvent.entity_type != "identity",
+                    AuditEvent.entity_id.is_(None),
+                    AuditEvent.entity_id == identity_id,
+                ),
+            )
+            if ambiguous_user_ref:
+                tg_match = and_(
+                    tg_match,
+                    or_(
+                        AuditEvent.entity_type.is_(None),
+                        AuditEvent.entity_type != "user",
+                        AuditEvent.entity_id.is_(None),
+                        AuditEvent.entity_id != tg_id_str,
+                    ),
+                )
+        actor_filters.append(tg_match)
     if actor_filters:
         stmt = stmt.where(or_(*actor_filters))
     if channel:

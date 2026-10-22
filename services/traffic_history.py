@@ -15,8 +15,7 @@ _BULK_TIMEOUT_SEC = 60
 
 
 async def snapshot_all_key_traffic(session: AsyncSession) -> int:
-    """Снимает дневной снапшот использованного трафика по активным ключам (remnawave bulk).
-    Один ряд на (client_id, дата); повторный запуск за день обновляет значение."""
+    """Сохраняет суточные значения использованного трафика активных подписок."""
     from panels.remnawave_runtime import fetch_all_remnawave_traffic
 
     now_ms = int(time.time() * 1000)
@@ -103,8 +102,7 @@ async def get_traffic_history(session: AsyncSession, client_id: str, days: int =
 
 
 async def snapshot_all_key_traffic_hourly(session: AsyncSession) -> int:
-    """Почасовой снапшот использованного трафика по активным ключам.
-    Один ряд на (client_id, час); хранит последние 48 часов (старое чистится)."""
+    """Сохраняет почасовые значения трафика активных подписок за последние 48 часов."""
     from panels.remnawave_runtime import fetch_all_remnawave_traffic
 
     now_ms = int(time.time() * 1000)

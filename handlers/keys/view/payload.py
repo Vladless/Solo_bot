@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 
 import pytz
 
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
-from database import get_key_details, get_keys, get_vless_enabled_batch
+from database import get_key_by_email, get_key_details, get_keys, get_vless_enabled_batch
+from database.access.resolution import UserId, notify_telegram_chat_id
 from database.models import Key
 from handlers.keys.utils import build_key_callback, build_key_ref, key_owned_by_user, resolve_key
 from handlers.keys.view.screens import (
@@ -19,9 +20,12 @@ from handlers.keys.view.screens import (
     build_single_subscription_text,
 )
 from handlers.menu_layout import KEY_MENU, arrange_menu, split_hook_buttons
+from handlers.notifications.webapp_only import webapp_only_markup
 from handlers.utils import (
     edit_or_send_message,
     fill_text,
+    find_media_file,
+    get_media_type,
     get_russian_month,
     is_full_remnawave_cluster,
     render_screen,
@@ -74,6 +78,7 @@ from settings.texts import (
     MY_DEVICES_EMPTY_TEXT,
     MY_DEVICES_HINT,
     MY_DEVICES_TEXT,
+    MY_DEVICES_UNAVAILABLE_TEXT,
     NO_SUBSCRIPTIONS_MSG,
 )
 
@@ -185,7 +190,12 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
     key_obj = await resolve_key(session, tg_id, key_ref_or_email)
     key_name = key_obj.email if key_obj else key_ref_or_email
     record = await get_key_details(session, key_name)
-    if not record:
+    if (
+        key_obj is None
+        or not record
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         return "<b>Информация о подписке не найдена.</b>", builder.as_markup(), False
@@ -252,7 +262,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
 
     is_full_remnawave = await is_full_task
 
-    hwid_count = 0
+    hwid_count = None
     remna_used_gb = None
     if is_full_remnawave and client_id:
         profile = await get_remnawave_profile(
@@ -260,9 +270,10 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
             str(server_name),
             client_id,
             username=str(record.get("email") or "") or None,
+            subscription_url=record.get("remnawave_link") or record.get("link"),
         )
         if profile:
-            hwid_count = int(profile.get("hwid_count") or 0)
+            hwid_count = profile.get("hwid_count")
             remna_used_gb = profile.get("used_gb")
             traffic_limit_bytes_actual = profile.get("traffic_limit_bytes")
             if traffic_limit_bytes_actual is not None:
@@ -288,7 +299,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
         formatted_expiry_date=formatted_expiry_date,
         days_left_message=days_left_message,
         country=server_name if country_selection_enabled else None,
-        hwid_count=hwid_count if device_limit is not None else 0,
+        hwid_count=hwid_count,
         tariff_name=tariff_name,
         traffic_limit=traffic_limit_gb,
         device_limit=device_limit,
@@ -365,7 +376,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
             text=MY_DEVICES,
             callback_data=build_key_callback("my_devices", client_id, key_name) + "|0",
         )
-        if hwid_reset_enabled and hwid_count > 0
+        if hwid_reset_enabled and is_full_remnawave
         else None,
         "qr": InlineKeyboardButton(text=QR, callback_data=build_key_callback("show_qr", client_id, key_name))
         if qrcode_enabled
@@ -391,8 +402,56 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
 
 
 async def build_key_view_message(session: AsyncSession, email: str):
-    text, reply_markup, _ = await build_key_view_payload(session, 0, email)
+    key_obj = await get_key_by_email(session, email)
+    owner_ref = UserId(key_obj.user_id) if key_obj is not None else UserId(0)
+    text, reply_markup, _ = await build_key_view_payload(session, owner_ref, email)
     return text, reply_markup
+
+
+async def send_key_info(
+    bot,
+    session: AsyncSession,
+    user_ref: int,
+    key_ref_or_email: str,
+    *,
+    target_message: Message | None = None,
+) -> None:
+    """Показывает владельцу актуальную карточку подписки."""
+    key = await resolve_key(session, user_ref, key_ref_or_email)
+    if key is None:
+        return
+    owner = UserId(key.user_id)
+    chat_id = await notify_telegram_chat_id(session, owner)
+    if chat_id is None:
+        return
+    text, reply_markup, _ = await build_key_view_payload(session, owner, key.client_id)
+    reply_markup = webapp_only_markup() or reply_markup
+    media_path = find_media_file("img/pic_view.jpg")
+    if target_message is not None:
+        if target_message.chat.id != chat_id:
+            raise ValueError("Сообщение карточки не принадлежит владельцу подписки")
+        await edit_or_send_message(
+            target_message=target_message,
+            text=text,
+            reply_markup=reply_markup,
+            media_path=media_path,
+            edit_only=True,
+        )
+        return
+    if media_path:
+        try:
+            media = FSInputFile(media_path)
+            media_type = get_media_type(media_path)
+            if media_type == "video":
+                await bot.send_video(chat_id=chat_id, video=media, caption=text, reply_markup=reply_markup)
+            elif media_type == "animation":
+                await bot.send_animation(chat_id=chat_id, animation=media, caption=text, reply_markup=reply_markup)
+            else:
+                await bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=reply_markup)
+            return
+        except Exception as error:
+            logger.warning("Не удалось отправить изображение карточки подписки {}: {}", key.email, error)
+    await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
 
 
 async def render_key_info(message: Message, session: AsyncSession, key_ref_or_email: str, image_path: str):
@@ -417,7 +476,7 @@ async def _build_single_subscription_text(
     device_limit = 0
     base_device_limit = 0
     used_traffic_gb = None
-    hwid_count = 0
+    hwid_count = None
 
     key_record = await get_key_details(session, key.email)
 
@@ -448,13 +507,18 @@ async def _build_single_subscription_text(
         except Exception as e:
             logger.error(f"[single_sub] Ошибка тарифа для {key.email}: {e}")
 
-    hwid_reset_enabled = bool(BUTTONS_CONFIG.get("HWID_RESET_BUTTON_ENABLE", HWID_RESET_BUTTON))
     if getattr(key, "client_id", None):
         try:
             if await is_full_remnawave_cluster(key.server_id, session):
-                profile = await get_remnawave_profile(session, str(key.server_id), key.client_id, username=key.email)
+                profile = await get_remnawave_profile(
+                    session,
+                    str(key.server_id),
+                    key.client_id,
+                    username=key.email,
+                    subscription_url=key.remnawave_link or key.key,
+                )
                 if isinstance(profile, dict):
-                    hwid_count = int(profile.get("hwid_count") or 0)
+                    hwid_count = profile.get("hwid_count")
                     used_traffic_gb = profile.get("used_gb")
         except Exception as e:
             logger.error(f"[single_sub] Ошибка профиля Remnawave для {key.email}: {e}")
@@ -487,7 +551,7 @@ async def _build_single_subscription_text(
         used_traffic_gb=used_traffic_gb,
         device_limit=device_limit,
         base_device_limit=base_device_limit,
-        hwid_count=hwid_count if hwid_reset_enabled else 0,
+        hwid_count=hwid_count,
         expiry_date=expiry_date,
         is_expired=is_expired,
     )
@@ -556,7 +620,12 @@ async def _render_my_devices(
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
     key_name = key_obj.email if key_obj else key_ref
     record = await get_key_details(session, key_name)
-    if not record or not key_owned_by_user(record, callback_query.from_user.id):
+    if (
+        key_obj is None
+        or not key_owned_by_user(record, callback_query.from_user.id)
+        or record.get("user_id") != key_obj.user_id
+        or record.get("client_id") != key_obj.client_id
+    ):
         await safe_answer_callback(callback_query, "❌ Ключ не найден.", show_alert=True)
         return
 
@@ -571,9 +640,18 @@ async def _render_my_devices(
     async def _fetch(api):
         return await api.get_user_hwid_devices(client_id, username=key_email)
 
-    devices = await with_remnawave_api(session, server_id, _fetch, fallback_any=True, timeout_sec=10.0)
+    devices = await with_remnawave_api(
+        session,
+        server_id,
+        _fetch,
+        timeout_sec=10.0,
+        client_id=client_id,
+        username=key_email,
+        subscription_url=record.get("remnawave_link") or record.get("link"),
+    )
     if devices is None:
-        devices = []
+        await safe_answer_callback(callback_query, MY_DEVICES_UNAVAILABLE_TEXT, show_alert=True)
+        return
 
     total = len(devices)
     if total == 0:

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import get_keys, get_tariffs, get_tariffs_for_cluster
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import Notification
 from handlers.keys.utils import build_key_callback
 from handlers.notifications.keyboards import build_tariffs_keyboard
@@ -44,7 +44,7 @@ router = Router()
 
 @router.callback_query(F.data == "hot_lead_discount")
 async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
-    tg_id = callback.from_user.id
+    tg_id = TelegramId(callback.from_user.id)
     u = await resolve_user_optional(session, tg_id)
     if u is None:
         await callback.message.edit_text(DISCOUNT_UNAVAILABLE)
@@ -129,7 +129,7 @@ async def handle_discount_tariff_selection(callback: CallbackQuery, session: Asy
 
 @router.callback_query(F.data == "hot_lead_final_discount")
 async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
-    tg_id = callback.from_user.id
+    tg_id = TelegramId(callback.from_user.id)
     u = await resolve_user_optional(session, tg_id)
     if u is None:
         await callback.message.edit_text(DISCOUNT_UNAVAILABLE)
@@ -199,7 +199,7 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data == "cold_lead_discount")
 async def handle_cold_discount_entry(callback: CallbackQuery, session: AsyncSession):
-    tg_id = callback.from_user.id
+    tg_id = TelegramId(callback.from_user.id)
     u = await resolve_user_optional(session, tg_id)
     if u is None:
         await callback.message.edit_text(COLD_DISCOUNT_UNAVAILABLE)
@@ -271,7 +271,7 @@ async def handle_cold_discount_entry(callback: CallbackQuery, session: AsyncSess
 
 @router.callback_query(F.data == "cold_lead_final_discount")
 async def handle_cold_ultra_discount(callback: CallbackQuery, session: AsyncSession):
-    tg_id = callback.from_user.id
+    tg_id = TelegramId(callback.from_user.id)
     u = await resolve_user_optional(session, tg_id)
     if u is None:
         await callback.message.edit_text(COLD_DISCOUNT_UNAVAILABLE)

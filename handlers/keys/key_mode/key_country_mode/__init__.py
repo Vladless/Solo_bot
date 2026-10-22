@@ -1,4 +1,4 @@
-from . import change_location  # noqa: F401 — trigger endpoint registration
+from . import change_location
 from ._common import router
 from .entry import handle_country_selection, key_country_mode
 from .finalize import (

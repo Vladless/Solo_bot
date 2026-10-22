@@ -5,27 +5,28 @@ from typing import Any
 
 from aiogram import F, types
 from aiogram.types import CallbackQuery
-from py3xui import AsyncApi
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MODES_CONFIG
 from database import get_servers
+from database.access.resolution import UserId, panel_identity_fields
+from database.keys import get_key_by_server, update_key_link
 from database.models import Key, Server, Tariff, User
 from filters.admin import IsAdminFilter
-from handlers.utils import ALLOWED_GROUP_CODES
 from logger import logger
 from panels import remnawave as remnawave_panel
-from panels._3xui import get_inbound_node
+from panels._3xui import get_inbound_node, get_xui_instance
+from services.cluster_access import is_server_configured, resolve_tariff_servers
 from services.operations import (
     create_client_on_server,
     create_key_on_cluster,
     delete_key_from_cluster,
 )
 from services.operations.aggregated_links import make_aggregated_link
+from services.subscription_links import preserve_saved_public_link
 from settings.config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
+    PUBLIC_LINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     USE_COUNTRY_SELECTION,
@@ -39,6 +40,15 @@ from .keyboard import AdminClusterCallback, build_availability_kb, build_sync_cl
 
 
 SYNC_CONCURRENCY = 200
+
+
+async def _preserve_synced_public_link(session: AsyncSession, key: dict) -> None:
+    recreated = await get_key_by_server(session, UserId(key["user_id"]), key["client_id"])
+    if recreated is None:
+        return
+    link = preserve_saved_public_link(recreated.key, key.get("key"), key["email"], PUBLIC_LINK)
+    if link != recreated.key:
+        await update_key_link(session, recreated.email, link)
 
 
 async def _fetch_all_panel_uuids(remna: "remnawave_panel.RemnawaveAPI") -> set[str]:
@@ -82,15 +92,37 @@ async def _fetch_all_panel_uuids(remna: "remnawave_panel.RemnawaveAPI") -> set[s
     return uuids
 
 
+def _allowed_sync_servers(
+    key,
+    tariff: dict | None,
+    cluster_servers: list[dict],
+    use_country_selection: bool,
+    *,
+    binding_scope: list[dict] | None = None,
+) -> list[dict]:
+    """Определяет разрешённые тарифом серверы синхронизации."""
+    if not key.get("tariff_id") or not tariff or tariff.get("id") != key["tariff_id"]:
+        return []
+    allowed = resolve_tariff_servers(
+        cluster_servers,
+        tariff,
+        binding_scope=binding_scope,
+        selected_server=str(key.get("server_id") or "") if use_country_selection else None,
+    )
+    return allowed if all(is_server_configured(server) for server in allowed) else []
+
+
 def _compute_user_fields(
     key,
     tariff: dict | None,
     cluster_servers: list[dict],
     use_country_selection: bool,
+    *,
+    binding_scope: list[dict] | None = None,
+    api_url: str | None = None,
 ) -> tuple[int, int, str | None, list[str]]:
     traffic_limit_bytes = 0
     hwid_limit = 0
-    subgroup_title = tariff.get("subgroup_title") if tariff else None
 
     current_device_limit_from_key = key.get("current_device_limit")
     current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
@@ -116,34 +148,18 @@ def _compute_user_fields(
     if key.get("expiry_time"):
         expire_iso = datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
 
-    if use_country_selection:
-        user_server = None
-        for s in cluster_servers:
-            if s.get("server_name") == key["server_id"]:
-                user_server = s
-                break
-        inbound_ids = [user_server["inbound_id"]] if user_server and user_server.get("inbound_id") else []
-    else:
-        filtered_servers = cluster_servers
-        if subgroup_title or (tariff and tariff.get("id")):
-            tid = tariff.get("id") if tariff else None
-            filtered_servers = [
-                s
-                for s in cluster_servers
-                if (tid and tid in (s.get("tariff_ids") or []))
-                or (subgroup_title and subgroup_title in (s.get("tariff_subgroups") or []))
-            ]
-            if not filtered_servers:
-                filtered_servers = cluster_servers
-
-        if tariff and tariff.get("group_code"):
-            group_code = tariff.get("group_code").lower()
-            if group_code in ALLOWED_GROUP_CODES:
-                special_filtered = [s for s in filtered_servers if group_code in (s.get("special_groups") or [])]
-                if special_filtered:
-                    filtered_servers = special_filtered
-
-        inbound_ids = [s["inbound_id"] for s in filtered_servers if s.get("inbound_id")]
+    filtered_servers = _allowed_sync_servers(
+        key, tariff, cluster_servers, use_country_selection, binding_scope=binding_scope
+    )
+    if api_url is not None:
+        panel_url = api_url.strip().rstrip("/")
+        filtered_servers = [
+            server
+            for server in filtered_servers
+            if str(server.get("api_url") or "").strip().rstrip("/") == panel_url
+            and str(server.get("panel_type") or "").lower() == "remnawave"
+        ]
+    inbound_ids = list(dict.fromkeys(s["inbound_id"] for s in filtered_servers if s.get("inbound_id")))
 
     return traffic_limit_bytes, hwid_limit, expire_iso, inbound_ids
 
@@ -186,21 +202,12 @@ async def handle_cluster_availability(
 
         try:
             if panel_type == "3x-ui":
-                xui = AsyncApi(
-                    server["api_url"],
-                    username=ADMIN_USERNAME,
-                    password=ADMIN_PASSWORD,
-                    logger=None,
-                )
-                await xui.login()
+                xui = await get_xui_instance(server["api_url"])
                 inbound_id = int(server["inbound_id"])
                 online_clients = await xui.client.online()
-                online_inbound_users = 0
-
-                for client_email in online_clients:
-                    client = await xui.client.get_by_email(client_email)
-                    if client and client.inbound_id == inbound_id:
-                        online_inbound_users += 1
+                inbound = await xui.inbound.get_by_id(inbound_id)
+                inbound_emails = {client.email for client in inbound.settings.clients}
+                online_inbound_users = len(set(online_clients) & inbound_emails)
 
                 total_online_users += online_inbound_users
                 lines.append(f"🌍 <b>{prefix} {server_name}</b> — {online_inbound_users} онлайн")
@@ -288,12 +295,7 @@ async def handle_clusters_backup(
         if server.get("panel_type") == "remnawave":
             continue
 
-        xui = AsyncApi(
-            server["api_url"],
-            username=ADMIN_USERNAME,
-            password=ADMIN_PASSWORD,
-            logger=logger,
-        )
+        xui = await get_xui_instance(server["api_url"])
         await create_backup_and_send_to_admins(xui)
 
     text = menu_text(
@@ -361,8 +363,10 @@ async def handle_sync_server(
                     User.tg_id.label("owner_tg_id"),
                     Key.client_id,
                     Key.email,
+                    Key.key,
                     Key.expiry_time,
                     Key.tariff_id,
+                    Key.server_id,
                     Key.remnawave_link,
                     Key.selected_device_limit,
                     Key.selected_traffic_limit,
@@ -384,8 +388,10 @@ async def handle_sync_server(
                     User.tg_id.label("owner_tg_id"),
                     Key.client_id,
                     Key.email,
+                    Key.key,
                     Key.expiry_time,
                     Key.tariff_id,
+                    Key.server_id,
                     Key.remnawave_link,
                     Key.selected_device_limit,
                     Key.selected_traffic_limit,
@@ -415,8 +421,9 @@ async def handle_sync_server(
             )
         )
 
-        all_servers = await get_servers(session)
+        all_servers = await get_servers(session, include_enabled=True)
         cluster_servers = all_servers.get(cluster_name, [])
+        binding_scope = [server for servers in all_servers.values() for server in servers]
 
         server_info = None
         for s in cluster_servers:
@@ -432,32 +439,59 @@ async def handle_sync_server(
             tariffs_cache = {t.id: dict(t.__dict__) for t in tariffs_list}
 
         semaphore = asyncio.Semaphore(2)
+        confirmed_count = 0
+        failed_count = 0
+        skipped_count = 0
         for key in keys_to_sync:
             try:
-                if key["panel_type"] == "remnawave":
-                    tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
+                tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
+                allowed_servers = _allowed_sync_servers(
+                    key,
+                    tariff,
+                    cluster_servers,
+                    use_country_selection,
+                    binding_scope=binding_scope,
+                )
+                target_server = next(
+                    (server for server in allowed_servers if server.get("server_name") == server_name), None
+                )
+                if target_server is None or server_info is None or server_info.get("enabled") is False:
+                    skipped_count += 1
+                    logger.warning(
+                        f"[Sync] Ключ {key['client_id']} пропущен: сервер {server_name} "
+                        "не разрешён действующим тарифом или выключен"
+                    )
+                    continue
 
-                    if tariff and server_info:
-                        subgroup = tariff.get("subgroup_title")
-                        tid = key["tariff_id"]
-                        has_new_binding = tid and tid in (server_info.get("tariff_ids") or [])
-                        has_old_binding = subgroup and subgroup in (server_info.get("tariff_subgroups") or [])
-                        has_any_binding = bool(server_info.get("tariff_ids") or server_info.get("tariff_subgroups"))
+                panel_api_url = str(target_server.get("api_url") or "").strip().rstrip("/")
+                if not panel_api_url or not target_server.get("inbound_id"):
+                    skipped_count += 1
+                    logger.warning(f"[Sync] Ключ {key['client_id']} пропущен: сервер {server_name} не настроен")
+                    continue
 
-                        if has_any_binding and subgroup and not has_new_binding and not has_old_binding:
-                            continue
-
-                        if tariff.get("group_code") and tariff.get("group_code").lower() in ALLOWED_GROUP_CODES:
-                            if tariff.get("group_code").lower() not in server_info.get("special_groups", []):
-                                continue
+                if str(target_server.get("panel_type") or key["panel_type"]).lower() == "remnawave":
+                    inbound_ids = list(
+                        dict.fromkeys(
+                            str(server["inbound_id"]).strip()
+                            for server in allowed_servers
+                            if str(server.get("panel_type") or "").lower() == "remnawave"
+                            and str(server.get("api_url") or "").strip().rstrip("/") == panel_api_url
+                            and str(server.get("inbound_id") or "").strip()
+                        )
+                    )
+                    if not inbound_ids:
+                        skipped_count += 1
+                        logger.warning(f"[Sync] Ключ {key['client_id']} пропущен: разрешённые squads не определены")
+                        continue
 
                     expire_iso = (
                         datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
                     )
 
-                    async with remnawave_api(key["api_url"]) as remna:
+                    async with remnawave_api(panel_api_url) as remna:
                         if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                             logger.error(f"Не удалось авторизоваться в Remnawave для сервера {server_name}")
+                            failed_count += 1
                             continue
 
                         traffic_limit_bytes = 0
@@ -483,18 +517,14 @@ async def handle_sync_server(
                             else:
                                 hwid_limit = tariff.get("device_limit")
 
-                        from database.access.resolution import panel_identity_fields
-
-                        _ptg, _pemail = await panel_identity_fields(
-                            session, int(key.get("owner_tg_id") or 0) or key["user_id"]
-                        )
+                        _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
                         success = await remna.update_user(
                             uuid=key["client_id"],
                             lookup_username=key.get("email"),
                             expire_at=expire_iso,
                             telegram_id=_ptg,
                             email=_pemail or None,
-                            active_user_inbounds=[key["inbound_id"]],
+                            active_user_inbounds=inbound_ids,
                             traffic_limit_bytes=traffic_limit_bytes,
                             hwid_device_limit=hwid_limit,
                         )
@@ -508,11 +538,11 @@ async def handle_sync_server(
                                     if new_remnawave_link:
                                         key_value = await make_aggregated_link(
                                             session=session,
-                                            cluster_all=cluster_servers,
+                                            cluster_all=allowed_servers,
                                             cluster_id=cluster_name,
                                             email=key["email"],
                                             client_id=key["client_id"],
-                                            tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
+                                            tg_id=UserId(key["user_id"]),
                                             remna_link_override=None,
                                             plan=tariff,
                                         )
@@ -527,48 +557,48 @@ async def handle_sync_server(
                                 logger.warning(f"[Sync] Не удалось получить ссылку для {key['email']}: {e}")
 
                         if not success:
-                            logger.warning("[Sync] ошибка обновления, пробуем пересоздать")
-
-                            await delete_key_from_cluster(server_name, key["email"], key["client_id"], session)
-
-                            await create_key_on_cluster(
-                                cluster_id=server_name,
-                                tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
-                                client_id=key["client_id"],
-                                email=key["email"],
-                                expiry_timestamp=key["expiry_time"],
-                                plan=key["tariff_id"],
-                                session=session,
-                                remnawave_link=key["remnawave_link"],
-                                hwid_limit=hwid_limit,
-                                traffic_limit_bytes=traffic_limit_bytes,
-                                selected_device_limit=key.get("selected_device_limit"),
-                                selected_traffic_limit_gb=key.get("selected_traffic_limit"),
-                                current_device_limit=key.get("current_device_limit"),
-                                current_traffic_limit_gb=key.get("current_traffic_limit"),
-                                selected_price_rub=key.get("selected_price_rub"),
+                            raise ValueError(
+                                "Обновление Remnawave не подтверждено; существующий ключ сохранён. "
+                                "Для восстановления используйте синхронизацию кластера."
                             )
                 else:
-                    await create_client_on_server(
-                        {
-                            "api_url": key["api_url"],
-                            "inbound_id": key["inbound_id"],
-                            "server_name": key["server_name"],
-                        },
-                        int(key.get("owner_tg_id") or 0) or key["user_id"],
+                    confirmed = await create_client_on_server(
+                        target_server,
+                        UserId(key["user_id"]),
                         key["client_id"],
                         key["email"],
                         key["expiry_time"],
                         semaphore,
                         plan=key["tariff_id"],
                         session=session,
+                        reuse_existing=True,
                     )
+                    if confirmed is not True:
+                        raise ValueError(f"Синхронизация ключа {key['client_id']} не подтверждена")
                     await asyncio.sleep(0.6)
+                confirmed_count += 1
             except Exception as e:
+                failed_count += 1
                 logger.error(f"Ошибка при синхронизации ключа {key['client_id']} в сервер {server_name}: {e}")
 
+        if failed_count:
+            result_text = "⚠️ Синхронизация завершена с ошибками."
+        elif confirmed_count:
+            result_text = "✅ Ключи синхронизированы."
+        else:
+            result_text = "ℹ️ Все ключи пропущены."
         await callback_query.message.edit_text(
-            text=menu_text("Синхронизация", f"✅ Ключи синхронизированы для сервера {server_name}"),
+            text=menu_text(
+                "Синхронизация",
+                f"Сервер <b>{server_name}</b>",
+                result_text,
+                section(
+                    "📊 Итог",
+                    f"Подтверждено: {confirmed_count}",
+                    f"Ошибок: {failed_count}",
+                    f"Пропущено: {skipped_count}",
+                ),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
@@ -588,8 +618,17 @@ async def handle_sync_cluster(
     cluster_name = callback_data.data
 
     try:
-        servers = await get_servers(session)
+        servers = await get_servers(session, include_enabled=True)
         cluster_servers = servers.get(cluster_name, [])
+        binding_scope = [server for group in servers.values() for server in group]
+        enabled_servers = [server for server in cluster_servers if server.get("enabled") is True]
+
+        if not enabled_servers:
+            await callback_query.message.edit_text(
+                text=menu_text("Синхронизация", f"❌ В кластере {cluster_name} нет включённых серверов."),
+                reply_markup=build_admin_back_kb("clusters"),
+            )
+            return
 
         use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
 
@@ -607,6 +646,7 @@ async def handle_sync_cluster(
                     User.tg_id.label("owner_tg_id"),
                     Key.client_id,
                     Key.email,
+                    Key.key,
                     Key.expiry_time,
                     Key.remnawave_link,
                     Key.tariff_id,
@@ -626,6 +666,7 @@ async def handle_sync_cluster(
                     User.tg_id.label("owner_tg_id"),
                     Key.client_id,
                     Key.email,
+                    Key.key,
                     Key.expiry_time,
                     Key.remnawave_link,
                     Key.tariff_id,
@@ -647,7 +688,16 @@ async def handle_sync_cluster(
                 reply_markup=build_admin_back_kb("clusters"),
             )
             return
-        only_remnawave = all(s.get("panel_type") == "remnawave" for s in cluster_servers)
+        remnawave_api_urls = {
+            str(server.get("api_url") or "").strip().rstrip("/")
+            for server in enabled_servers
+            if str(server.get("panel_type") or "").lower() == "remnawave"
+        }
+        only_remnawave = (
+            all(str(server.get("panel_type") or "").lower() == "remnawave" for server in enabled_servers)
+            and len(remnawave_api_urls) == 1
+            and "" not in remnawave_api_urls
+        )
 
         await callback_query.message.edit_text(
             text=menu_text(
@@ -664,10 +714,11 @@ async def handle_sync_cluster(
             tariffs_list = tariffs_result.scalars().all()
             tariffs_cache = {t.id: dict(t.__dict__) for t in tariffs_list}
 
+        stats = {"updated": 0, "created": 0, "failed": 0, "skipped": 0, "done": 0}
         if only_remnawave:
             total_keys = len(keys_to_sync)
 
-            api_url = cluster_servers[0]["api_url"]
+            api_url = enabled_servers[0]["api_url"]
             remna = remnawave_panel.RemnawaveAPI(api_url)
             login_ok = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
             if not login_ok:
@@ -706,26 +757,29 @@ async def handle_sync_cluster(
                 semaphore = asyncio.Semaphore(SYNC_CONCURRENCY)
                 pending_db_updates: list[dict] = []
                 pending_lock = asyncio.Lock()
-                stats = {"updated": 0, "created": 0, "failed": 0, "done": 0}
 
                 async def process_update(key):
                     async with semaphore:
                         try:
                             tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
                             traffic_limit_bytes, hwid_limit, expire_iso, inbound_ids = _compute_user_fields(
-                                key, tariff, cluster_servers, use_country_selection
+                                key,
+                                tariff,
+                                cluster_servers,
+                                use_country_selection,
+                                binding_scope=binding_scope,
+                                api_url=api_url,
                             )
 
-                            if use_country_selection and not inbound_ids:
-                                stats["failed"] += 1
-                                logger.warning(f"[Sync] update {key.get('email')}: server not found")
+                            if not inbound_ids:
+                                stats["skipped"] += 1
+                                logger.warning(
+                                    f"[Sync] Пропуск {key.get('email')}: не найдены разрешённые инбаунды "
+                                    f"для тарифа {key.get('tariff_id')} в кластере {cluster_name}"
+                                )
                                 return
 
-                            from database.access.resolution import panel_identity_fields
-
-                            _ptg, _pemail = await panel_identity_fields(
-                                session, int(key.get("owner_tg_id") or 0) or key["user_id"]
-                            )
+                            _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
                             success = await remna.update_user(
                                 uuid=key["client_id"],
                                 lookup_username=key.get("email"),
@@ -764,8 +818,21 @@ async def handle_sync_cluster(
                         try:
                             tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
                             traffic_limit_bytes, hwid_limit, expire_iso, inbound_ids = _compute_user_fields(
-                                key, tariff, cluster_servers, use_country_selection
+                                key,
+                                tariff,
+                                cluster_servers,
+                                use_country_selection,
+                                binding_scope=binding_scope,
+                                api_url=api_url,
                             )
+
+                            if not inbound_ids:
+                                stats["skipped"] += 1
+                                logger.warning(
+                                    f"[Sync] Пропуск {key.get('email')}: не найдены разрешённые инбаунды "
+                                    f"для тарифа {key.get('tariff_id')} в кластере {cluster_name}"
+                                )
+                                return
 
                             if not expire_iso:
                                 stats["failed"] += 1
@@ -780,19 +847,13 @@ async def handle_sync_cluster(
                                 "trafficLimitStrategy": "NO_RESET",
                                 "trafficLimitBytes": traffic_limit_bytes,
                                 "hwidDeviceLimit": hwid_limit,
+                                "activeInternalSquads": inbound_ids,
                             }
-                            from database.access.resolution import panel_identity_fields
-
-                            _ptg, _pemail = await panel_identity_fields(
-                                session, int(key.get("owner_tg_id") or 0) or key["user_id"]
-                            )
+                            _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
                             if _ptg is not None:
                                 payload["telegramId"] = _ptg
                             if _pemail:
                                 payload["email"] = _pemail
-                            if inbound_ids:
-                                payload["activeInternalSquads"] = inbound_ids
-
                             stored_link = key.get("remnawave_link")
                             if stored_link and "/" in stored_link:
                                 payload["shortUuid"] = stored_link.rstrip("/").split("/")[-1]
@@ -850,6 +911,7 @@ async def handle_sync_cluster(
                                             f"Обновлено: {stats['updated']}",
                                             f"Создано: {stats['created']}",
                                             f"Ошибок: {stats['failed']}",
+                                            f"Пропущено: {stats['skipped']}",
                                         ),
                                     )
                                 )
@@ -879,11 +941,17 @@ async def handle_sync_cluster(
                     try:
                         key_value = await make_aggregated_link(
                             session=session,
-                            cluster_all=cluster_servers,
+                            cluster_all=_allowed_sync_servers(
+                                key,
+                                item["tariff"],
+                                cluster_servers,
+                                use_country_selection,
+                                binding_scope=binding_scope,
+                            ),
                             cluster_id=cluster_name,
                             email=key["email"],
                             client_id=key["client_id"],
-                            tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
+                            tg_id=UserId(key["user_id"]),
                             remna_link_override=None,
                             plan=item["tariff"],
                         )
@@ -928,6 +996,21 @@ async def handle_sync_cluster(
                     traffic_limit_bytes = 0
                     hwid_limit = 0
                     tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
+                    allowed_servers = _allowed_sync_servers(
+                        key, tariff, cluster_servers, use_country_selection, binding_scope=binding_scope
+                    )
+                    allowed_remna_urls = {
+                        str(server.get("api_url") or "").strip().rstrip("/")
+                        for server in allowed_servers
+                        if str(server.get("panel_type") or "").lower() == "remnawave"
+                    }
+                    if not allowed_servers or len(allowed_remna_urls) > 1 or "" in allowed_remna_urls:
+                        stats["skipped"] += 1
+                        logger.warning(
+                            f"[Sync] Пропуск {key.get('email')}: не удалось однозначно определить "
+                            f"разрешённые серверы тарифа {key.get('tariff_id')} в кластере {cluster_name}"
+                        )
+                        continue
 
                     current_device_limit_from_key = key.get("current_device_limit")
                     current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
@@ -951,13 +1034,6 @@ async def handle_sync_cluster(
                         else:
                             hwid_limit = tariff.get("device_limit")
 
-                        tariff.get("subgroup_title")
-                    elif key["tariff_id"]:
-                        logger.warning(
-                            f"[Sync] Ключ {key['client_id']} с несуществующим тарифом ID={key['tariff_id']} — "
-                            f"обновим без лимитов"
-                        )
-
                     await delete_key_from_cluster(cluster_name, key["email"], key["client_id"], session)
 
                     await session.execute(
@@ -967,7 +1043,7 @@ async def handle_sync_cluster(
                     cluster_id_for_recreate = key["server_id"] if use_country_selection else cluster_name
                     await create_key_on_cluster(
                         cluster_id_for_recreate,
-                        int(key.get("owner_tg_id") or 0) or key["user_id"],
+                        UserId(key["user_id"]),
                         key["client_id"],
                         key["email"],
                         key["expiry_time"],
@@ -982,18 +1058,35 @@ async def handle_sync_cluster(
                         current_traffic_limit_gb=key.get("current_traffic_limit"),
                         selected_price_rub=key.get("selected_price_rub"),
                     )
+                    await _preserve_synced_public_link(session, key)
+                    stats["updated"] += 1
 
                     await asyncio.sleep(0.5)
 
                 except Exception as e:
+                    stats["failed"] += 1
                     logger.error(f"[Sync] Ошибка при обработке ключа {key['client_id']} в {cluster_name}: {e}")
 
+        if stats["failed"]:
+            result_text = "⚠️ Синхронизация завершена с ошибками."
+        elif stats["skipped"]:
+            result_text = "⚠️ Синхронизация завершена с пропусками."
+        else:
+            result_text = "✅ Готово."
         await callback_query.message.edit_text(
             text=(
                 menu_text(
                     "Синхронизация",
-                    "✅ Готово.",
-                    section("📊 Итог", f"Кластер: {cluster_name}", f"Ключей: {len(keys_to_sync)}"),
+                    result_text,
+                    section(
+                        "📊 Итог",
+                        f"Кластер: {cluster_name}",
+                        f"Ключей: {len(keys_to_sync)}",
+                        f"Обновлено: {stats['updated']}",
+                        f"Создано: {stats['created']}",
+                        f"Ошибок: {stats['failed']}",
+                        f"Пропущено: {stats['skipped']}",
+                    ),
                 )
             ),
             reply_markup=build_admin_back_kb("clusters"),

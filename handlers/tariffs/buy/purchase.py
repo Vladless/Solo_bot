@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import get_balance, get_tariff_by_id
+from database.access.resolution import TelegramId
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.utils import edit_or_send_message, safe_answer_callback
 from logger import logger
@@ -36,11 +37,7 @@ async def _offer_coupon_before_charge(
     selected_traffic_gb,
     balance,
 ) -> bool:
-    """Экран «оформить или ввести купон» до списания. True — экран показан.
-
-    Раньше при достаточном балансе деньги списывались сразу, и купон вводить
-    было негде: кнопка жила только на экране доплаты.
-    """
+    """Предлагает оформить покупку или применить купон перед списанием."""
     from core.bootstrap import BUTTONS_CONFIG
     from database.temporary_data import create_temporary_data
     from settings.buttons import CONFIG_PAY_BUTTON_TEXT, COUPON
@@ -48,7 +45,7 @@ async def _offer_coupon_before_charge(
     if not BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
         return False
 
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
     payload = {
         "tariff_id": tariff["id"],
         "selected_price_rub": int(price_rub),
@@ -61,7 +58,8 @@ async def _offer_coupon_before_charge(
 
     await create_temporary_data(session, tg_id, "waiting_for_payment", payload)
     payload, _required, coupon_note = await apply_checkout_coupon(session, tg_id, "waiting_for_payment", payload, 0)
-    price_rub = int(payload.get("selected_price_rub") or price_rub)
+    if payload.get("selected_price_rub") is not None:
+        price_rub = int(payload["selected_price_rub"])
     await state.update_data(temp_key="waiting_for_payment", temp_payload=payload, required_amount=0)
 
     language_code = getattr(callback_query.from_user, "language_code", None)
@@ -100,7 +98,7 @@ async def proceed_purchase_with_values(
     """Проверяет баланс и создаёт ключ по выбранной конфигурации."""
     from ...keys.create.flow import create_key, moscow_tz
 
-    tg_id = callback_query.from_user.id
+    tg_id = TelegramId(callback_query.from_user.id)
 
     logger.info(
         "[TARIFF_CFG] proceed_purchase_with_values: "

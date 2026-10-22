@@ -10,6 +10,7 @@ import { useCheckoutFlowContext } from "@/components/constructor/blockContent/ch
 import { useDefaultTheme, panelShadow, pickContrast } from "./defaultTheme";
 import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor";
 import { useBlockNavigate } from "@/lib/block-navigation";
+import { AutopayConsent, isAutopayConsentRequired } from "../../../_shared/AutopayConsent";
 
 type PriceRow = {
   label?: string;
@@ -78,6 +79,10 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
   const checkout = useCheckoutFlowContext();
   const previewMode = context.previewMode === true;
   const live = checkout?.available === true && !editMode && !previewMode;
+  const showRenewDevicePicker = live && checkout!.mode === "renew" && checkout!.hasDeviceOption;
+  const renewDeviceDraft = checkout?.deviceDraft ?? "";
+  const renewDeviceOptions = checkout?.deviceOptions ?? [];
+  const hasCurrentDeviceOption = renewDeviceOptions.some((option) => String(option.value) === renewDeviceDraft);
   const subjectKind = live ? checkout!.modeTitle : subjectPreviewMode;
   const subjectTariff = live ? (checkout!.planSummary.tariff ?? "") : subjectPreviewTariff;
   const subjectRows = (
@@ -120,7 +125,7 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
         ...(baseAmount > 0 && baseAmount !== liveFinalAmount
           ? [{ label: "Цена", value: `${fmt(baseAmount)} ${currency}`, variant: "strike" as const }]
           : []),
-        { label: liveFinalAmount !== liveRequiredAmount ? "Стоимость" : "К оплате", value: `${fmt(liveFinalAmount)} ${currency}`, variant: "base" as const },
+        { label: liveFinalAmount !== liveRequiredAmount ? "Стоимость" : "К оплате", value: checkout!.loading ? "…" : `${fmt(liveFinalAmount)} ${currency}`, variant: "base" as const },
       ]
     : [];
   const priceRows: PriceRow[] = live ? livePriceRows : fallbackPriceRows;
@@ -152,7 +157,7 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
     : (appliedCouponLocal && typeof appliedCouponLocal.discountPercent === "number"
         ? Math.round(baseAmount * appliedCouponLocal.discountPercent / 100)
         : 0);
-  const totalAmount = live ? liveRequiredAmount : (baseAmount - discountAmount);
+  const totalAmount = live ? (checkout!.paymentGrossAmountRub ?? liveRequiredAmount) : (baseAmount - discountAmount);
   const appliedCoupon: Coupon | null = live
     ? (liveAppliedCode ? { code: liveAppliedCode } : null)
     : appliedCouponLocal;
@@ -189,7 +194,8 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
     if (successRedirect) navigate(successRedirect);
   };
 
-  const payButtonDisabled = editMode || (live && checkout!.paying);
+  const autopayConsentRequired = live && isAutopayConsentRequired(checkout);
+  const payButtonDisabled = editMode || (live && (checkout!.paying || checkout!.loading || checkout!.requiresTariffSelection || (autopayConsentRequired && !checkout!.autopayConsent)));
 
   const node = (
     <div
@@ -254,6 +260,45 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
                 ))}
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {showRenewDevicePicker ? (
+          <label style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{ fontSize: 13, color: inkDim }}>{subjectDevicesLabel}</span>
+            <select
+              value={renewDeviceDraft}
+              onChange={(event) => checkout!.setDeviceDraft(event.target.value)}
+              disabled={checkout!.paying}
+              className="dco-well"
+              style={{
+                width: "100%",
+                border: `1px solid ${lineColor}`,
+                borderRadius: 14,
+                background: t.innerBg,
+                color: inkColor,
+                fontFamily: sansFont,
+                fontSize: 14,
+                fontWeight: 500,
+                padding: "12px 16px",
+                outline: "none",
+              }}
+            >
+              {!hasCurrentDeviceOption ? (
+                <option value={renewDeviceDraft} disabled>
+                  {renewDeviceDraft ? `${renewDeviceDraft === "0" ? "Без лимита" : renewDeviceDraft} (текущее)` : "Текущее количество"}
+                </option>
+              ) : null}
+              {renewDeviceOptions.map((option) => (
+                <option key={option.value} value={String(option.value)}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {live && checkout!.mode === "renew" && !checkout!.loading && checkout!.modeDetails.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: inkDim, lineHeight: 1.5 }}>
+            {checkout!.modeDetails.map((line, index) => <div key={index}>{line}</div>)}
           </div>
         ) : null}
 
@@ -359,13 +404,15 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
         }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: inkDim }}>{totalLabel}</div>
-            {totalMeta ? <div style={{ fontSize: 12, color: inkMute, marginTop: 3 }}>{totalMeta}</div> : null}
+            {totalMeta && !autopayConsentRequired ? <div style={{ fontSize: 12, color: inkMute, marginTop: 3 }}>{totalMeta}</div> : null}
           </div>
           <div style={{ fontWeight: 700, fontSize: 34, letterSpacing: "-0.02em", lineHeight: 1 }}>
-            <span>{fmt(totalAmount)}</span>
+            <span>{live && checkout!.loading ? "…" : fmt(totalAmount)}</span>
             <span style={{ fontSize: 18, color: inkDim, fontWeight: 600, marginLeft: 5 }}>{currency}</span>
           </div>
         </div>
+
+        <AutopayConsent checkout={live ? checkout : null} style={{ color: inkDim }} />
 
         <button
           type="button"

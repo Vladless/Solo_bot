@@ -17,16 +17,12 @@ def error_code(exc: BaseException) -> str:
 
 
 def is_dependency_error(exc: BaseException) -> bool:
-    """Объект снять нельзя: на него опираются другие — «cannot drop … because other objects depend on it»."""
+    """Проверяет, мешают ли зависимости удалить объект базы данных."""
     return error_code(exc) == DEPENDENCY_ERRORCODE
 
 
 def is_already_done(exc: BaseException) -> bool:
-    """Шаг не нужен: объект уже есть или уже снят.
-
-    Так выглядит одновременный старт двух ботов на одной базе: второй получает «уже существует»,
-    а конфликт по системному каталогу — это гонка на создании индекса, а не проблема данных.
-    """
+    """Распознаёт уже выполненные операции и гонки создания объектов базы."""
     if error_code(exc) in ALREADY_DONE_ERRORCODES:
         return True
     if error_code(exc) != UNIQUE_VIOLATION_ERRORCODE:

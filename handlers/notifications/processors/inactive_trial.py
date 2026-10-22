@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from aiogram import Bot, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import check_notifications_bulk
-from database.models import User
+from database.access.resolution import UserId, notify_telegram_chat_id
 from database.notifications import bulk_add_notifications
 from database.tariffs import get_tariffs
+from database.users import grant_extended_trial_for_users
 from handlers.notifications.sender import send_messages_with_limit
 from logger import logger
 from services.formatting import format_days
@@ -50,7 +50,9 @@ async def process_inactive_trial(
     users_to_extend = []
 
     for user in users:
-        tg_id = user["tg_id"]
+        tg_id = await notify_telegram_chat_id(session, UserId(user["user_id"]))
+        if tg_id is None:
+            continue
         display_name = user["username"] or user["first_name"] or user["last_name"] or "Пользователь"
 
         builder = InlineKeyboardBuilder()
@@ -68,7 +70,7 @@ async def process_inactive_trial(
                 extra_days_formatted=format_days(extra_days),
                 total_days_formatted=format_days(total_days),
             )
-            users_to_extend.append(tg_id)
+            users_to_extend.append(UserId(user["user_id"]))
         else:
             message = TRIAL_INACTIVE_FIRST_MSG.format(
                 display_name=display_name,
@@ -76,6 +78,7 @@ async def process_inactive_trial(
             )
 
         messages.append({
+            "user_id": UserId(user["user_id"]),
             "tg_id": tg_id,
             "text": message,
             "keyboard": keyboard,
@@ -85,33 +88,33 @@ async def process_inactive_trial(
     if users_to_extend:
         for i in range(0, len(users_to_extend), _INACTIVE_TRIAL_UPDATE_BATCH_SIZE):
             batch = users_to_extend[i : i + _INACTIVE_TRIAL_UPDATE_BATCH_SIZE]
-            await session.execute(update(User).where(User.tg_id.in_(batch)).values(trial=-1))
+            await grant_extended_trial_for_users(session, batch)
             await session.commit()
         logger.info(f"[InactiveTrial] {len(users_to_extend)} пользователей с расширенным триалом")
 
     if messages:
         results = await send_messages_with_limit(bot, messages)
 
-        sent_tg_ids = [msg["tg_id"] for msg, result in zip(messages, results, strict=False) if result]
+        sent_user_ids = [msg["user_id"] for msg, result in zip(messages, results, strict=False) if result]
 
-        if sent_tg_ids:
+        if sent_user_ids:
             if sessionmaker is not None:
                 async with sessionmaker() as fresh_session:
-                    for i in range(0, len(sent_tg_ids), _INACTIVE_TRIAL_NOTIFY_BATCH_SIZE):
-                        batch = sent_tg_ids[i : i + _INACTIVE_TRIAL_NOTIFY_BATCH_SIZE]
+                    for i in range(0, len(sent_user_ids), _INACTIVE_TRIAL_NOTIFY_BATCH_SIZE):
+                        batch = sent_user_ids[i : i + _INACTIVE_TRIAL_NOTIFY_BATCH_SIZE]
                         await bulk_add_notifications(
                             fresh_session,
-                            [(tg_id, "inactive_trial") for tg_id in batch],
+                            [(user_id, "inactive_trial") for user_id in batch],
                             commit=False,
                         )
                     await fresh_session.commit()
             else:
-                for i in range(0, len(sent_tg_ids), _INACTIVE_TRIAL_NOTIFY_BATCH_SIZE):
-                    batch = sent_tg_ids[i : i + _INACTIVE_TRIAL_NOTIFY_BATCH_SIZE]
+                for i in range(0, len(sent_user_ids), _INACTIVE_TRIAL_NOTIFY_BATCH_SIZE):
+                    batch = sent_user_ids[i : i + _INACTIVE_TRIAL_NOTIFY_BATCH_SIZE]
                     await bulk_add_notifications(
                         session,
-                        [(tg_id, "inactive_trial") for tg_id in batch],
+                        [(user_id, "inactive_trial") for user_id in batch],
                         commit=False,
                     )
                 await session.commit()
-            logger.info(f"[InactiveTrial] Отправлено {len(sent_tg_ids)} уведомлений")
+            logger.info(f"[InactiveTrial] Отправлено {len(sent_user_ids)} уведомлений")

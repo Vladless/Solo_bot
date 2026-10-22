@@ -9,8 +9,10 @@ from core.webhook_abuse import (
     is_webhook_ip_blocked,
 )
 from database import async_session_maker, get_payment_by_payment_id
+from database.access.resolution import UserId
 from handlers.payments.overpay.service import get_overpay_order
 from logger import logger
+from services.payments.owner_refs import parse_payment_owner
 from services.payments.pipeline import (
     ParsedPayment,
     process_cancelled_payment,
@@ -28,11 +30,7 @@ _STATUS_FAILED = {"declined", "rejected", "reversed", "error", "expired", "cance
 
 
 def _webhook_auth_configured() -> bool:
-    """Basic Auth считается настроенным только при обоих полях.
-
-    При одном заполненном поле сравнение не совпадёт никогда: настоящие вебхуки получали 401,
-    а подтверждение платежа через API провайдера (ветка ниже) при этом не выполнялось.
-    """
+    """Проверяет наличие логина и пароля уведомлений."""
     return bool((OVERPAY_WEBHOOK_USERNAME or "").strip()) and bool((OVERPAY_WEBHOOK_PASSWORD or "").strip())
 
 
@@ -61,7 +59,7 @@ def _parse_tg_id_from_tx(merchant_tx_id: str) -> int | None:
     if len(parts) < 3:
         return None
     try:
-        return int(parts[2])
+        return parse_payment_owner(parts[2])
     except (ValueError, TypeError):
         return None
 
@@ -93,6 +91,25 @@ async def overpay_webhook(request: web.Request):
             logger.error(f"[Overpay] Пустой id в webhook: {data}")
             return web.Response(status=400, text="missing id")
 
+        order = None
+        if not _webhook_auth_configured() and status in (
+            _STATUS_SUCCESS | _STATUS_REFUNDED | _STATUS_CHARGEBACK | _STATUS_FAILED
+        ):
+            order = await get_overpay_order(order_id)
+            if order is None or str(order.get("id") or "") != order_id:
+                return web.Response(status=500, text="verification failed")
+            confirmed_status = str(order.get("status") or "").strip().lower()
+            expected_group = next(
+                group
+                for group in (_STATUS_SUCCESS, _STATUS_REFUNDED, _STATUS_CHARGEBACK, _STATUS_FAILED)
+                if status in group
+            )
+            if confirmed_status not in expected_group:
+                logger.warning(
+                    "[Overpay] Уведомление {} для {} не подтверждено API: {}", status, order_id, confirmed_status
+                )
+                return web.Response(status=200, text="OK")
+
         async with async_session_maker() as lookup_session:
             pending = await get_payment_by_payment_id(lookup_session, order_id)
 
@@ -103,13 +120,19 @@ async def overpay_webhook(request: web.Request):
                 rub_amount = float(pending.get("amount") or 0.0)
             except (TypeError, ValueError):
                 rub_amount = 0.0
-            if pending.get("tg_id") is not None:
+            if pending.get("user_id") is not None:
+                tg_id = UserId(pending["user_id"])
+            elif pending.get("tg_id") is not None:
                 try:
                     tg_id = int(pending.get("tg_id"))
                 except (TypeError, ValueError):
                     tg_id = None
         if tg_id is None:
-            tg_id = _parse_tg_id_from_tx(merchant_tx_id)
+            tg_id = (
+                _parse_tg_id_from_tx(str(order.get("merchantTransactionId") or ""))
+                if order
+                else (_parse_tg_id_from_tx(merchant_tx_id))
+            )
 
         metadata_patch = {
             "provider": _PROVIDER,
@@ -120,22 +143,8 @@ async def overpay_webhook(request: web.Request):
 
         if status in _STATUS_SUCCESS:
             if tg_id is None:
-                logger.error(f"[Overpay] Не удалось определить tg_id для order_id={order_id}")
+                logger.error(f"[Overpay] Не удалось определить владельца для order_id={order_id}")
                 return web.Response(status=400, text="unknown payment")
-
-            order = None
-            if not _webhook_auth_configured():
-                order = await get_overpay_order(order_id)
-                if order is None:
-                    logger.error(f"[Overpay] Не удалось подтвердить заказ {order_id} через API, повтор позже")
-                    return web.Response(status=500, text="verification failed")
-
-                confirmed_status = str(order.get("status") or "").strip().lower()
-                if confirmed_status not in _STATUS_SUCCESS:
-                    logger.warning(
-                        f"[Overpay] Статус заказа {order_id} по API = '{confirmed_status}', зачисление отменено"
-                    )
-                    return web.Response(status=200, text="OK")
 
             if rub_amount <= 0:
                 if order is None:
@@ -151,7 +160,7 @@ async def overpay_webhook(request: web.Request):
 
             parsed = ParsedPayment(
                 payment_id=order_id,
-                tg_id=int(tg_id),
+                tg_id=tg_id,
                 amount=float(rub_amount),
                 currency="RUB",
                 metadata=metadata_patch,
@@ -171,24 +180,28 @@ async def overpay_webhook(request: web.Request):
             new_status = "refunded" if status in _STATUS_REFUNDED else "chargebacked"
             parsed = ParsedPayment(
                 payment_id=order_id,
-                tg_id=int(tg_id) if tg_id is not None else None,
+                tg_id=tg_id,
                 amount=float(rub_amount),
                 currency="RUB",
                 metadata=metadata_patch,
             )
-            await process_cancelled_payment(_PROVIDER, parsed, new_status=new_status)
+            result = await process_cancelled_payment(_PROVIDER, parsed, new_status=new_status)
+            if not result.ok:
+                return web.Response(status=500, text="pipeline error")
             logger.warning(f"[Overpay] Транзакция {status}: order_id={order_id}")
             return web.Response(status=200, text="OK")
 
         if status in _STATUS_FAILED:
             parsed = ParsedPayment(
                 payment_id=order_id,
-                tg_id=int(tg_id) if tg_id is not None else None,
+                tg_id=tg_id,
                 amount=float(rub_amount),
                 currency="RUB",
                 metadata=metadata_patch,
             )
-            await process_cancelled_payment(_PROVIDER, parsed, new_status="failed")
+            result = await process_cancelled_payment(_PROVIDER, parsed, new_status="failed")
+            if not result.ok:
+                return web.Response(status=500, text="pipeline error")
             logger.info(f"[Overpay] Транзакция не состоялась ({status}): order_id={order_id}")
             return web.Response(status=200, text="OK")
 

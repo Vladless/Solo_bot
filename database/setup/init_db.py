@@ -5,18 +5,16 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from database import db
 from database.migrations.autogenerate import SchemaReport, apply_model_changes, log_report
+from database.migrations.partners import migrate_partner_owners
 from database.migrations.schema_upgrade import apply_all_migrations
+from database.migrations.yookassa_autopay import migrate_yookassa_autopay
 from database.models import Admin, Base, User
 from database.setup.module_models import import_module_models
 from settings.config import ADMIN_ID, DATABASE_URL
 
 
 async def run_schema_setup() -> None:
-    """Один шаг обновления схемы: перенос данных старых баз, затем автогенерация alembic по моделям.
-
-    Порядок важен: внешние ключи новых таблиц смотрят на `users.id`, а на базе старого клиента эту
-    колонку заводит перенос. Файлов ревизий нет — разница считается от фактической схемы.
-    """
+    """Обновляет схему и переносит данные старых баз."""
     import_module_models()
     engine = create_async_engine(DATABASE_URL)
     try:
@@ -24,6 +22,8 @@ async def run_schema_setup() -> None:
         async with engine.begin() as conn:
             await apply_all_migrations(conn)
             await apply_model_changes(conn, Base.metadata, report)
+            await migrate_partner_owners(conn)
+            await migrate_yookassa_autopay(conn)
     finally:
         await engine.dispose()
     log_report(report)

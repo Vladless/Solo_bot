@@ -10,7 +10,6 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from py3xui import AsyncApi
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +27,13 @@ from database import (
     update_balance,
     update_trial,
 )
-from database.access.resolution import notify_telegram_chat_id, resolve_user_optional
+from database.access.resolution import (
+    TelegramId,
+    UserId,
+    notify_telegram_chat_id,
+    panel_identity_fields,
+    resolve_user_optional,
+)
 from database.models import Key, Server, ServerSpecialgroup
 from handlers.keys.utils import build_key_callback, resolve_key
 from handlers.utils import (
@@ -48,7 +53,7 @@ from hooks.processors import (
 )
 from logger import logger
 from panels import remnawave as remnawave_panel
-from panels._3xui import delete_client, get_xui_instance
+from panels._3xui import check_xui_connection, delete_client, get_xui_instance
 from services.errors import InsufficientFundsError
 from services.operations import create_client_on_server
 from services.operations.aggregated_links import make_aggregated_link
@@ -66,12 +71,11 @@ from settings.buttons import (
     TV_BUTTON,
 )
 from settings.config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     REMNAWAVE_WEBAPP,
     REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
+    SUPERNODE,
     SUPPORT_CHAT_URL,
 )
 from settings.texts import SELECT_COUNTRY_MSG

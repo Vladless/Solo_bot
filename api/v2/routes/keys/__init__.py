@@ -1,4 +1,4 @@
-from . import admin, user  # noqa: F401 — import triggers endpoint registration
+from . import admin, user
 from ._common import router, stats_router, user_router
 from .admin_subs import subs_router
 

@@ -5,11 +5,7 @@ Base = declarative_base()
 
 
 class DictLikeMixin:
-    """Позволяет обращаться к ORM-объектам как к словарю.
-
-    Используется legacy-кодом, который мигрировал с dict-результатов asyncpg
-    на ORM и не хочет переписывать все `row["field"]` / `row.get("field")`.
-    """
+    """Позволяет обращаться к объектам моделей как к словарям."""
 
     def __getitem__(self, key):
         return getattr(self, key)

@@ -1,5 +1,18 @@
-from ._common import *  # noqa: F401,F403
-from ._common import router, user_router  # noqa: F401
+from api.admin_permissions import (
+    require_admin_action,
+    require_key_update_permissions,
+)
+from database.access.resolution import TelegramId, UserId
+from filters.permissions import (
+    PERM_KEY_CREATE,
+    PERM_KEY_DELETE,
+    PERM_KEY_FREEZE,
+    PERM_KEY_TRAFFIC,
+    PERM_KEY_VIEW,
+)
+
+from ._common import *
+from ._common import router, user_router
 
 
 @router.delete("/by_email/{email}", response_model=dict)
@@ -9,6 +22,7 @@ async def delete_key_by_email(
     identity=Depends(verify_identity_admin),
 ):
     """Удаляет ключ по email с кластера и из БД."""
+    await require_admin_action(session, identity, PERM_KEY_DELETE)
     result = await session.execute(select(Key).where(Key.email == email))
     db_key = result.scalar_one_or_none()
     if not db_key:
@@ -35,6 +49,7 @@ async def freeze_key_by_email(
     identity=Depends(verify_identity_admin),
 ):
     """Замораживает подписку: отключает клиента на панели и сохраняет остаток срока."""
+    await require_admin_action(session, identity, PERM_KEY_FREEZE)
     import time as _time
 
     from database.keys import mark_key_as_frozen
@@ -49,7 +64,7 @@ async def freeze_key_by_email(
     if result.get("status") != "success":
         raise HTTPException(status_code=502, detail="Не удалось отключить клиента на панели")
     time_left = max(0, int(record["expiry_time"]) - int(_time.time() * 1000))
-    await mark_key_as_frozen(session, record["tg_id"], record["client_id"], time_left)
+    await mark_key_as_frozen(session, UserId(record["user_id"]), record["client_id"], time_left)
     logger.info(f"[Site:Subs] Подписка заморожена: {record['client_id']}")
     return {"message": "Подписка заморожена"}
 
@@ -61,6 +76,7 @@ async def unfreeze_key_by_email(
     identity=Depends(verify_identity_admin),
 ):
     """Размораживает подписку: включает клиента на панели и восстанавливает срок."""
+    await require_admin_action(session, identity, PERM_KEY_FREEZE)
     import time as _time
 
     from database.keys import mark_key_as_unfrozen
@@ -86,8 +102,7 @@ async def unfreeze_key_by_email(
     now_ms = int(_time.time() * 1000)
     leftover = max(0, int(record["expiry_time"]))
     new_expiry_time = leftover if leftover > now_ms else now_ms + leftover
-    await mark_key_as_unfrozen(session, record["tg_id"], record["client_id"], new_expiry_time)
-    await renew_key_in_cluster(
+    renewed = await renew_key_in_cluster(
         cluster_id=record["server_id"],
         email=email,
         client_id=record["client_id"],
@@ -98,6 +113,9 @@ async def unfreeze_key_by_email(
         reset_traffic=False,
         plan=record.get("tariff_id"),
     )
+    if not renewed:
+        raise HTTPException(status_code=502, detail="Не удалось восстановить срок на панели")
+    await mark_key_as_unfrozen(session, UserId(record["user_id"]), record["client_id"], new_expiry_time)
     logger.info(f"[Site:Subs] Подписка разморожена: {record['client_id']}")
     return {"message": "Подписка разморожена"}
 
@@ -109,11 +127,12 @@ async def get_router_keys_by_tg_id(
     identity=Depends(verify_identity_admin),
 ):
     """Список ключей пользователя с тарифами группы routers."""
+    await require_admin_action(session, identity, PERM_KEY_VIEW)
     tariffs_result = await session.execute(select(Tariff.id).where(Tariff.group_code == "routers"))
     tariff_ids = [row[0] for row in tariffs_result.all()]
     if not tariff_ids:
         return []
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, TelegramId(tg_id))
     if u is None:
         return []
     keys_result = await session.execute(select(Key).where(Key.user_id == u.id, Key.tariff_id.in_(tariff_ids)))
@@ -128,6 +147,8 @@ async def edit_key_by_email(
     identity=Depends(verify_identity_admin),
 ):
     """Обновляет ключ по email и синхронизирует с кластером."""
+    await require_key_update_permissions(session, identity, key_update.model_dump(exclude_unset=True))
+    await require_admin_action(session, identity, PERM_KEY_TRAFFIC, PERM_KEY_VIEW)
     result = await session.execute(select(Key).where(Key.email == email))
     db_key = result.scalar_one_or_none()
     if not db_key:
@@ -145,7 +166,7 @@ async def edit_key_by_email(
             setattr(db_key, field, value)
     try:
         new_expiry_time = db_key.expiry_time
-        await renew_key_in_cluster(
+        renewed = await renew_key_in_cluster(
             cluster_id=db_key.server_id,
             email=db_key.email,
             client_id=db_key.client_id,
@@ -155,6 +176,8 @@ async def edit_key_by_email(
             hwid_device_limit=getattr(db_key, "device_limit", None),
             reset_traffic=True,
         )
+        if not renewed:
+            raise RuntimeError("Изменение подписки на панели не подтверждено")
         logger.info(f"[Site:Subs] Подписка обновлена: {db_key.client_id}")
         return db_key
     except Exception as e:
@@ -169,10 +192,11 @@ async def create_key_api(
     identity=Depends(verify_identity_admin),
 ):
     """Создаёт ключ на кластере."""
+    await require_admin_action(session, identity, PERM_KEY_CREATE)
     try:
         await create_key_on_cluster(
             cluster_id=payload.cluster_id,
-            tg_id=payload.tg_id,
+            tg_id=TelegramId(payload.tg_id),
             client_id=payload.client_id,
             email=payload.email or f"{payload.tg_id}_key",
             expiry_timestamp=payload.expiry_timestamp,

@@ -6,17 +6,21 @@ from datetime import datetime, timezone
 import pytz
 
 from aiogram import F, Router, types
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    MessageOriginHiddenUser,
+    MessageOriginUser,
     WebAppInfo,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import and_, exists, func, or_, select, update
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
@@ -24,11 +28,18 @@ from database import (
     async_session_maker,
     update_trial,
 )
-from database.access.resolution import chat_id_for_user, resolve_user_optional, user_id_from_legacy_ref
+from database.access.resolution import (
+    TelegramId,
+    UserId,
+    chat_id_for_user,
+    resolve_user_optional,
+    user_id_from_legacy_ref,
+)
 from database.models import Admin, Identity, Key, ManualBan, Payment, Referral, Tariff, User
 from database.subscription_events import get_user_subscription_history, resolve_user_ref_by_client_id
 from database.web_notifications import notify_web
-from filters.admin import IsAdminFilter
+from filters.admin import HasPermission, IsAdminFilter
+from filters.permissions import PERM_USERS
 from logger import logger
 from settings.config import USERNAME_BOT
 from utils.csv_export import export_referrals_csv
@@ -54,9 +65,82 @@ MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 router = Router()
+quick_search_router = Router(name="admin_quick_user_search")
 
 SEARCH_PAGE_SIZE = 8
 SEARCH_LIMIT_PER_SOURCE = 60
+TELEGRAM_PROFILE_RE = re.compile(
+    r"^(?:https?://)?(?:www\.)?(?:t|telegram)\.me/([a-zA-Z0-9_]{1,32})/?(?:[?#].*)?$", re.IGNORECASE
+)
+QUICK_SEARCH_IGNORED_WORDS = frozenset({
+    "привет",
+    "здравствуйте",
+    "хай",
+    "hello",
+    "hi",
+    "да",
+    "нет",
+    "yes",
+    "no",
+    "ok",
+    "хорошо",
+    "спасибо",
+    "thanks",
+    "пока",
+    "bye",
+    "готово",
+    "done",
+    "ясно",
+    "понятно",
+    "отлично",
+    "плохо",
+    "ок",
+    "окей",
+    "отмена",
+    "cancel",
+    "назад",
+    "back",
+    "старт",
+    "начать",
+    "начало",
+    "меню",
+    "menu",
+    "start",
+    "купить",
+    "оформить",
+    "подписаться",
+    "подписка",
+    "приобрести",
+    "buy",
+    "тариф",
+    "тарифы",
+})
+
+
+def normalize_search_query(raw: str) -> str:
+    """Преобразует ссылку Telegram в username."""
+    raw = (raw or "").strip()
+    match = TELEGRAM_PROFILE_RE.fullmatch(raw)
+    return match.group(1) if match else raw
+
+
+def is_quick_search_query(message: Message) -> bool:
+    """Распознаёт данные клиента для поиска сообщением."""
+    origin = message.forward_origin
+    if (
+        isinstance(origin, MessageOriginUser | MessageOriginHiddenUser)
+        or message.forward_from
+        or message.forward_sender_name
+    ):
+        return True
+    if origin is not None or message.forward_from_chat:
+        return False
+    raw = (message.text or "").strip()
+    if not raw or raw.startswith("/") or "\n" in raw or raw.casefold() in QUICK_SEARCH_IGNORED_WORDS:
+        return False
+    if raw.isascii() and raw.isdecimal():
+        return len(raw) <= 19
+    return 3 <= len(raw) <= 256 and any(char.isalnum() for char in raw)
 
 
 async def _fetch_search_candidates(session: AsyncSession, uid_reasons: dict[int, set[str]]) -> list[dict]:
@@ -92,15 +176,17 @@ async def _fetch_search_candidates(session: AsyncSession, uid_reasons: dict[int,
 
 
 async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
-    """Ярусный поиск клиента по любым данным."""
-    raw = (raw or "").strip()
+    """Ищет клиента по идентификаторам и контактным данным."""
+    raw = normalize_search_query(raw)
     if not raw:
         return []
     if raw.startswith("@") and len(raw) > 1:
         raw = raw[1:].strip()
     like = f"%{raw}%"
     lowered = raw.lower()
-    is_digit = raw.isdigit()
+    numeric_id = int(raw) if raw.isascii() and raw.isdecimal() and len(raw) <= 19 else None
+    if numeric_id is not None and numeric_id > 9_223_372_036_854_775_807:
+        numeric_id = None
     is_uuid = bool(UUID_RE.match(raw))
 
     uid_reasons: dict[int, set[str]] = {}
@@ -110,9 +196,15 @@ async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
             return
         uid_reasons.setdefault(int(uid), set()).add(reason)
 
+    exact_conds = [func.lower(User.username) == lowered]
+    if numeric_id is not None:
+        exact_conds += [User.tg_id == numeric_id, User.id == numeric_id]
+    for (uid,) in (await session.execute(select(User.id).where(or_(*exact_conds)))).all():
+        note(uid, "профиль")
+
     user_conds = [User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like)]
-    if is_digit:
-        user_conds += [User.tg_id == int(raw), User.id == int(raw)]
+    full_name = func.coalesce(User.first_name, "") + " " + func.coalesce(User.last_name, "")
+    user_conds.append(full_name.ilike(like))
     for (uid,) in (await session.execute(select(User.id).where(or_(*user_conds)).limit(SEARCH_LIMIT_PER_SOURCE))).all():
         note(uid, "профиль")
 
@@ -128,8 +220,8 @@ async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
         note(uid, "подписка")
 
     pay_conds = [Payment.payment_id == raw]
-    if is_digit and int(raw) <= 2_147_483_647:
-        pay_conds.append(Payment.id == int(raw))
+    if numeric_id is not None and numeric_id <= 2_147_483_647:
+        pay_conds.append(Payment.id == numeric_id)
     pay_rows = (
         await session.execute(
             select(Payment.user_id, Payment.tg_id).where(or_(*pay_conds)).limit(SEARCH_LIMIT_PER_SOURCE)
@@ -144,9 +236,6 @@ async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
     if pending_tg:
         for (uid,) in (await session.execute(select(User.id).where(User.tg_id.in_(pending_tg)))).all():
             note(uid, "платеж")
-
-    if uid_reasons:
-        return await _fetch_search_candidates(session, uid_reasons)
 
     id_conds = [Identity.email.ilike(like), Identity.google_sub == raw, Identity.yandex_sub == raw]
     if is_uuid:
@@ -174,40 +263,9 @@ async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
 
 
 async def search_from_forward(session: AsyncSession, fwd) -> list[dict]:
-    """Поиск по пересланному сообщению: tg_id (приоритет) + username + имя/фамилия."""
-    uid_reasons: dict[int, set[str]] = {}
-
-    def note(uid, reason: str) -> None:
-        if uid is None:
-            return
-        uid_reasons.setdefault(int(uid), set()).add(reason)
-
-    for (uid,) in (await session.execute(select(User.id).where(User.tg_id == int(fwd.id)))).all():
-        note(uid, "профиль")
-
-    username = getattr(fwd, "username", None)
-    if username:
-        for (uid,) in (
-            await session.execute(
-                select(User.id).where(func.lower(User.username) == username.lower()).limit(SEARCH_LIMIT_PER_SOURCE)
-            )
-        ).all():
-            note(uid, "username")
-
-    first, last = getattr(fwd, "first_name", None), getattr(fwd, "last_name", None)
-    name_conds = []
-    if first and last:
-        name_conds.append(and_(User.first_name.ilike(f"%{first}%"), User.last_name.ilike(f"%{last}%")))
-    elif first:
-        name_conds.append(User.first_name.ilike(f"%{first}%"))
-    elif last:
-        name_conds.append(User.last_name.ilike(f"%{last}%"))
-    if name_conds:
-        for (uid,) in (
-            await session.execute(select(User.id).where(or_(*name_conds)).limit(SEARCH_LIMIT_PER_SOURCE))
-        ).all():
-            note(uid, "имя")
-
+    """Ищет клиента по пересланному сообщению."""
+    rows = (await session.execute(select(User.id).where(User.tg_id == int(fwd.id)))).all()
+    uid_reasons = {int(uid): {"профиль"} for (uid,) in rows}
     return await _fetch_search_candidates(session, uid_reasons)
 
 
@@ -282,24 +340,33 @@ async def handle_search_user(callback_query: CallbackQuery, state: FSMContext):
 
 
 @router.message(UserEditorState.waiting_for_user_data, IsAdminFilter())
-async def handle_user_data_input(message: Message, state: FSMContext, session: AsyncSession):
+async def handle_user_data_input(
+    message: Message, state: FSMContext, session: AsyncSession, *, automatic: bool = False
+):
+    """Показывает результаты поиска по сообщению администратора."""
     kb = build_admin_back_kb()
+    origin = message.forward_origin
+    fwd = origin.sender_user if isinstance(origin, MessageOriginUser) else message.forward_from
+    hidden_name = (
+        origin.sender_user_name if isinstance(origin, MessageOriginHiddenUser) else message.forward_sender_name
+    )
 
-    if message.forward_from:
-        fwd = message.forward_from
+    if fwd:
         raw = (
             (f"@{fwd.username}" if fwd.username else None)
             or " ".join(p for p in (fwd.first_name, fwd.last_name) if p)
             or str(fwd.id)
         )
         results = await search_from_forward(session, fwd)
-    elif message.forward_sender_name:
-        raw = message.forward_sender_name.strip()
+    elif hidden_name:
+        raw = hidden_name.strip()
         results = await smart_user_search(session, raw)
     elif message.text:
         raw = message.text.strip()
         results = await smart_user_search(session, raw)
     else:
+        if automatic:
+            raise SkipHandler
         await message.answer(
             text=menu_text("Клиент", "Пришлите текст или перешлите сообщение клиента."),
             reply_markup=kb,
@@ -307,6 +374,11 @@ async def handle_user_data_input(message: Message, state: FSMContext, session: A
         return
 
     if not results:
+        explicit_query = (
+            fwd or hidden_name or raw.isdecimal() or raw.startswith("@") or TELEGRAM_PROFILE_RE.fullmatch(raw)
+        )
+        if automatic and not explicit_query:
+            raise SkipHandler
         await message.answer(text=menu_text("Клиент", "Ничего не найдено."), reply_markup=kb)
         return
 
@@ -316,6 +388,12 @@ async def handle_user_data_input(message: Message, state: FSMContext, session: A
 
     await state.update_data(search_results=results, search_query=raw)
     await _render_search_results(message, results, raw, page=1, edit=False)
+
+
+@quick_search_router.message(StateFilter(None), is_quick_search_query, HasPermission(PERM_USERS))
+async def handle_quick_user_search(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    """Ищет клиента без открытия экрана поиска."""
+    await handle_user_data_input(message, state, session, automatic=True)
 
 
 @router.callback_query(
@@ -413,7 +491,7 @@ async def handle_message_text_input(message: Message, state: FSMContext):
 )
 async def handle_send_user_message(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    user_id = data.get("user_id")
+    user_id = UserId(data["user_id"]) if data.get("user_id") is not None else None
     text_message = data.get("text")
     photo = data.get("photo")
     chat_id = await chat_id_for_user(session, user_id)
@@ -583,9 +661,8 @@ async def process_user_search(
     *,
     tg_id: int | None = None,
 ) -> None:
-    """Показывает карточку клиента по users.id или tg_id."""
-    if user_id is None:
-        user_id = tg_id
+    """Показывает клиента по внутреннему или Telegram ID."""
+    user_id = UserId(user_id) if user_id is not None else TelegramId(tg_id)
     await state.clear()
 
     resolved_id = await user_id_from_legacy_ref(session, user_id)
@@ -596,7 +673,7 @@ async def process_user_search(
             reply_markup=build_admin_back_kb(),
         )
         return
-    uid = u.id
+    uid = UserId(u.id)
     real_tg_id = u.tg_id
     identity_email = None
     if u.identity_id:
@@ -711,7 +788,7 @@ async def process_user_search(
     has_email = identity_email is not None and str(identity_email).strip() != ""
     has_tg = real_tg_id is not None
     kb = await build_user_edit_kb(
-        int(real_tg_id) if real_tg_id is not None else uid,
+        uid,
         key_records,
         is_banned=is_banned,
         admin_role=admin_role,
@@ -806,7 +883,11 @@ async def handle_users_site_tab(callback: CallbackQuery, callback_data: AdminUse
     IsAdminFilter(),
     flags={"popup": True},
 )
-async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUserEditorCallback):
+async def handle_users_site_send(
+    callback: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
     tab = str(callback_data.data or "")
     label = SITE_TAB_LABELS.get(tab)
     if not label:
@@ -823,6 +904,11 @@ async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUs
         await callback.answer("Не задан адрес сайта", show_alert=True)
         return
 
+    chat_id = await chat_id_for_user(session, callback_data.user_id)
+    if chat_id is None:
+        await callback.answer("У клиента нет Telegram", show_alert=True)
+        return
+
     builder = InlineKeyboardBuilder()
     if is_web_open_in_browser():
         button = InlineKeyboardButton(text=f"🌐 {label}", url=f"{site_url}/dashboard?tab={tab}")
@@ -833,11 +919,9 @@ async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUs
         )
     builder.row(button)
 
-    from bot import bot
-
     try:
-        await bot.send_message(
-            callback_data.user_id,
+        await callback.bot.send_message(
+            chat_id,
             "Откройте раздел в личном кабинете 👇",
             reply_markup=builder.as_markup(),
         )

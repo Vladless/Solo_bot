@@ -70,11 +70,13 @@ def _breaker_record(api_url: str, kind: str, ok: bool) -> None:
 
 
 async def _fetch_profile_http_only(
-    api_url: str, client_id: str, username: str | None = None
+    api_url: str, client_id: str, username: str | None = None, subscription_url: str | None = None
 ) -> dict[str, Any] | None | object:
-    """Только HTTP к панели: логин + устройства + юзер. Без кэша и без resolve. Вызывается из потока."""
+    """Загружает устройства и профиль панели без обращения к БД."""
     api = _panel_api(api_url)
     try:
+        if subscription_url:
+            api.bind_subscription(client_id, username, subscription_url)
         logged_in = True
         if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
             logged_in = await asyncio.wait_for(
@@ -91,7 +93,7 @@ async def _fetch_profile_http_only(
             api.get_user_by_uuid(client_id, username=username),
             timeout=REMNAWAVE_PROFILE_TIMEOUT_SEC,
         )
-        hwid_count = len(devices or [])
+        hwid_count = len(devices) if devices is not None else None
         used_gb = None
         traffic_limit_bytes = None
         hwid_device_limit = None
@@ -127,12 +129,14 @@ async def _fetch_profile_http_only(
                 pass
 
 
-def _run_profile_http_in_thread(api_url: str, client_id: str, username: str | None = None) -> dict[str, Any] | None:
-    """Синхронная обёртка: свой event loop в потоке, чтобы не блокировать основной цикл бота."""
+def _run_profile_http_in_thread(
+    api_url: str, client_id: str, username: str | None = None, subscription_url: str | None = None
+) -> dict[str, Any] | None:
+    """Загружает профиль панели в отдельном цикле событий."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(_fetch_profile_http_only(api_url, client_id, username))
+        return loop.run_until_complete(_fetch_profile_http_only(api_url, client_id, username, subscription_url))
     finally:
         loop.close()
 
@@ -141,12 +145,17 @@ def _run_with_api_in_thread(
     api_url: str,
     operation: Callable[[RemnawaveAPI], Awaitable[Any]],
     timeout_sec: float,
+    client_id: str | None = None,
+    username: str | None = None,
+    subscription_url: str | None = None,
 ) -> Any:
-    """Синхронная обёртка: логин + operation(api) в отдельном event loop в потоке."""
+    """Выполняет операцию панели в отдельном цикле событий."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     api = _panel_api(api_url)
     try:
+        if client_id is not None and subscription_url:
+            api.bind_subscription(client_id, username, subscription_url)
         logged_in = True
         if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
             logged_in = loop.run_until_complete(
@@ -168,7 +177,7 @@ def _run_with_api_in_thread(
 
 
 async def invalidate_remnawave_profile_cache(*, api_url: str | None = None, client_id: str | None = None) -> None:
-    """Invalidate cached Remnawave profiles by api_url/client_id (or both). Await to avoid pending task on shutdown."""
+    """Сбрасывает кэш профилей Remnawave по адресу API, клиенту или обоим параметрам."""
     if api_url is None and client_id is None:
         await cache_delete_pattern("remna_profile:*")
         return
@@ -226,6 +235,7 @@ async def get_remnawave_profile(
     *,
     fallback_any: bool = False,
     username: str | None = None,
+    subscription_url: str | None = None,
 ) -> dict[str, Any] | None:
     api_url = await resolve_remnawave_api_url(session, server_ref, fallback_any=fallback_any)
     if not api_url:
@@ -241,14 +251,15 @@ async def get_remnawave_profile(
         return None
 
     async with _remnawave_semaphore:
-        profile = await run_io(_run_profile_http_in_thread, api_url, client_id, username)
+        profile = await run_io(_run_profile_http_in_thread, api_url, client_id, username, subscription_url)
         _breaker_record(api_url, "profile", profile is not _PANEL_ERROR)
         if profile is _PANEL_ERROR:
             logger.warning(f"[Remnawave] Таймаут или ошибка профиля для client_id={client_id}")
             profile = None
 
     ttl = REMNAWAVE_PROFILE_CACHE_TTL_SEC if profile else REMNAWAVE_PROFILE_ERROR_CACHE_TTL_SEC
-    await cache_set(pkey, profile, ttl)
+    if profile is None or profile.get("hwid_count") is not None:
+        await cache_set(pkey, profile, ttl)
     return profile
 
 
@@ -337,6 +348,9 @@ async def with_remnawave_api(
     *,
     fallback_any: bool = False,
     timeout_sec: float = REMNAWAVE_ACTION_TIMEOUT_SEC,
+    client_id: str | None = None,
+    username: str | None = None,
+    subscription_url: str | None = None,
 ) -> Any | None:
     api_url = await resolve_remnawave_api_url(session, server_ref, fallback_any=fallback_any)
     if not api_url:
@@ -347,7 +361,9 @@ async def with_remnawave_api(
         return None
 
     async with _remnawave_semaphore:
-        result = await run_io(_run_with_api_in_thread, api_url, operation, timeout_sec)
+        result = await run_io(
+            _run_with_api_in_thread, api_url, operation, timeout_sec, client_id, username, subscription_url
+        )
         _breaker_record(api_url, "action", result is not _PANEL_ERROR)
         if result is _PANEL_ERROR:
             logger.warning(f"[Remnawave] Таймаут или ошибка операции для server_ref={server_ref}")
