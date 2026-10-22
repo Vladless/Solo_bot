@@ -66,19 +66,22 @@ def resolve_tariff_servers(
     if tariff_id is None:
         return []
 
+    group_code = str(tariff.get("group_code") or "").lower()
+    special = "trial" if is_trial else group_code if group_code in _SPECIAL_GROUP_CODES else None
     scope = cluster_servers if binding_scope is None else binding_scope
     has_direct_binding = any(_has_tariff_binding(server, tariff_id) for server in scope)
     if has_direct_binding:
         allowed = [server for server in cluster_servers if _has_tariff_binding(server, tariff_id)]
     else:
         subgroup = tariff.get("subgroup_title")
-        if not isinstance(subgroup, str) or not subgroup:
+        if isinstance(subgroup, str) and subgroup:
+            allowed = [server for server in cluster_servers if _has_legacy_binding(server, subgroup)]
+        elif special and (subgroup is None or subgroup == ""):
+            allowed = cluster_servers
+        else:
             return []
-        allowed = [server for server in cluster_servers if _has_legacy_binding(server, subgroup)]
 
     allowed = [server for server in allowed if server.get("enabled") is True]
-    group_code = str(tariff.get("group_code") or "").lower()
-    special = "trial" if is_trial else group_code if group_code in _SPECIAL_GROUP_CODES else None
     if special:
         allowed = [
             server
