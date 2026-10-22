@@ -13,6 +13,7 @@ from .payments import Payment
 from .polls import Poll, PollMessage, PollVote
 from .rate_limit import RateLimitCounter
 from .referrals import Referral
+from .remnawave_install import RemnawaveInstall
 from .servers import Server, ServerSpecialgroup, ServerSubgroup
 from .subscription_events import DailySubscriptionMetric, SubscriptionEvent
 from .tariffs import Tariff, TariffSubgroupSetting
@@ -99,4 +100,5 @@ __all__ = [
     "YooKassaLog",
     "YooKassaAutopayAttempt",
     "RefundOperation",
+    "RemnawaveInstall",
 ]

@@ -368,6 +368,12 @@ def build_settings_remnawave_kb(
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
+            text="➕ Установка нод (beta)",
+            callback_data=AdminPanelCallback(action="rw_install").pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
             text=f"{'✅' if node_enabled else '❌'} Проверка нод",
             callback_data=AdminPanelCallback(action="rw_node_menu").pack(),
         )

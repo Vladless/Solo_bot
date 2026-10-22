@@ -31,12 +31,12 @@ COPY requirements.txt ./
 RUN python -m venv /app/venv \
     && /app/venv/bin/pip install --upgrade pip \
     && /app/venv/bin/pip install -r requirements.txt \
-    && touch /app/venv/.installed
+    && /app/venv/bin/python -c "import hashlib; from pathlib import Path; Path('/app/venv/.installed').write_text(hashlib.sha256(Path('requirements.txt').read_bytes()).hexdigest(), encoding='utf-8')"
 
 COPY . .
 
 RUN adduser --disabled-password --gecos "" appuser \
-    && mkdir -p /app/backups /app/logs /app/modules /app/static/web_uploads /app/static/web_packs /app/alembic/versions \
+    && mkdir -p /app/backups /app/logs /app/modules /app/static/web_uploads /app/static/web_packs /app/alembic/versions /app/data \
     && chown -R appuser:appuser /app
 
 USER appuser

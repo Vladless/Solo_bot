@@ -23,6 +23,7 @@ except ImportError:
     AUDIT_REDIS_BUFFER_ENABLED = False
 
 from core.executor import spawn
+from core.telegram_sensitivity import REDACTED_INPUT, resolve_sensitive_input
 from database.access.resolution import TelegramId, resolve_actor_from_legacy_ref
 from logger import logger
 
@@ -56,8 +57,9 @@ class LoggingMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
+        data["sensitive_input"] = await resolve_sensitive_input(data)
         audit_context = ensure_telegram_context(data, event)
-        user_info = self._extract_user_info(event)
+        user_info = self._extract_user_info(event, sensitive_input=data["sensitive_input"])
 
         if user_info["user_id"]:
             spawn(asyncio.to_thread(_log_activity_sync, user_info))
@@ -143,7 +145,7 @@ class LoggingMiddleware(BaseMiddleware):
             )
             raise
 
-    def _extract_user_info(self, event: TelegramObject) -> UserInfo:
+    def _extract_user_info(self, event: TelegramObject, *, sensitive_input: bool = False) -> UserInfo:
         """Извлекает информацию о пользователе из различных типов событий."""
         result: UserInfo = {"user_id": None, "username": None, "action": None}
 
@@ -152,10 +154,10 @@ class LoggingMiddleware(BaseMiddleware):
             result["username"] = event.from_user.username
 
             if isinstance(event, Message):
-                result["action"] = f"Сообщение: {event.text}"
+                result["action"] = f"Сообщение: {REDACTED_INPUT if sensitive_input else event.text}"
             elif isinstance(event, CallbackQuery):
-                result["action"] = f"Обратный вызов: {event.data}"
+                result["action"] = f"Обратный вызов: {REDACTED_INPUT if sensitive_input else event.data}"
             elif isinstance(event, InlineQuery):
-                result["action"] = f"Inline запрос: {event.query}"
+                result["action"] = f"Inline запрос: {REDACTED_INPUT if sensitive_input else event.query}"
 
         return result

@@ -93,17 +93,53 @@ async def _panel_request(xui: AsyncApi, endpoint: str, *, method: str = "GET", d
     payload = response.json()
     if not isinstance(payload, dict) or payload.get("success") is not True:
         raise ValueError(f"3x-ui: {payload.get('msg') if isinstance(payload, dict) else 'invalid response'}")
-    return payload.get("obj")
+    obj = payload.get("obj")
+    if method == "POST" and isinstance(obj, dict) and obj.get("nodePending") is True:
+        raise ValueError("3x-ui: изменения сохранены на панели, но их применение на узле отложено (nodePending)")
+    return obj
 
 
-async def _client_snapshot(xui: AsyncApi, inbound_id: int, email: str, client_id: str) -> tuple[dict, list[int]]:
+async def client_exists(xui: AsyncApi, email: str) -> bool:
+    """Ищет точный email клиента в постраничной выдаче панели."""
+    page = 1
+    page_size = 200
+    while True:
+        obj = await _panel_request(
+            xui, f"panel/api/clients/list/paged?search={quote(email, safe='')}&page={page}&pageSize={page_size}"
+        )
+        if not isinstance(obj, dict):
+            raise ValueError("3x-ui: некорректный результат поиска клиента")
+        items = obj.get("items")
+        filtered = obj.get("filtered")
+        if (
+            not isinstance(items, list)
+            or type(filtered) is not int
+            or filtered < 0
+            or obj.get("page") != page
+            or obj.get("pageSize") != page_size
+            or len(items) != min(page_size, max(filtered - (page - 1) * page_size, 0))
+            or any(not isinstance(item, dict) or not isinstance(item.get("email"), str) for item in items)
+        ):
+            raise ValueError("3x-ui: неполный или некорректный результат поиска клиента")
+        if any(item["email"] == email for item in items):
+            return True
+        if page * page_size >= filtered:
+            return False
+        page += 1
+
+
+async def _client_snapshot(
+    xui: AsyncApi, inbound_id: int, email: str, client_id: str, *, require_inbound: bool = True
+) -> tuple[dict, list[int]]:
     """Проверяет клиента и подготавливает данные для обновления."""
     obj = await _panel_request(xui, f"panel/api/clients/get/{quote(email, safe='')}")
     if not isinstance(obj, dict) or not isinstance(obj.get("client"), dict):
         raise ValueError(f"Клиент {email} не найден")
     record = obj["client"]
     inbound_ids = obj.get("inboundIds")
-    if not isinstance(inbound_ids, list) or int(inbound_id) not in inbound_ids:
+    if not isinstance(inbound_ids, list) or any(type(value) is not int or value <= 0 for value in inbound_ids):
+        raise ValueError(f"Некорректный список inbound клиента {email}")
+    if require_inbound and int(inbound_id) not in inbound_ids:
         raise ValueError(f"Клиент {email} не привязан к inbound {inbound_id}")
     if record.get("email") != email or record.get("uuid") != client_id:
         raise ValueError(f"UUID клиента {email} не совпадает с ожидаемым")
@@ -127,6 +163,21 @@ async def _client_snapshot(xui: AsyncApi, inbound_id: int, email: str, client_id
         "forwardedPorts",
     ):
         client.pop(field, None)
+    return client, inbound_ids
+
+
+async def attach_client(xui: AsyncApi, inbound_id: int, email: str, client_id: str) -> tuple[dict, list[int]]:
+    """Привязывает проверенного клиента к дополнительному входящему подключению."""
+    client, inbound_ids = await _client_snapshot(xui, inbound_id, email, client_id, require_inbound=False)
+    if int(inbound_id) not in inbound_ids:
+        await _panel_request(
+            xui,
+            f"panel/api/clients/{quote(email, safe='')}/attach",
+            method="POST",
+            data={"inboundIds": [int(inbound_id)]},
+        )
+        _inbound_cache.pop(f"{id(xui)}|{inbound_id}", None)
+        client, inbound_ids = await _client_snapshot(xui, inbound_id, email, client_id)
     return client, inbound_ids
 
 
@@ -327,6 +378,7 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
         await _panel_request(
             xui, "panel/api/clients/add", method="POST", data={"client": client, "inboundIds": [int(config.inbound_id)]}
         )
+        await _client_snapshot(xui, config.inbound_id, config.email.lower(), config.client_id)
         _inbound_cache.pop(f"{id(xui)}|{config.inbound_id}", None)
         logger.info(f"Клиент {config.email} успешно добавлен с ID {config.client_id} (flow={flow!r})")
         return {"status": "success", "email": config.email, "client_id": config.client_id}
