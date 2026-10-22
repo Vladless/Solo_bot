@@ -14,6 +14,7 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.telegram_sensitivity import REDACTED_INPUT, is_sensitive_input
 from database.access.resolution import UserId
 from database.audit import (
     audit_user_tg_ref_is_ambiguous,
@@ -79,6 +80,7 @@ class AuditContext:
     path_or_handler: str
     actor_identity_id: str | None = None
     actor_tg_id: int | None = None
+    sensitive_input: bool = False
 
 
 def new_request_id() -> str:
@@ -151,7 +153,9 @@ async def clear_audit_redis_buffers() -> int:
     return deleted
 
 
-def _message_text(event: TelegramObject) -> str | None:
+def _message_text(event: TelegramObject, *, sensitive_input: bool = False) -> str | None:
+    if sensitive_input:
+        return REDACTED_INPUT
     if isinstance(event, Message):
         return _trim(event.text or event.caption)
     if isinstance(event, CallbackQuery):
@@ -167,13 +171,13 @@ def _event_user(event: TelegramObject) -> User | None:
     return None
 
 
-def describe_telegram_event(event: TelegramObject) -> str:
+def describe_telegram_event(event: TelegramObject, *, sensitive_input: bool = False) -> str:
     if isinstance(event, Message):
-        return f"message:{_message_text(event) or '-'}"
+        return f"message:{_message_text(event, sensitive_input=sensitive_input) or '-'}"
     if isinstance(event, CallbackQuery):
-        return f"callback:{_message_text(event) or '-'}"
+        return f"callback:{_message_text(event, sensitive_input=sensitive_input) or '-'}"
     if isinstance(event, InlineQuery):
-        return f"inline:{_message_text(event) or '-'}"
+        return f"inline:{_message_text(event, sensitive_input=sensitive_input) or '-'}"
     return type(event).__name__
 
 
@@ -222,17 +226,22 @@ def ensure_telegram_context(
     data: dict[str, Any] | None,
     event: TelegramObject,
 ) -> AuditContext:
+    sensitive_input = is_sensitive_input(data)
     if data is not None:
         existing = data.get("audit_context")
         if isinstance(existing, AuditContext):
+            if sensitive_input:
+                existing.sensitive_input = True
+                existing.path_or_handler = describe_telegram_event(event, sensitive_input=True)
             return existing
 
     user = _event_user(event)
     context = AuditContext(
         request_id=new_request_id(),
         channel="telegram",
-        path_or_handler=describe_telegram_event(event),
+        path_or_handler=describe_telegram_event(event, sensitive_input=sensitive_input),
         actor_tg_id=user.id if user else None,
+        sensitive_input=sensitive_input,
     )
     if data is not None:
         data["audit_context"] = context
@@ -320,7 +329,7 @@ def log_telegram_access(
     if username:
         actor += f" @{username}"
     line = f"[TG] {context.path_or_handler} → {result} │ {actor} │ req {str(context.request_id)[:8]}"
-    message_text = _message_text(event)
+    message_text = _message_text(event, sensitive_input=context.sensitive_input)
     if message_text:
         line += f" │ «{message_text}»"
     if reason:
@@ -397,7 +406,7 @@ def _telegram_access_payload(
 ) -> dict[str, Any]:
     ctx = get_telegram_context(audit_context)
     user = _event_user(event)
-    path = describe_telegram_event(event)
+    path = describe_telegram_event(event, sensitive_input=bool(ctx and ctx.sensitive_input))
     if ctx is None:
         ctx = AuditContext(
             request_id=new_request_id(),

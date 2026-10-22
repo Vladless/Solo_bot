@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
+from database import get_servers, get_tariff_by_id, store_key
 from database.access.resolution import UserId, panel_identity_fields, subscription_owner_ref, user_id_from_legacy_ref
 from database.users import mark_trial_started_if_eligible
 from hooks.processors import process_extract_cryptolink_from_result
@@ -13,7 +13,8 @@ from logger import (
     PANEL_REMNA,
     PANEL_XUI,
 )
-from panels._3xui import ClientConfig, _client_snapshot, _update_client, add_client, get_xui_instance
+from panels._3xui import ClientConfig, _update_client, add_client, attach_client, client_exists, get_xui_instance
+from services.cluster_access import is_server_configured, resolve_tariff_servers
 from settings.config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 
 from .aggregated_links import make_aggregated_link
@@ -40,7 +41,7 @@ async def create_key_on_cluster(
 ):
     from panels.remnawave import get_vless_link_for_remnawave_by_username
     from panels.remnawave_runtime import remnawave_api
-    from services.clusters import ALLOWED_GROUP_CODES, check_server_key_limit
+    from services.clusters import check_server_key_limit
 
     try:
         owner_ref = await user_id_from_legacy_ref(session, tg_id)
@@ -48,7 +49,8 @@ async def create_key_on_cluster(
             raise ValueError(f"Пользователь не найден для ключа: {tg_id}")
         tg_id = owner_ref
         panel_tg, panel_email = await panel_identity_fields(session, tg_id)
-        servers = await get_servers(session)
+        servers = await get_servers(session, include_enabled=True)
+        binding_scope = [server for cluster_servers in servers.values() for server in cluster_servers]
         cluster = servers.get(cluster_id)
         server_id_to_store = cluster_id
 
@@ -103,39 +105,17 @@ async def create_key_on_cluster(
             traffic_limit_bytes_value = int(traffic_limit_bytes or 0)
             device_limit_value = int(hwid_limit or 0)
 
-        if plan is not None:
-            filtered = await filter_cluster_by_tariff(session, enabled_servers, plan, cluster_id)
-            if filtered is not enabled_servers:
-                enabled_servers = filtered
-            elif subgroup_title:
-                enabled_servers = await filter_cluster_by_subgroup(
-                    session, enabled_servers, subgroup_title, cluster_id, tariff_id=plan
-                )
-        elif subgroup_title:
-            enabled_servers = await filter_cluster_by_subgroup(
-                session, enabled_servers, subgroup_title, cluster_id, tariff_id=plan
-            )
+        enabled_servers = resolve_tariff_servers(
+            cluster,
+            tariff,
+            binding_scope=binding_scope,
+            is_trial=is_trial,
+        )
 
         if not enabled_servers:
             raise ValueError(f"Нет серверов после фильтрации по привязкам в кластере {cluster_id}")
-
-        special = None
-        if is_trial:
-            special = "trial"
-        elif tariff:
-            gc = (tariff.get("group_code") or "").lower()
-            if gc in ALLOWED_GROUP_CODES:
-                special = gc
-
-        if special:
-            bound_servers = [s for s in enabled_servers if special in (s.get("special_groups") or [])]
-            if bound_servers:
-                enabled_servers = bound_servers
-            else:
-                logger.info(
-                    f"[Key Creation] В кластере {cluster_id} нет серверов со спецгруппой '{special}'. "
-                    f"Использую весь кластер."
-                )
+        if not all(is_server_configured(server) for server in enabled_servers):
+            raise ValueError(f"Не настроены разрешённые серверы тарифа в кластере {cluster_id}")
 
         remnawave_servers = [
             s
@@ -147,6 +127,10 @@ async def create_key_on_cluster(
             for s in enabled_servers
             if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, session)
         ]
+
+        remnawave_api_urls = {str(server.get("api_url") or "").strip().rstrip("/") for server in remnawave_servers}
+        if remnawave_servers and (len(remnawave_api_urls) != 1 or "" in remnawave_api_urls):
+            raise ValueError(f"Неоднозначная панель Remnawave в кластере {cluster_id}")
 
         if not remnawave_servers and not xui_servers:
             raise ValueError(f"Нет серверов с доступным лимитом в кластере {cluster_id}")
@@ -403,6 +387,7 @@ async def create_client_on_server(
         else:
             unique_email = email
             sub_id = unique_email
+        unique_email = unique_email.lower()
 
         if plan is not None and (total_traffic_limit_bytes == 0 or device_limit_value == 0):
             tariff = await get_tariff_by_id(session, plan)
@@ -426,28 +411,30 @@ async def create_client_on_server(
                 f"bytes={total_traffic_limit_bytes}, Devices={device_limit_value}"
             )
             traffic_limit_bytes = total_traffic_limit_bytes
-            result = await add_client(
-                xui,
-                ClientConfig(
-                    client_id=client_id,
-                    email=unique_email,
-                    tg_id=panel_tg if panel_tg and int(panel_tg) > 0 else "",
-                    limit_ip=device_limit_value,
-                    total_gb=traffic_limit_bytes,
-                    expiry_time=expiry_timestamp,
-                    enable=True,
-                    inbound_id=int(inbound_id),
-                    sub_id=sub_id,
-                ),
-            )
-            confirmed = bool(
-                result and result.get("status") == "success" and str(result.get("client_id") or "") == client_id
-            )
-            if reuse_existing and result and result.get("status") == "duplicate":
-                client, _ = await _client_snapshot(xui, int(inbound_id), unique_email, client_id)
+            reuse_client = reuse_existing and await client_exists(xui, unique_email)
+            if not reuse_client:
+                result = await add_client(
+                    xui,
+                    ClientConfig(
+                        client_id=client_id,
+                        email=unique_email,
+                        tg_id=panel_tg if panel_tg and int(panel_tg) > 0 else "",
+                        limit_ip=device_limit_value,
+                        total_gb=traffic_limit_bytes,
+                        expiry_time=expiry_timestamp,
+                        enable=True,
+                        inbound_id=int(inbound_id),
+                        sub_id=sub_id,
+                    ),
+                )
+                confirmed = bool(
+                    result and result.get("status") == "success" and str(result.get("client_id") or "") == client_id
+                )
+                reuse_client = bool(reuse_existing and result and result.get("status") == "duplicate")
+            if reuse_client:
+                client, _ = await attach_client(xui, int(inbound_id), unique_email, client_id)
                 client.update(
                     expiryTime=expiry_timestamp,
-                    subId=sub_id,
                     totalGB=traffic_limit_bytes,
                     enable=True,
                     limitIp=device_limit_value,

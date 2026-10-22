@@ -243,14 +243,13 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
     setError(err instanceof Error ? err.message : fallback);
   };
 
-  const onSuccess = (data: { identity_id: string; identity?: IdentityMe }) => {
+  const onSuccess = async (data: { identity_id: string; identity?: IdentityMe }) => {
     setIdentityId(data.identity_id);
     if (data.identity) void swrMutate("/api/auth/me", data.identity, { revalidate: false });
     void applyPendingPostLoginActions();
     if (flowPage?.active) {
       flowPage.updateData({ authenticated: true, email: email.trim().toLowerCase(), identityId: data.identity_id });
-      flowPage.next();
-      return;
+      if (await flowPage.next()) return;
     }
     setSuccess(successLabel);
     router.replace(redirectPath);
@@ -268,7 +267,7 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
-      onSuccess(data);
+      await onSuccess(data);
     } catch (err) {
       setFormError(err, errWrongCredentials);
     } finally {
@@ -308,7 +307,7 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), code: code.trim() }),
       });
-      onSuccess(data);
+      await onSuccess(data);
     } catch (err) {
       setFormError(err, errWrongCode);
     } finally {

@@ -68,6 +68,7 @@ nginx.conf
 modules/*
 !modules/partner_program/
 storage/
+/data/
 static/
 packs/*
 !packs/default/
@@ -126,6 +127,6 @@ tests/
 web-app/tests/
 modules/partner_program/tests/
 tools-dev/
-web-app/vitest.config.ts
-web-app/vitest.packs.config.ts
+web-app/vitest.config.mts
+web-app/vitest.packs.config.mts
 web-app/playwright.config.ts

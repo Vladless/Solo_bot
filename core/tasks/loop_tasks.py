@@ -130,3 +130,10 @@ async def remnawave_monitor_loop(bot, sessionmaker) -> None:
     from services.remnawave_monitor import remnawave_monitor_loop as run_loop
 
     await run_loop(bot, sessionmaker)
+
+
+async def remnawave_installer_loop(bot, sessionmaker) -> None:
+    """Продолжает установку нод и ожидание DNS после перезапуска."""
+    from services.remnawave_installer.jobs import installer_loop
+
+    await installer_loop(bot, sessionmaker)

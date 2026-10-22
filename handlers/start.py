@@ -380,7 +380,7 @@ async def prompt_subscription(callback: CallbackQuery):
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
     kb.row(InlineKeyboardButton(text=SUB_CHANELL_DONE, callback_data="check_subscription"))
-    await callback.message.edit_text(SUBSCRIPTION_REQUIRED_MSG, reply_markup=kb.as_markup())
+    await edit_or_send_message(callback.message, SUBSCRIPTION_REQUIRED_MSG, reply_markup=kb.as_markup())
 
 
 async def handle_utm_link(utm_code: str, message: Message, state: FSMContext, session: AsyncSession, user_data: dict):
