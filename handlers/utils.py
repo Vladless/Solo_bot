@@ -85,11 +85,13 @@ async def generate_random_email(
     raise RuntimeError("Не удалось сгенерировать уникальный email после нескольких попыток")
 
 
-async def get_least_loaded_cluster(session: AsyncSession) -> str:
+async def get_least_loaded_cluster(
+    session: AsyncSession, *, tariff_id: int | None = None, is_trial: bool = False
+) -> str:
     """Выбирает кластер для нового ключа."""
     from services.clusters import select_cluster
 
-    result = await select_cluster(session)
+    result = await select_cluster(session, tariff_id=tariff_id, is_trial=is_trial)
     return result.cluster_name
 
 

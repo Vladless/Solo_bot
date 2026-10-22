@@ -39,7 +39,12 @@ async def capture_payment_checkout(session: AsyncSession | None, owner: int, met
         return captured
     if snapshot.get("state") != "waiting_for_payment" or data.get("payment_flow") == "gift_create":
         return captured
-    cluster = await select_cluster(session)
+    tariff_id = data.get("tariff_id")
+    if not tariff_id:
+        raise ValidationError("Тариф для оплаты не указан")
+    cluster = await select_cluster(
+        session, tariff_id=int(tariff_id), is_trial=data.get("payment_flow") == "trial_purchase"
+    )
     operation_id = uuid.uuid4()
     captured[PAYMENT_CHECKOUT_OPERATION] = {
         "client_id": str(operation_id),

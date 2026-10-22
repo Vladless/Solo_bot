@@ -79,20 +79,12 @@ async def show_emoji_menu(callback_query: CallbackQuery, state: FSMContext):
             )
         )
 
-    if hasattr(callback_query.message, "_original_edit_text"):
-        await callback_query.message._original_edit_text(
-            text=text,
-            entities=entities,
-            reply_markup=build_admin_back_kb("admin"),
-            parse_mode=None,
-        )
-    else:
-        await callback_query.message.edit_text(
-            text=text,
-            entities=entities,
-            reply_markup=build_admin_back_kb("admin"),
-            parse_mode=None,
-        )
+    await callback_query.message.edit_text(
+        text=text,
+        entities=entities,
+        reply_markup=build_admin_back_kb("admin"),
+        parse_mode=None,
+    )
 
 
 @router.message(AdminEmojiState.waiting_for_custom_emoji, IsAdminFilter())
@@ -203,13 +195,10 @@ async def handle_custom_emoji_id(message: Message, state: FSMContext):
             idx += 1
         running_utf16 += _utf16_len(ch)
 
-    if hasattr(message, "_original_answer"):
-        await message._original_answer(
-            text=full_text,
-            entities=entities,
-            reply_markup=back_builder.as_markup(),
-            parse_mode=None,
-        )
-    else:
-        await message.answer(text=full_text, reply_markup=back_builder.as_markup(), parse_mode=None)
+    await message.answer(
+        text=full_text,
+        entities=entities,
+        reply_markup=back_builder.as_markup(),
+        parse_mode=None,
+    )
     await state.clear()

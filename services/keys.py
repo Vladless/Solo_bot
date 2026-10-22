@@ -908,7 +908,7 @@ async def create_vpn_key_headless(
     if forced_cluster:
         cluster_id = forced_cluster
     else:
-        cluster_result = await select_cluster(session)
+        cluster_result = await select_cluster(session, tariff_id=plan, is_trial=is_trial)
         cluster_id = cluster_result.cluster_name
 
     if selected_price_rub is not None:

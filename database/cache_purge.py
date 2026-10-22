@@ -1,3 +1,5 @@
+from fnmatch import fnmatchcase
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_cache import cache_delete, cache_delete_pattern
@@ -63,4 +65,6 @@ def defer_purge_patterns(session: AsyncSession | None, *patterns: str) -> bool:
 
 def is_purge_pending(session: AsyncSession | None, key: str) -> bool:
     info = _pending_store(session)
-    return info is not None and key in info.get(_PENDING, ())
+    return info is not None and (
+        key in info.get(_PENDING, ()) or any(fnmatchcase(key, pattern) for pattern in info.get(_PENDING_PATTERNS, ()))
+    )

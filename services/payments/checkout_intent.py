@@ -311,7 +311,9 @@ async def freeze_checkout_intent(
             operation_id = uuid.uuid4()
             data["created_client_id"] = str(operation_id)
             data["created_email"] = f"yk{operation_id.hex[:16]}"
-            data["created_cluster"] = (await select_cluster(session)).cluster_name
+            data["created_cluster"] = (
+                await select_cluster(session, tariff_id=tariff_id, is_trial=flow == "trial_purchase")
+            ).cluster_name
     if legacy_cost is not None and legacy_cost >= 0:
         data["cost"] = legacy_cost
         data["selected_price_rub"] = legacy_cost
