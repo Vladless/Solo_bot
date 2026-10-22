@@ -55,7 +55,7 @@ router = Router()
 @router.message(F.text == "/profile")
 async def process_callback_view_profile(
     callback_query_or_message: Message | CallbackQuery,
-    state: FSMContext,
+    state: FSMContext | None,
     admin: bool,
     session,
 ):

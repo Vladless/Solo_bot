@@ -9,8 +9,10 @@ class EmailBindingState(StatesGroup):
     waiting_for_code = State()
 
 
-async def clear_email_binding_context(state: FSMContext, request_id: str | None = None) -> None:
+async def clear_email_binding_context(state: FSMContext | None, request_id: str | None = None) -> None:
     """Отменяет активную привязку и удаляет её код."""
+    if state is None:
+        return
     if await state.get_state() not in (
         EmailBindingState.waiting_for_email.state,
         EmailBindingState.waiting_for_code.state,
