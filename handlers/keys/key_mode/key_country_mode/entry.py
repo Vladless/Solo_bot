@@ -1,3 +1,7 @@
+from database.servers import get_servers
+from services.cluster_access import resolve_tariff_servers
+from services.errors import ServiceError
+
 from ._common import *
 from ._common import router
 from .finalize import check_server_availability, finalize_key_creation
@@ -58,8 +62,10 @@ async def key_country_mode(
         least_loaded_cluster = forced_cluster
     else:
         try:
-            least_loaded_cluster = await get_least_loaded_cluster(session)
-        except ValueError as e:
+            least_loaded_cluster = await get_least_loaded_cluster(
+                session, tariff_id=plan or data.get("tariff_id"), is_trial=bool(data.get("is_trial"))
+            )
+        except (ValueError, ServiceError) as e:
             text = str(e)
             if safe_to_edit:
                 await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
@@ -67,22 +73,19 @@ async def key_country_mode(
                 await bot.send_message(chat_id=tg_notify, text=text)
             return
 
-    subgroup_title = None
     tariff: dict[str, Any] | None = None
+    plan = plan or data.get("tariff_id")
     if plan:
         tariff = await get_tariff_by_id(session, int(plan))
-        if tariff:
-            subgroup_title = tariff.get("subgroup_title")
 
-    q = select(
-        Server.id,
-        Server.server_name,
-        Server.api_url,
-        Server.panel_type,
-        Server.enabled,
-        Server.max_keys,
-    ).where(Server.cluster_name == least_loaded_cluster)
-    servers = [dict(m) for m in (await session.execute(q)).mappings().all()]
+    grouped_servers = await get_servers(session, include_enabled=True)
+    binding_scope = [server for cluster_servers in grouped_servers.values() for server in cluster_servers]
+    servers = resolve_tariff_servers(
+        grouped_servers.get(least_loaded_cluster, []),
+        tariff,
+        binding_scope=binding_scope,
+        is_trial=bool(data.get("is_trial")),
+    )
 
     if not servers:
         text = "❌ Нет доступных серверов в выбранном кластере."
@@ -91,43 +94,6 @@ async def key_country_mode(
         elif tg_notify is not None:
             await bot.send_message(chat_id=tg_notify, text=text)
         return
-
-    server_ids = [s["id"] for s in servers]
-    groups_map: dict[int, list[str]] = {}
-    if server_ids:
-        r = await session.execute(
-            select(ServerSpecialgroup.server_id, ServerSpecialgroup.group_code).where(
-                ServerSpecialgroup.server_id.in_(server_ids)
-            )
-        )
-        for sid, gc in r.all():
-            groups_map.setdefault(sid, []).append(gc)
-
-    for server in servers:
-        server["special_groups"] = [g for g in groups_map.get(server["id"], []) if g in ALLOWED_GROUP_CODES]
-
-    if subgroup_title:
-        servers = await filter_cluster_by_subgroup(
-            session, servers, subgroup_title, least_loaded_cluster, tariff_id=plan
-        )
-        if not servers:
-            text = "❌ Нет доступных серверов в выбранном кластере."
-            if safe_to_edit:
-                await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
-            elif tg_notify is not None:
-                await bot.send_message(chat_id=tg_notify, text=text)
-            return
-
-    special = None
-    if tariff:
-        gc = (tariff.get("group_code") or "").lower()
-        if gc in ALLOWED_GROUP_CODES:
-            special = gc
-
-    if special:
-        bound_servers = [s for s in servers if special in (s.get("special_groups") or [])]
-        if bound_servers:
-            servers = bound_servers
 
     available_servers: list[str] = []
     tasks = [asyncio.create_task(check_server_availability(dict(server), session)) for server in servers]

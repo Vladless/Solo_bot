@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_servers
 from database.models import Server, ServerSpecialgroup, ServerSubgroup, Tariff
-from database.servers import has_legacy_subgroup_bindings
+from database.servers import _invalidate_servers_cache, has_legacy_subgroup_bindings
 from filters.admin import IsAdminFilter
 from handlers.utils import ALLOWED_GROUP_CODES
 from logger import logger
@@ -64,6 +64,8 @@ async def apply_tariff_group(callback: CallbackQuery, callback_data: AdminCluste
 
         await session.execute(update(Server).where(Server.cluster_name == cluster_name).values(tariff_group=group_code))
 
+        await session.flush()
+        await _invalidate_servers_cache(session)
         servers = await get_servers(session=session, include_enabled=True)
         cluster_servers = servers.get(cluster_name, [])
 
@@ -307,6 +309,8 @@ async def apply_tariffs(
             f"tariff_sel:{cluster_name}": [],
         })
 
+        await session.flush()
+        await _invalidate_servers_cache(session)
         servers = await get_servers(session, include_enabled=True)
         cluster_servers = servers.get(cluster_name, [])
 
@@ -352,6 +356,8 @@ async def reset_cluster_subgroups(callback: CallbackQuery, callback_data: AdminC
 
         await session.execute(delete(ServerSubgroup).where(ServerSubgroup.server_id.in_(server_ids)))
 
+        await session.flush()
+        await _invalidate_servers_cache(session)
         servers = await get_servers(session=session, include_enabled=True)
         cluster_servers = servers.get(cluster_name, [])
 
@@ -600,6 +606,8 @@ async def apply_group_to_servers(
 
         await state.update_data({key: []})
 
+        await session.flush()
+        await _invalidate_servers_cache(session)
         servers = await get_servers(session, include_enabled=True)
         cluster_servers = servers.get(cluster_name, [])
         text = render_attach_tariff_menu_text(cluster_name, cluster_servers)
@@ -625,6 +633,8 @@ async def reset_cluster_groups(callback: CallbackQuery, callback_data: AdminClus
             await callback.answer("В кластере нет серверов", show_alert=True)
             return
         await session.execute(delete(ServerSpecialgroup).where(ServerSpecialgroup.server_id.in_(server_ids)))
+        await session.flush()
+        await _invalidate_servers_cache(session)
         servers = await get_servers(session=session, include_enabled=True)
         cluster_servers = servers.get(cluster_name, [])
         await callback.message.edit_text(

@@ -1,3 +1,6 @@
+from database.servers import get_servers
+from services.cluster_access import is_server_configured, resolve_tariff_servers
+
 from ._common import *
 
 
@@ -123,6 +126,17 @@ async def finalize_key_creation(
             raise ValueError(f"Кластер для сервера {server_info.server_name} не найден")
 
         cluster_name = cluster_info["cluster_name"]
+        grouped_servers = await get_servers(session, include_enabled=True)
+        binding_scope = [server for cluster_servers in grouped_servers.values() for server in cluster_servers]
+        allowed_servers = resolve_tariff_servers(
+            grouped_servers.get(cluster_name, []),
+            tariff,
+            binding_scope=binding_scope,
+            selected_server=selected_country,
+            is_trial=is_trial,
+        )
+        if not allowed_servers or not all(is_server_configured(server) for server in allowed_servers):
+            raise ValueError("Выбранный сервер недоступен для тарифа подписки")
         is_full_remnawave = await is_full_remnawave_cluster(cluster_name, session)
 
         old_server_info = None

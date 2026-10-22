@@ -2,20 +2,25 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_cache import cache_delete_pattern, cache_get, cache_key, cache_set
+from database.cache_purge import defer_purge_patterns, is_purge_pending
 from database.models import Key, Server, ServerSpecialgroup, ServerSubgroup, Tariff
 from logger import logger
 from settings.cache_config import SERVERS_CACHE_TTL_SEC
 
 
-async def _invalidate_servers_cache() -> None:
-    await cache_delete_pattern("servers:*")
+async def _invalidate_servers_cache(session: AsyncSession | None = None) -> None:
+    patterns = ("servers:*", "tariffs_cluster:*")
+    if not defer_purge_patterns(session, *patterns):
+        for pattern in patterns:
+            await cache_delete_pattern(pattern)
 
 
 async def get_servers(session: AsyncSession, include_enabled: bool = False) -> dict:
     from handlers.utils import ALLOWED_GROUP_CODES
 
     cache_key_servers = cache_key("servers", int(include_enabled))
-    cached = await cache_get(cache_key_servers)
+    pending = is_purge_pending(session, cache_key_servers)
+    cached = None if pending else await cache_get(cache_key_servers)
     if isinstance(cached, dict):
         return cached
 
@@ -69,7 +74,8 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
             "cluster_name": cluster,
             "server_id": s.id,
         })
-    await cache_set(cache_key_servers, grouped, SERVERS_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(cache_key_servers, grouped, SERVERS_CACHE_TTL_SEC)
     return grouped
 
 
@@ -159,7 +165,7 @@ async def get_server_by_name(session: AsyncSession, server_name: str) -> dict | 
 async def update_server_field(session: AsyncSession, server_name: str, field: str, value: any) -> bool:
     stmt = update(Server).where(Server.server_name == server_name).values(**{field: value})
     await session.execute(stmt)
-    await _invalidate_servers_cache()
+    await _invalidate_servers_cache(session)
     logger.info(f"✅ Поле {field} сервера {server_name} обновлено на {value}")
     return True
 
@@ -175,7 +181,7 @@ async def update_server_name_with_keys(session: AsyncSession, old_name: str, new
     stmt_keys = update(Key).where(Key.server_id == old_name).values(server_id=new_name)
     await session.execute(stmt_keys)
 
-    await _invalidate_servers_cache()
+    await _invalidate_servers_cache(session)
     logger.info(f"✅ Сервер переименован с {old_name} на {new_name}")
     return True
 
@@ -224,7 +230,7 @@ async def update_server_cluster(session: AsyncSession, server_name: str, new_clu
             update(ServerSubgroup).where(ServerSubgroup.server_id == server_id).values(group_code=new_tariff_group)
         )
 
-    await _invalidate_servers_cache()
+    await _invalidate_servers_cache(session)
     logger.info(
         f"✅ Сервер {server_name} перемещен в кластер {new_cluster} с обновлением тарифной группы и привязок подгрупп"
     )

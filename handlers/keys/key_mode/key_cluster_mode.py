@@ -41,7 +41,7 @@ from hooks.processors import (
     process_remnawave_webapp_override,
 )
 from logger import logger
-from services.errors import InsufficientFundsError
+from services.errors import InsufficientFundsError, ServiceError
 from services.operations import create_key_on_cluster
 from services.tariffs.tariff_display import (
     build_key_created_message,
@@ -295,8 +295,10 @@ async def key_cluster_mode(
             least_loaded_cluster = forced_cluster
         else:
             try:
-                least_loaded_cluster = await get_least_loaded_cluster(session)
-            except ValueError as e:
+                least_loaded_cluster = await get_least_loaded_cluster(
+                    session, tariff_id=effective_tariff_id, is_trial=is_trial
+                )
+            except (ValueError, ServiceError) as e:
                 logger.error(f"Нет доступных кластеров: {e}")
                 error_message = str(e)
 
@@ -326,7 +328,7 @@ async def key_cluster_mode(
             client_id=client_id,
             email=email,
             expiry_timestamp=expiry_timestamp,
-            plan=plan,
+            plan=effective_tariff_id,
             session=session,
             hwid_limit=device_limit,
             traffic_limit_bytes=traffic_limit_bytes,

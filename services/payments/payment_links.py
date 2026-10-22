@@ -9,6 +9,7 @@ from database.payments import PAYMENT_CHECKOUT_OPERATION, PAYMENT_CHECKOUT_SNAPS
 from database.temporary_data import create_temporary_data
 from hooks.hooks import run_hooks
 from logger import logger
+from services.errors import ServiceError
 from services.payments.checkout_snapshot import capture_payment_checkout
 from services.payments.yookassa.amounts import (
     YOOKASSA_AMOUNTS,
@@ -152,7 +153,7 @@ async def create_payment_link(
             if frozen:
                 amount_quote = frozen.public(provider_key)
         return PaymentLinkResult(success=True, payment_url=url, payment_id=payment_id, amount_quote=amount_quote)
-    except ValueError as e:
+    except (ValueError, ServiceError) as e:
         return PaymentLinkResult(success=False, error=str(e))
     except Exception as e:
         logger.exception(f"[Payments] Ошибка создания ссылки для {provider_key}: {e}")

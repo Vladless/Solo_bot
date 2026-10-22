@@ -18,6 +18,7 @@ from hooks.processors import process_cluster_balancer, process_cluster_override
 from logger import logger
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
+from .cluster_access import is_server_configured, resolve_tariff_servers
 from .errors import NotFoundError, ValidationError
 
 
@@ -114,17 +115,37 @@ async def check_server_availability(server_info: dict[str, Any], session: AsyncS
 async def select_cluster(
     session: AsyncSession,
     on_capacity_warning: Callable[..., Coroutine] | None = None,
+    *,
+    tariff_id: int | None = None,
+    is_trial: bool = False,
 ) -> ClusterSelection:
     """Выбирает наименее нагруженный доступный кластер."""
+    tariff = None
+    if tariff_id is not None:
+        from database.tariffs import get_tariff_by_id
+
+        tariff = await get_tariff_by_id(session, tariff_id)
+        if not tariff:
+            raise ValidationError("Тариф недоступен для создания подписки.")
+
+    servers = await get_servers(session, include_enabled=True) if tariff is not None else await get_servers(session)
+    binding_scope = [server for cluster_servers in servers.values() for server in cluster_servers]
+
+    def eligible_servers(cluster_servers):
+        if tariff is None:
+            return [server for server in cluster_servers if server.get("enabled", True)]
+        allowed = resolve_tariff_servers(cluster_servers, tariff, binding_scope=binding_scope, is_trial=is_trial)
+        return allowed if all(is_server_configured(server) for server in allowed) else []
+
     forced = await process_cluster_override(session=session)
     if isinstance(forced, str) and forced.strip():
-        servers = await get_servers(session)
         cluster_servers = servers.get(forced.strip(), [])
-        enabled = [s for s in cluster_servers if s.get("enabled", True)]
+        enabled = eligible_servers(cluster_servers)
         if enabled:
             return ClusterSelection(cluster_name=forced.strip(), load=0, available_servers=enabled)
+        if tariff is not None:
+            raise ValidationError("Выбранный кластер недоступен для этого тарифа.")
 
-    servers = await get_servers(session)
     server_to_cluster: dict[str, str] = {}
     cluster_loads: dict[str, int] = {}
 
@@ -143,7 +164,7 @@ async def select_cluster(
     cluster_available_servers: dict[str, list] = {}
 
     for cluster_name, cluster_servers in servers.items():
-        enabled = [s for s in cluster_servers if s.get("enabled", True)]
+        enabled = eligible_servers(cluster_servers)
         if not enabled:
             continue
         ok_servers = []
