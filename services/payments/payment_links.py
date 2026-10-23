@@ -70,6 +70,7 @@ async def store_provider_checkout(
         "YOOKASSA_AUTOPAY",
         "YOOKASSA_AUTOPAY_WEB",
         "KASSAI_AUTOPAY",
+        "OVERPAY_AUTOPAY",
         "KASSA2328",
     }:
         await create_temporary_data(session, user_ref, state, data)
@@ -113,6 +114,10 @@ async def create_payment_link(
         from services.payments.kassai_autopay.service import create_link
 
         register_payment_creator("KASSAI_AUTOPAY", create_link)
+    if provider_key == "OVERPAY_AUTOPAY":
+        from services.payments.overpay_autopay.service import create_link
+
+        register_payment_creator("OVERPAY_AUTOPAY", create_link)
     if provider_key in {"YOOKASSA_AUTOPAY", "YOOKASSA_AUTOPAY_WEB"}:
         from services.payments.yookassa_autopay.service import create_link
 
@@ -144,7 +149,13 @@ async def create_payment_link(
                 metadata["accepted_gross_amount"] = request.accepted_gross_amount
         metadata.pop(PAYMENT_CHECKOUT_SNAPSHOT, None)
         metadata.pop(PAYMENT_CHECKOUT_OPERATION, None)
-        if provider_key not in {"YOOKASSA_AUTOPAY", "YOOKASSA_AUTOPAY_WEB", "KASSAI_AUTOPAY", "KASSA2328"}:
+        if provider_key not in {
+            "YOOKASSA_AUTOPAY",
+            "YOOKASSA_AUTOPAY_WEB",
+            "KASSAI_AUTOPAY",
+            "OVERPAY_AUTOPAY",
+            "KASSA2328",
+        }:
             metadata = await capture_payment_checkout(session, request.legacy_user_ref, metadata)
         url, payment_id = await creator(
             session,

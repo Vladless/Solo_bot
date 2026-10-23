@@ -63,6 +63,8 @@ async def quote_link(body: PaymentLinkCreateRequest, identity=Depends(verify_ide
     enabled_id = "YOOKASSA_AUTOPAY" if provider == "YOOKASSA_AUTOPAY_WEB" else provider
     if provider == "KASSAI_AUTOPAY" and not PAYMENTS_CONFIG.get(provider):
         raise HTTPException(status_code=400, detail=texts.KASSAI_AUTOPAY_DISABLED)
+    if provider == "OVERPAY_AUTOPAY" and not PAYMENTS_CONFIG.get(provider):
+        raise HTTPException(status_code=400, detail=texts.OVERPAY_AUTOPAY_DISABLED)
     if provider in YOOKASSA_PROVIDERS and not PAYMENTS_CONFIG.get(enabled_id):
         raise HTTPException(status_code=400, detail=texts.YOOKASSA_PROVIDER_DISABLED)
     try:
@@ -248,10 +250,11 @@ async def create_link(
         metadata=web_metadata,
         accepted_gross_amount=body.accepted_gross_amount,
     )
-    if str(body.provider_id or "").upper() not in {
+    if str(payment_request.provider_id).strip().upper() not in {
         "YOOKASSA_AUTOPAY",
         "YOOKASSA_AUTOPAY_WEB",
         "KASSAI_AUTOPAY",
+        "OVERPAY_AUTOPAY",
         "KASSA2328",
     }:
         try:
@@ -365,6 +368,7 @@ async def get_link_status(
         "YOOKASSA_AUTOPAY",
         "YOOKASSA_AUTOPAY_WEB",
         "KASSAI_AUTOPAY",
+        "OVERPAY_AUTOPAY",
         "2328",
         "PAYHOT",
         "PAYHOT_CARDS",

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.admin_permissions import require_full_admin
 from api.depends import get_session, verify_identity_admin
 from api.v2.schemas import SettingResponse, SettingUpsert
+from core.settings.autopay_locations import AUTOPAY_MANAGEMENT_OPTIONS
 from core.settings.bonus_config import (
     BONUS_CONFIG,
     BONUS_HINTS,
@@ -31,6 +32,13 @@ from core.settings.management_config import MANAGEMENT_CONFIG, update_management
 from core.settings.modes_config import MODES_CONFIG, update_modes_config
 from core.settings.money_config import MONEY_CONFIG, update_money_config
 from core.settings.notifications_config import NOTIFICATIONS_CONFIG, update_notifications_config
+from core.settings.overpay_autopay_config import (
+    OVERPAY_AUTOPAY_CONFIG,
+    OVERPAY_AUTOPAY_SETTING_KEY,
+    OVERPAY_AUTOPAY_SETTING_LIMITS,
+    update_overpay_autopay_config,
+    validate_overpay_autopay_settings,
+)
 from core.settings.payments_config import PAYMENTS_CONFIG, update_payments_config
 from core.settings.providers_order_config import PROVIDERS_ORDER, update_providers_order
 from core.settings.remnawave_config import REMNAWAVE_CONFIG, update_remnawave_config
@@ -55,6 +63,7 @@ from handlers.admin.settings.settings_config import (
     MONEY_FIELDS,
     NOTIFICATION_TIME_FIELDS,
     NOTIFICATION_TITLES,
+    OVERPAY_AUTOPAY_TITLES,
     PAYMENT_CASHBOX_GROUPS,
     PAYMENT_CASHBOX_TITLES,
     PAYMENT_PROVIDER_TITLES,
@@ -62,12 +71,12 @@ from handlers.admin.settings.settings_config import (
     SINGLE_SUBSCRIPTION_TITLES,
     TARIFFS_TITLES,
     WEB_TITLES,
-    YOOKASSA_AUTOPAY_OPTIONS,
     YOOKASSA_AUTOPAY_TITLES,
     YOOKASSA_TITLES,
 )
 from handlers.admin.settings.settings_descriptions import (
     KASSAI_AUTOPAY_SETTING_HINTS,
+    OVERPAY_AUTOPAY_SETTING_HINTS,
     SECTION_DESCRIPTIONS,
     SETTING_HINTS,
 )
@@ -111,6 +120,7 @@ async def get_configs(identity=Depends(verify_identity_admin)):
             key: value for key, value in YOOKASSA_AUTOPAY_CONFIG.items() if key in YOOKASSA_AUTOPAY_TITLES
         },
         "kassai_autopay": dict(KASSAI_AUTOPAY_CONFIG),
+        "overpay_autopay": dict(OVERPAY_AUTOPAY_CONFIG),
     }
 
 
@@ -165,7 +175,7 @@ _FIELD_OPTIONS: dict[str, list[dict[str, str]]] = {
         {"value": "webapp_only", "label": "Только веб-апп"},
     ],
     "DAILY_BONUS_MODE": BONUS_MODE_OPTIONS,
-    **YOOKASSA_AUTOPAY_OPTIONS,
+    "MANAGE_BUTTON_LOCATION": AUTOPAY_MANAGEMENT_OPTIONS,
 }
 
 _FIELD_NUMBER_LIMITS: dict[str, dict[str, int | float]] = {
@@ -213,9 +223,14 @@ def _schema_fields(config: dict, titles: dict, scope: str | None = None) -> list
         if scope == "kassai_autopay" and key in KASSAI_AUTOPAY_SETTING_LIMITS:
             minimum, maximum = KASSAI_AUTOPAY_SETTING_LIMITS[key]
             field.update(min=minimum, max=maximum)
+        if scope == "overpay_autopay" and key in OVERPAY_AUTOPAY_SETTING_LIMITS:
+            minimum, maximum = OVERPAY_AUTOPAY_SETTING_LIMITS[key]
+            field.update(min=minimum, max=maximum)
         hint = SETTING_HINTS.get(key) or BONUS_HINTS.get(key)
         if scope == "kassai_autopay":
             hint = KASSAI_AUTOPAY_SETTING_HINTS.get(key)
+        if scope == "overpay_autopay":
+            hint = OVERPAY_AUTOPAY_SETTING_HINTS.get(key)
         if hint:
             field["hint"] = hint
         if options:
@@ -257,6 +272,11 @@ async def get_settings_schema(identity=Depends(verify_identity_admin)):
                         _schema_fields(KASSAI_AUTOPAY_CONFIG, KASSAI_AUTOPAY_TITLES, "kassai_autopay")
                     )
                     description = SECTION_DESCRIPTIONS.get("kassai", "")
+                elif cashbox == "OVERPAY":
+                    cashbox_fields.extend(
+                        _schema_fields(OVERPAY_AUTOPAY_CONFIG, OVERPAY_AUTOPAY_TITLES, "overpay_autopay")
+                    )
+                    description = SECTION_DESCRIPTIONS.get("overpay", "")
                 children.append({
                     "scope": f"payment_cashbox_{cashbox.lower()}",
                     "title": PAYMENT_CASHBOX_TITLES[cashbox],
@@ -294,8 +314,8 @@ async def update_config_scope(
     data = dict(payload.value or {})
     normalized = scope.strip().lower().replace("-", "_")
     if normalized == "payments":
-        if "KASSAI_AUTOPAY" in data:
-            if not isinstance(data["KASSAI_AUTOPAY"], bool):
+        if {"KASSAI_AUTOPAY", "OVERPAY_AUTOPAY"}.intersection(data):
+            if any(not isinstance(data[key], bool) for key in ("KASSAI_AUTOPAY", "OVERPAY_AUTOPAY") if key in data):
                 raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
             await require_full_admin(session, identity)
         cleaned = {**PAYMENTS_CONFIG, **{key: bool(value) for key, value in data.items()}}
@@ -344,6 +364,14 @@ async def update_config_scope(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"kassai_autopay": dict(KASSAI_AUTOPAY_CONFIG)}
+    if normalized == "overpay_autopay":
+        await require_full_admin(session, identity)
+        try:
+            values = validate_overpay_autopay_settings(data)
+            await update_overpay_autopay_config(session, values)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"overpay_autopay": dict(OVERPAY_AUTOPAY_CONFIG)}
     if normalized == "modes":
         if "SINGLE_SUBSCRIPTION_OPEN_PROFILE" in data and not isinstance(
             data["SINGLE_SUBSCRIPTION_OPEN_PROFILE"], bool
@@ -434,10 +462,13 @@ async def upsert_setting(
     session: AsyncSession = Depends(get_session),
 ):
     """Создание или обновление настройки по ключу."""
-    if key == KASSAI_AUTOPAY_SETTING_KEY:
+    if key in {KASSAI_AUTOPAY_SETTING_KEY, OVERPAY_AUTOPAY_SETTING_KEY}:
         await require_full_admin(session, identity)
         try:
-            await update_kassai_autopay_config(session, payload.value)
+            update_config = (
+                update_overpay_autopay_config if key == OVERPAY_AUTOPAY_SETTING_KEY else update_kassai_autopay_config
+            )
+            await update_config(session, payload.value)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         result = await session.execute(select(Setting).where(Setting.key == key))
@@ -446,9 +477,10 @@ async def upsert_setting(
         values = payload.value
         if not isinstance(values, dict):
             raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
-        if "KASSAI_AUTOPAY" in values and not isinstance(values["KASSAI_AUTOPAY"], bool):
+        recurring = ("KASSAI_AUTOPAY", "OVERPAY_AUTOPAY")
+        if any(key in values and not isinstance(values[key], bool) for key in recurring):
             raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
-        if values.get("KASSAI_AUTOPAY", False) != PAYMENTS_CONFIG.get("KASSAI_AUTOPAY", False):
+        if any(values.get(key, False) != PAYMENTS_CONFIG.get(key, False) for key in recurring):
             await require_full_admin(session, identity)
     obj = await set_setting(
         session=session,
@@ -474,7 +506,7 @@ async def delete_setting(
     session: AsyncSession = Depends(get_session),
 ):
     """Удаление настройки по ключу."""
-    if key in {KASSAI_AUTOPAY_SETTING_KEY, "PAYMENTS_CONFIG"}:
+    if key in {KASSAI_AUTOPAY_SETTING_KEY, OVERPAY_AUTOPAY_SETTING_KEY, "PAYMENTS_CONFIG"}:
         await require_full_admin(session, identity)
     result = await session.execute(select(Setting).where(Setting.key == key))
     obj = result.scalar_one_or_none()

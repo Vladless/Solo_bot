@@ -8,10 +8,9 @@ from sqlalchemy import delete, func, inspect, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.access.resolution import UserId
+from database.autopay import ensure_no_other_autopay
 from database.models import (
     Identity,
-    KassaIAutopayAttempt,
-    KassaISubscription,
     Key,
     User,
     YooKassaAutopayAttempt,
@@ -222,25 +221,7 @@ async def upsert_subscription(
     card = await get_owned_card(session, user.id, card_id)
     if key is None or card is None:
         raise ValueError("Key and saved payment method must belong to the billing user")
-    other_autopay = await session.scalar(
-        select(KassaISubscription.id)
-        .where(
-            KassaISubscription.user_id == user.id,
-            KassaISubscription.client_id == client_id,
-            or_(
-                KassaISubscription.is_active.is_(True),
-                select(KassaIAutopayAttempt.id)
-                .where(
-                    KassaIAutopayAttempt.subscription_id == KassaISubscription.id,
-                    KassaIAutopayAttempt.status.in_(UNFINISHED_STATUSES),
-                )
-                .exists(),
-            ),
-        )
-        .limit(1)
-    )
-    if other_autopay is not None:
-        raise ValueError(texts.AUTOPAY_OTHER_PROVIDER_ACTIVE)
+    await ensure_no_other_autopay(session, user.id, client_id, "YOOKASSA_AUTOPAY")
     unfinished = await session.scalar(
         select(YooKassaAutopayAttempt.id)
         .join(YooKassaSubscription, YooKassaSubscription.id == YooKassaAutopayAttempt.subscription_id)

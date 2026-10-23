@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_key_details, get_keys
-from database.access.resolution import TelegramId, resolve_user_optional
+from database.access.resolution import TelegramId, UserId, resolve_user_optional
 from database.models import Key
 from handlers.keys.utils import build_key_ref, key_owned_by_user, resolve_key
 from handlers.keys.view.payload import (
@@ -68,7 +68,10 @@ async def process_callback_or_message_view_keys(
         await render_key_info(target_message, session, key_ref, image_path)
         return
 
-    inline_keyboard, response_message = await build_keys_response(records, session, page=page)
+    owner = await resolve_user_optional(session, tg_id)
+    inline_keyboard, response_message = await build_keys_response(
+        records, session, page=page, user_id=UserId(owner.id) if owner else None
+    )
     image_path = os.path.join("img", "pic_keys.jpg")
 
     await edit_or_send_message(

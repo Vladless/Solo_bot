@@ -108,6 +108,8 @@ class AccountKeyRenewResponse(AccountKeyActionResponse):
     autopay_period_days: int | None = None
     kassai_autopay_price_rub: float | None = None
     kassai_autopay_period_days: int | None = None
+    overpay_autopay_price_rub: float | None = None
+    overpay_autopay_period_days: int | None = None
     discount_rub: int = 0
     final_price_rub: int = 0
     applied_coupon_code: str | None = None
@@ -290,6 +292,8 @@ class TariffPurchaseResponse(BaseModel):
     autopay_period_days: int | None = None
     kassai_autopay_price_rub: float | None = None
     kassai_autopay_period_days: int | None = None
+    overpay_autopay_price_rub: float | None = None
+    overpay_autopay_period_days: int | None = None
     discount_rub: int = 0
     final_price_rub: int = 0
     applied_coupon_code: str | None = None

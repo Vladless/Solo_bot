@@ -93,6 +93,13 @@ PROVIDERS_BASE: dict[str, dict[str, Any]] = {
         "module": "overpay",
         "order": 11,
     },
+    "OVERPAY_AUTOPAY": {
+        "currency": "RUB",
+        "value": "pay_overpay_autopay",
+        "fast": "process_fast_renewal_flow",
+        "module": "overpay_autopay",
+        "order": 25,
+    },
     "TRIBUTE": {
         "currency": "RUB+USD",
         "value": "pay_tribute",
@@ -199,6 +206,7 @@ WEB_LINK_PROVIDER_IDS = (
     "PLATEGA_CRYPTO",
     "OVERPAY_CARDS",
     "OVERPAY_SBP",
+    "OVERPAY_AUTOPAY",
     "HELEKET",
     "FREEKASSA",
     "CRYPTOBOT",
@@ -278,4 +286,6 @@ async def get_providers_with_hooks(flags: dict[str, bool]) -> dict[str, dict[str
         providers["YOOKASSA_AUTOPAY"]["enabled"] = bool(flags.get("YOOKASSA_AUTOPAY"))
     if "KASSAI_AUTOPAY" in providers:
         providers["KASSAI_AUTOPAY"]["enabled"] = bool(flags.get("KASSAI_AUTOPAY"))
+    if "OVERPAY_AUTOPAY" in providers:
+        providers["OVERPAY_AUTOPAY"]["enabled"] = bool(flags.get("OVERPAY_AUTOPAY"))
     return _sort_providers(providers)

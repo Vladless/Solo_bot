@@ -159,3 +159,10 @@ async def tickets_delivery_loop(_bot, sessionmaker) -> None:
             logger.error("[Tickets] Ошибка очереди доставки: {}", type(exc).__name__)
             processed = 0
         await asyncio.sleep(0.5 if processed else 2)
+
+
+async def overpay_autopay_loop(bot, sessionmaker) -> None:
+    """Сверяет платежи и выполняет автопродление картой OverPay."""
+    from services.payments.overpay_autopay.service import autopay_loop
+
+    await autopay_loop(bot, sessionmaker)

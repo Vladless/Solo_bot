@@ -27,6 +27,7 @@ from .kassa2328 import router as kassa2328_router
 from .kassai import router as kassai_router
 from .kassai_autopay import router as kassai_autopay_router
 from .overpay import router as overpay_router
+from .overpay_autopay import router as overpay_autopay_router
 from .paritypay import router as paritypay_router
 from .pay import router as pay_router
 from .payhot import router as payhot_router
@@ -46,6 +47,7 @@ PROVIDERS = get_providers(PROVIDERS_ENABLED)
 
 router.include_router(yookassa_autopay_router)
 router.include_router(kassai_autopay_router)
+router.include_router(overpay_autopay_router)
 router.include_router(autopay_management_router)
 router.include_router(kassa2328_router)
 router.include_router(yookassa_router)

@@ -23,7 +23,11 @@ from database.temporary_data import get_temporary_data
 from handlers.payments.autopay_management import (
     AutopayManagementProvider,
     management_back_button,
+    management_checkout_callback,
+    management_checkout_return,
+    management_return_callback,
     register_autopay_management,
+    remember_management_checkout,
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
@@ -79,14 +83,21 @@ async def _actor_uid(event: Message | CallbackQuery, session: AsyncSession) -> U
     return None
 
 
-async def _allow_create(event: Message | CallbackQuery, session: AsyncSession) -> bool:
+async def _allow_create(
+    event: Message | CallbackQuery, session: AsyncSession, *, return_callback: str | None = None
+) -> bool:
     """Проверяет доступность новых привязок и оплат."""
     if await is_kassai_autopay_enabled_for_session(session):
         return True
     if isinstance(event, CallbackQuery):
         await _show_checkout_error(event, texts.KASSAI_AUTOPAY_DISABLED)
     else:
-        await event.answer(texts.KASSAI_AUTOPAY_DISABLED)
+        kwargs = (
+            {"reply_markup": _keyboard((buttons.CANCEL, return_callback))}
+            if return_callback and return_callback != "pay"
+            else {}
+        )
+        await event.answer(texts.KASSAI_AUTOPAY_DISABLED, **kwargs)
     return False
 
 
@@ -109,7 +120,7 @@ async def _show_checkout_error(callback: CallbackQuery, text: str, *, retry: boo
     rows = []
     if retry:
         rows.append((buttons.KASSAI_AUTOPAY_RETRY, "kassai_auto_confirm"))
-    rows.append((buttons.BACK, "pay"))
+    rows.append((buttons.BACK, management_checkout_callback(callback)))
     await edit_or_send_message(callback.message, escape(text), reply_markup=_keyboard(*rows))
     await callback.answer()
 
@@ -151,7 +162,8 @@ async def _show_consent(
         text = texts.KASSAI_AUTOPAY_SAVE_METHOD_CONSENT.format(amount=amount_text)
     await state.update_data(kassai_checkout={"user_id": int(user_id), "amount": amount, "metadata": metadata})
     await state.set_state(KassaIPaymentState.waiting_consent)
-    markup = _keyboard((buttons.KASSAI_AUTOPAY_CONFIRM, "kassai_auto_confirm"), (buttons.CANCEL, "pay"))
+    return_callback = await management_checkout_return(state, user_id, "kassai")
+    markup = _keyboard((buttons.KASSAI_AUTOPAY_CONFIRM, "kassai_auto_confirm"), (buttons.CANCEL, return_callback))
     if isinstance(event, CallbackQuery):
         await edit_or_send_message(event.message, text, reply_markup=markup)
         await event.answer()
@@ -169,7 +181,7 @@ async def payment_menu(callback: CallbackQuery, state: FSMContext, session: Asyn
     if temporary and temporary["state"] in _FLOW_BY_STATE:
         await process_fast_renewal_flow(callback, session, state=state)
         return
-    await state.clear()
+    return_callback = await remember_management_checkout(callback, state, user_id, "kassai", reset=True)
     keyboard = InlineKeyboardBuilder()
     for value in KASSAI_AUTOPAY_CONFIG.get("QUICK_AMOUNTS", [100, 300, 500]):
         amount = _amount(value)
@@ -177,7 +189,7 @@ async def payment_menu(callback: CallbackQuery, state: FSMContext, session: Asyn
             keyboard.button(text=f"{amount:g} ₽", callback_data=f"kassai_auto_amount|{amount:g}")
     keyboard.adjust(2)
     keyboard.row(InlineKeyboardButton(text=buttons.CUSTOM_AMOUNT, callback_data="kassai_auto_custom"))
-    keyboard.row(InlineKeyboardButton(text=buttons.BACK, callback_data="pay"))
+    keyboard.row(InlineKeyboardButton(text=buttons.BACK, callback_data=return_callback))
     await edit_or_send_message(callback.message, texts.KASSAI_AUTOPAY_PAYMENT_MENU, reply_markup=keyboard.as_markup())
     await callback.answer()
 
@@ -198,11 +210,13 @@ async def quick_amount(callback: CallbackQuery, state: FSMContext, session: Asyn
 @router.callback_query(F.data == "kassai_auto_custom")
 async def request_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Запрашивает произвольную сумму."""
-    if not await _allow_create(callback, session):
+    user_id = await _actor_uid(callback, session)
+    if user_id is None or not await _allow_create(callback, session):
         return
     await state.set_state(KassaIPaymentState.entering_amount)
+    return_callback = await management_checkout_return(state, user_id, "kassai")
     await edit_or_send_message(
-        callback.message, texts.KASSAI_AUTOPAY_ENTER_AMOUNT, reply_markup=_keyboard((buttons.CANCEL, "pay"))
+        callback.message, texts.KASSAI_AUTOPAY_ENTER_AMOUNT, reply_markup=_keyboard((buttons.CANCEL, return_callback))
     )
     await callback.answer()
 
@@ -211,11 +225,15 @@ async def request_amount(callback: CallbackQuery, state: FSMContext, session: As
 async def custom_amount(message: Message, state: FSMContext, session: AsyncSession):
     """Проверяет введённую сумму и показывает согласие."""
     user_id = await _actor_uid(message, session)
-    if user_id is None or not await _allow_create(message, session):
+    if user_id is None:
+        return
+    return_callback = await management_checkout_return(state, user_id, "kassai")
+    if not await _allow_create(message, session, return_callback=return_callback):
         return
     amount = _amount(message.text)
     if amount is None:
-        await message.answer(texts.KASSAI_AUTOPAY_INVALID_AMOUNT)
+        kwargs = {"reply_markup": _keyboard((buttons.CANCEL, return_callback))} if return_callback != "pay" else {}
+        await message.answer(texts.KASSAI_AUTOPAY_INVALID_AMOUNT, **kwargs)
         return
     await _show_consent(message, state, session, user_id, amount, {"payment_flow": "balance_topup"})
 
@@ -227,6 +245,8 @@ async def process_fast_renewal_flow(
     user_id = await _actor_uid(callback_query, session)
     if user_id is None or not await _allow_create(callback_query, session):
         return
+    if state is not None:
+        await remember_management_checkout(callback_query, state, user_id, "kassai")
     temporary = await get_temporary_data(session, user_id)
     if state is None or not temporary or temporary["state"] not in _FLOW_BY_STATE:
         await _show_checkout_error(callback_query, texts.KASSAI_AUTOPAY_CONSENT_EXPIRED)
@@ -270,10 +290,15 @@ async def confirm_checkout(callback: CallbackQuery, state: FSMContext, session: 
         logger.exception("[KassaI Autopay] Не удалось создать оплату клиента {}", user_id)
         await _show_checkout_error(callback, texts.KASSAI_AUTOPAY_PAYMENT_ERROR, retry=True)
         return
+    return_callback = await management_checkout_return(state, user_id, "kassai", fallback="profile")
     await state.clear()
     keyboard = InlineKeyboardBuilder()
     keyboard.row(InlineKeyboardButton(text=buttons.PAY_2, url=url))
-    keyboard.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
+    keyboard.row(
+        InlineKeyboardButton(
+            text=buttons.MAIN_MENU if return_callback == "profile" else buttons.BACK, callback_data=return_callback
+        )
+    )
     await edit_or_send_message(
         callback.message,
         texts.KASSAI_AUTOPAY_PAYMENT_CREATED.format(amount=f"{amount:g} ₽"),
@@ -384,7 +409,11 @@ async def confirm_remove(callback: CallbackQuery, session: AsyncSession):
     text = texts.KASSAI_AUTOPAY_DELETE_CONFIRM if method else texts.KASSAI_AUTOPAY_CANCEL_CONFIRM
     data = f"kassai_auto_remove_method|{item.id}" if method else f"kassai_auto_remove_sub|{item.id}"
     await edit_or_send_message(
-        callback.message, text, reply_markup=_keyboard((buttons.APPLY, data), (buttons.CANCEL, "kassai_auto_manage"))
+        callback.message,
+        text,
+        reply_markup=_keyboard(
+            (buttons.APPLY, data), (buttons.CANCEL, management_return_callback(callback, "kassai_auto_manage"))
+        ),
     )
     await callback.answer()
 
@@ -456,7 +485,8 @@ async def confirm_enable(callback: CallbackQuery, state: FSMContext, session: As
             period_days=quote["period_days"],
         ),
         reply_markup=_keyboard(
-            (buttons.KASSAI_AUTOPAY_ENABLE, "kassai_auto_confirm_enable"), (buttons.CANCEL, "kassai_auto_manage")
+            (buttons.KASSAI_AUTOPAY_ENABLE, "kassai_auto_confirm_enable"),
+            (buttons.CANCEL, management_return_callback(callback, "kassai_auto_manage")),
         ),
     )
     await callback.answer()

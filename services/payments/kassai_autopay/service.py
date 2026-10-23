@@ -37,11 +37,18 @@ from services.keys import execute_renewal, normalize_expiry_ms
 from services.payments.checkout_intent import (
     apply_checkout_intent,
     autopay_terms_for_tariff,
+    checkout_flow,
     checkout_key_snapshot,
     freeze_checkout_intent,
     prepare_checkout_completion,
 )
-from services.payments.pipeline import ParsedPayment, PipelineResult, process_cancelled_payment, process_success_payment
+from services.payments.pipeline import (
+    CheckoutCompletion,
+    ParsedPayment,
+    PipelineResult,
+    process_cancelled_payment,
+    process_success_payment,
+)
 from settings import texts
 from settings.config import (
     KASSAI_API_KEY,
@@ -536,7 +543,7 @@ async def _process_confirmed(attempt) -> PipelineResult:
     parsed = ParsedPayment(attempt.payment_id, UserId(attempt.user_id), float(money(attempt.payload["amount"])), "RUB")
 
     async def completion(session, owner, amount, row):
-        await _complete_attempt(session, owner, amount, row, attempt_id=attempt.id)
+        return await _complete_attempt(session, owner, amount, row, attempt_id=attempt.id)
 
     return await process_success_payment(PROVIDER, parsed, completion=completion, use_temporary_checkout=False)
 
@@ -636,7 +643,7 @@ async def _adopt_checkout_consent(session: AsyncSession, attempt) -> None:
         logger.info("KassaI: условия автопродления требуют повторного согласия, attempt={}", attempt.id)
 
 
-async def _complete_attempt(session, owner, amount, payment_row, *, attempt_id: str) -> None:
+async def _complete_attempt(session, owner, amount, payment_row, *, attempt_id: str) -> CheckoutCompletion | str | None:
     attempt = await dal.lock_attempt(session, attempt_id)
     if attempt is None or attempt.user_id != int(owner) or attempt.owner_deleted:
         raise ValueError("Владелец заказа изменился")
@@ -647,6 +654,8 @@ async def _complete_attempt(session, owner, amount, payment_row, *, attempt_id: 
     attempt.status = "succeeded"
     await _restore_reservation(session, attempt)
     intent = attempt.intent or {}
+    completed_flow = None
+    completed_client_id = None
     if intent.get("kind") == "recurring":
         key = await dal.get_owned_key(session, owner, intent["client_id"], lock=True)
         if key is None or key.is_frozen or checkout_key_snapshot(key) != intent.get("key_snapshot"):
@@ -678,6 +687,7 @@ async def _complete_attempt(session, owner, amount, payment_row, *, attempt_id: 
         except ServiceError as exc:
             await _paid_review(session, attempt, str(exc))
             return
+        completed_flow, completed_client_id = "key_renewal", key.client_id
         subscription = await dal.get_subscription(session, attempt.subscription_id, lock=True)
         if subscription is not None:
             subscription.next_payment_date = datetime.utcfromtimestamp(final_expiry / 1000) - timedelta(
@@ -695,9 +705,14 @@ async def _complete_attempt(session, owner, amount, payment_row, *, attempt_id: 
             await _paid_review(session, attempt, str(exc))
             return
         await _adopt_checkout_consent(session, attempt)
+        completed_flow, completed_client_id = checkout_flow(checkout), attempt.fulfilled_client_id
     attempt.status = "applied"
     attempt.payment_finalized = True
     await session.flush()
+
+    if completed_client_id and completed_flow in {"tariff_purchase", "trial_purchase", "key_renewal"}:
+        return CheckoutCompletion(completed_flow, completed_client_id)
+    return completed_flow if completed_flow != "balance_topup" else None
 
 
 async def _prepare_subscription(subscription_id: int) -> str | None:

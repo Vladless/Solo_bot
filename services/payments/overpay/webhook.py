@@ -81,7 +81,9 @@ async def overpay_webhook(request: web.Request):
             logger.error(f"[Overpay] Невалидный JSON в webhook: {e}")
             return web.Response(status=400, text="bad json")
 
-        logger.info(f"[Overpay] webhook: {json.dumps(data, ensure_ascii=False)}")
+        if not isinstance(data, dict):
+            return web.Response(status=400, text="bad json")
+        logger.debug("[Overpay] Получено уведомление о состоянии заказа")
 
         order_id = str(data.get("id") or "")
         status = str(data.get("status") or "").strip().lower()
@@ -90,6 +92,14 @@ async def overpay_webhook(request: web.Request):
         if not order_id:
             logger.error(f"[Overpay] Пустой id в webhook: {data}")
             return web.Response(status=400, text="missing id")
+
+        from services.payments.overpay_autopay.service import process_payment_webhook
+
+        recurrent_result = await process_payment_webhook(data)
+        if recurrent_result is not None:
+            return web.Response(
+                status=200 if recurrent_result.ok else 503, text="OK" if recurrent_result.ok else "retry"
+            )
 
         order = None
         if not _webhook_auth_configured() and status in (

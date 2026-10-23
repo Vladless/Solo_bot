@@ -224,12 +224,17 @@ async def process_callback_view_profile(
         builder.row(*row)
 
     builder = insert_hook_buttons(builder, module_directives)
+    markup = builder.as_markup()
+    if single_sub_rows is not None:
+        from handlers.payments.autopay_management import merge_management_buttons
+
+        markup = merge_management_buttons(markup)
 
     await release_session_early(session)
     await edit_or_send_message(
         target_message=message,
         text=profile_message,
-        reply_markup=builder.as_markup(),
+        reply_markup=markup,
         media_path=os.path.join("img", "profile.jpg"),
         disable_web_page_preview=False,
         force_text=True,

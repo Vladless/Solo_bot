@@ -1,8 +1,5 @@
 import asyncio
-import os
 import ssl
-import subprocess
-import tempfile
 import time
 
 import aiohttp
@@ -12,19 +9,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from cryptography.hazmat.primitives.serialization import (
-    Encoding,
-    NoEncryption,
-    PrivateFormat,
-    pkcs12,
-)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import PAYMENTS_CONFIG
 from database import register_pending_payment
 from database.access.resolution import TelegramId
 from database.payments import resolve_payment_creation_owner
-from services.payments.checkout_snapshot import capture_payment_checkout
 from database.users import get_user_language as _get_user_language
 from handlers.payments.keyboards import (
     balance_fallback_kb,
@@ -35,14 +25,15 @@ from handlers.payments.keyboards import (
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
+from services.payments.checkout_snapshot import capture_payment_checkout
 from services.payments.currency_rates import format_for_user
+from services.payments.overpay.client import _build_ssl_context
 from services.payments.owner_refs import payment_owner_token
 from services.payments.payment_links import register_payment_creator
 from settings.buttons import BACK, OVERPAY_CARDS, OVERPAY_SBP, PAY_2
 from settings.config import (
     OVERPAY_API_URL,
     OVERPAY_CARDS_TERMINAL_ID,
-    OVERPAY_CERT_PASSWORD,
     OVERPAY_CERT_PATH,
     OVERPAY_LIVETIME_MINUTES,
     OVERPAY_PASSWORD,
@@ -63,8 +54,6 @@ from settings.texts import (
 router = Router()
 
 OVERPAY_MIN_AMOUNT = 10
-
-_ssl_context: ssl.SSLContext | None = None
 
 
 class ReplenishBalanceOverpay(StatesGroup):
@@ -104,103 +93,6 @@ def _overpay_credentials_ok() -> bool:
         and bool((OVERPAY_PASSWORD or "").strip())
         and bool((OVERPAY_CERT_PATH or "").strip())
     )
-
-
-def _resolve_cert_path(path: str) -> str:
-    if os.path.isabs(path):
-        return path
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(base_dir, "..", "..", ".."))
-    return os.path.join(project_root, path)
-
-
-def _pem_from_cryptography(p12_data: bytes, password: bytes | None) -> bytes | None:
-    """Преобразует PKCS12 в PEM через cryptography."""
-    private_key, certificate, additional = pkcs12.load_key_and_certificates(p12_data, password)
-    if private_key is None or certificate is None:
-        logger.error("[Overpay] В .p12 нет приватного ключа или сертификата")
-        return None
-    bundle = certificate.public_bytes(Encoding.PEM)
-    for ca_cert in additional or []:
-        bundle += ca_cert.public_bytes(Encoding.PEM)
-    bundle += private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
-    return bundle
-
-
-def _pem_from_openssl(path: str, password: str) -> bytes | None:
-    """Преобразует PKCS12 в PEM через OpenSSL."""
-    env = {**os.environ, "OVERPAY_P12_PASS": password}
-    for extra in (["-legacy"], []):
-        try:
-            result = subprocess.run(
-                ["openssl", "pkcs12", "-in", path, "-nodes", "-passin", "env:OVERPAY_P12_PASS", *extra],
-                capture_output=True,
-                timeout=20,
-                env=env,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError) as error:
-            logger.warning(f"[Overpay] openssl недоступен: {error}")
-            return None
-        if result.returncode == 0 and b"BEGIN" in result.stdout:
-            logger.info("[Overpay] Сертификат разобран через openssl{}".format(" -legacy" if extra else ""))
-            return result.stdout
-    logger.error("[Overpay] openssl тоже не смог разобрать .p12")
-    return None
-
-
-def _build_ssl_context() -> ssl.SSLContext | None:
-    global _ssl_context
-    if _ssl_context is not None:
-        return _ssl_context
-
-    cert_path = (OVERPAY_CERT_PATH or "").strip()
-    if not cert_path:
-        logger.error("[Overpay] OVERPAY_CERT_PATH не задан")
-        return None
-
-    resolved = _resolve_cert_path(cert_path)
-    if not os.path.isfile(resolved):
-        logger.error(f"[Overpay] Файл сертификата не найден: {resolved}")
-        return None
-
-    try:
-        with open(resolved, "rb") as cert_file:
-            p12_data = cert_file.read()
-
-        raw_password = OVERPAY_CERT_PASSWORD or ""
-        password = raw_password.encode("utf-8") or None
-
-        try:
-            pem_bundle = _pem_from_cryptography(p12_data, password)
-        except Exception as error:
-            logger.warning(f"[Overpay] Штатный разбор .p12 не удался ({error}), пробую openssl")
-            pem_bundle = None
-
-        if pem_bundle is None:
-            pem_bundle = _pem_from_openssl(resolved, raw_password)
-        if pem_bundle is None:
-            return None
-
-        context = ssl.create_default_context()
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")
-        try:
-            tmp.write(pem_bundle)
-            tmp.flush()
-            tmp.close()
-            context.load_cert_chain(tmp.name)
-        finally:
-            try:
-                os.unlink(tmp.name)
-            except OSError:
-                pass
-
-        _ssl_context = context
-        logger.info("[Overpay] SSL-контекст с клиентским сертификатом успешно построен")
-        return context
-    except Exception as e:
-        logger.error(f"[Overpay] Не удалось загрузить сертификат .p12: {e}")
-        return None
 
 
 def _base_url() -> str:

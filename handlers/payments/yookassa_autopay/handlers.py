@@ -45,7 +45,11 @@ from handlers.keys.view.payload import send_key_info
 from handlers.payments.autopay_management import (
     AutopayManagementProvider,
     management_back_button,
+    management_checkout_callback,
+    management_checkout_return,
+    management_return_callback,
     register_autopay_management,
+    remember_management_checkout,
 )
 from handlers.utils import edit_or_send_message
 from hooks.hooks import register_hook
@@ -118,13 +122,21 @@ async def _allow_create(
     session: AsyncSession,
     *,
     target_message: Message | None = None,
+    return_callback: str | None = None,
 ) -> bool:
     if await is_yookassa_autopay_enabled_for_session(session):
         return True
     if isinstance(event, CallbackQuery):
         await event.answer(texts.YOOKASSA_AUTOPAY_DISABLED, show_alert=True)
     else:
-        await edit_or_send_message(target_message or event, texts.YOOKASSA_AUTOPAY_DISABLED)
+        if return_callback:
+            kb = InlineKeyboardBuilder()
+            kb.row(InlineKeyboardButton(text=CANCEL, callback_data=return_callback))
+            await edit_or_send_message(
+                target_message or event, texts.YOOKASSA_AUTOPAY_DISABLED, reply_markup=kb.as_markup()
+            )
+        else:
+            await edit_or_send_message(target_message or event, texts.YOOKASSA_AUTOPAY_DISABLED)
     return False
 
 
@@ -228,13 +240,13 @@ async def _commit(session: AsyncSession) -> None:
     await flush_purges(session)
 
 
-def _consent_keyboard():
+def _consent_keyboard(return_callback: str = "pay"):
     """Возвращает кнопки подтверждения и отмены оплаты."""
     keyboard = InlineKeyboardBuilder()
     keyboard.row(
         InlineKeyboardButton(text=buttons.YOOKASSA_AUTOPAY_CONFIRM_PAYMENT, callback_data="yookassa_autopay_confirm")
     )
-    keyboard.row(InlineKeyboardButton(text=CANCEL, callback_data="pay"))
+    keyboard.row(InlineKeyboardButton(text=CANCEL, callback_data=return_callback))
     return keyboard.as_markup()
 
 
@@ -284,7 +296,10 @@ async def _show_consent(
         text += "\n" + texts.YOOKASSA_PAYMENT_QUOTE.format(**amount_quote.public("YOOKASSA_AUTOPAY"))
     await state.update_data(autopay_checkout={"user_id": int(user_id), "amount": amount, "metadata": metadata})
     await state.set_state(YooKassaPaymentState.waiting_consent)
-    await edit_or_send_message(callback.message, text, reply_markup=_consent_keyboard())
+    return_callback = await management_checkout_return(
+        state, user_id, "yookassa", fallback=management_checkout_callback(callback)
+    )
+    await edit_or_send_message(callback.message, text, reply_markup=_consent_keyboard(return_callback))
     await callback.answer()
 
 
@@ -305,8 +320,7 @@ async def show_payment_menu(callback: CallbackQuery, state: FSMContext | None, s
     user_id = await _actor_uid(callback, session)
     if user_id is None or not await _allow_create(callback, session):
         return
-    if state is not None:
-        await state.clear()
+    return_callback = await remember_management_checkout(callback, state, user_id, "yookassa", reset=True)
     language_code = getattr(callback.from_user, "language_code", None)
     tariffs = await get_active_tariffs_by_group_code(session, "gifts")
     amounts = sorted({int(tariff.price_rub) for tariff in tariffs if tariff.price_rub and tariff.price_rub > 0})
@@ -317,7 +331,7 @@ async def show_payment_menu(callback: CallbackQuery, state: FSMContext | None, s
         kb.button(text=label, callback_data=f"yookassa_autopay_amount|{amount}")
     kb.adjust(2)
     kb.row(InlineKeyboardButton(text=CUSTOM_AMOUNT, callback_data="yookassa_autopay_custom_amount"))
-    kb.row(InlineKeyboardButton(text=BACK, callback_data="pay"))
+    kb.row(InlineKeyboardButton(text=BACK, callback_data=return_callback))
     await edit_or_send_message(callback.message, texts.YOOKASSA_AUTOPAY_PAYMENT_MENU_TITLE, reply_markup=kb.as_markup())
     await callback.answer()
 
@@ -336,12 +350,20 @@ async def process_quick_amount(callback: CallbackQuery, state: FSMContext, sessi
 
 @router.callback_query(F.data == "yookassa_autopay_custom_amount")
 async def request_custom_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
-    if not await _allow_create(callback, session):
+    user_id = await _actor_uid(callback, session)
+    if user_id is None or not await _allow_create(callback, session):
         return
+    return_callback = await management_checkout_return(
+        state, user_id, "yookassa", fallback=management_checkout_callback(callback)
+    )
     await state.set_state(YooKassaPaymentState.entering_amount)
     await _remember_prompt(state, callback.message)
     kb = InlineKeyboardBuilder()
-    kb.row(InlineKeyboardButton(text=CANCEL, callback_data="yookassa_autopay_menu"))
+    kb.row(
+        InlineKeyboardButton(
+            text=CANCEL, callback_data=return_callback if return_callback != "pay" else "yookassa_autopay_menu"
+        )
+    )
     text = texts.YOOKASSA_AUTOPAY_ENTER_AMOUNT_TEXT.format(
         min_amount=YOOKASSA_AUTOPAY_CONFIG.get("MIN_PAYMENT_AMOUNT", 1)
     )
@@ -353,12 +375,24 @@ async def request_custom_amount(callback: CallbackQuery, state: FSMContext, sess
 async def process_custom_amount(message: Message, state: FSMContext, session: AsyncSession):
     target_message = await _restore_prompt(message, state)
     user_id = await _actor_uid(message, session, target_message=target_message)
-    if user_id is None or not await _allow_create(message, session, target_message=target_message):
+    if user_id is None:
+        return
+    return_callback = await management_checkout_return(state, user_id, "yookassa")
+    if not await _allow_create(
+        message,
+        session,
+        target_message=target_message,
+        return_callback=return_callback if return_callback != "pay" else None,
+    ):
         return
     amount = _amount(message.text)
     if amount is None:
         kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text=CANCEL, callback_data="yookassa_autopay_menu"))
+        kb.row(
+            InlineKeyboardButton(
+                text=CANCEL, callback_data=return_callback if return_callback != "pay" else "yookassa_autopay_menu"
+            )
+        )
         await edit_or_send_message(target_message, texts.YOOKASSA_AUTOPAY_INVALID_AMOUNT, reply_markup=kb.as_markup())
         return
     amount_quote = quote_yookassa_amount(amount)
@@ -383,7 +417,7 @@ async def process_custom_amount(message: Message, state: FSMContext, session: As
             if amount_quote.fee
             else ""
         ),
-        reply_markup=_consent_keyboard(),
+        reply_markup=_consent_keyboard(return_callback),
     )
 
 
@@ -396,6 +430,7 @@ async def process_fast_renewal_flow(
     if state is None:
         await callback_query.answer(texts.YOOKASSA_AUTOPAY_CONSENT_EXPIRED, show_alert=True)
         return
+    await remember_management_checkout(callback_query, state, user_id, "yookassa")
     temp = await get_temporary_data(session, user_id)
     if not temp or temp["state"] not in _FLOW_BY_STATE:
         await show_payment_menu(callback_query, state, session)
@@ -429,23 +464,32 @@ async def confirm_checkout(callback: CallbackQuery, state: FSMContext, session: 
         return
     metadata = dict(checkout["metadata"])
     metadata["autopay_consent"] = True
+    return_callback = await management_checkout_return(
+        state, user_id, "yookassa", fallback=management_checkout_callback(callback)
+    )
     await callback.answer()
     try:
         url, _payment_id = await create_checkout_payment(session, user_id, amount, metadata=metadata)
         await _commit(session)
     except ValueError as exc:
-        await edit_or_send_message(callback.message, escape(str(exc)), reply_markup=_consent_keyboard())
+        await edit_or_send_message(callback.message, escape(str(exc)), reply_markup=_consent_keyboard(return_callback))
         return
     except Exception as exc:
         logger.exception("[Autopay] Не удалось создать платёж клиента {}: {}", user_id, exc)
         await edit_or_send_message(
-            callback.message, texts.YOOKASSA_AUTOPAY_PAYMENT_ERROR, reply_markup=_consent_keyboard()
+            callback.message, texts.YOOKASSA_AUTOPAY_PAYMENT_ERROR, reply_markup=_consent_keyboard(return_callback)
         )
         return
+    success_callback = await management_checkout_return(state, user_id, "yookassa", fallback="profile")
     await state.clear()
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(text=PAY_2, url=url))
-    kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    kb.row(
+        InlineKeyboardButton(
+            text=BACK if success_callback != "profile" else MAIN_MENU,
+            callback_data=success_callback,
+        )
+    )
     language_code = getattr(callback.from_user, "language_code", None)
     amount_text = await format_for_user(
         session, user_id, float(metadata.get("accepted_gross_amount") or amount), language_code, force_currency="RUB"
@@ -605,7 +649,11 @@ async def _confirm_delete(
     kb = InlineKeyboardBuilder()
     token = _card_token(card.id)
     confirm = f"yk_adm_cdel|u{int(user_id)}|{token}" if admin else f"yookassa_confirm_delete|{token}"
-    back = f"yk_adm_menu|u{int(user_id)}" if admin else "yookassa_manage_subscriptions"
+    back = (
+        f"yk_adm_menu|u{int(user_id)}"
+        if admin
+        else management_return_callback(callback, "yookassa_manage_subscriptions")
+    )
     kb.row(InlineKeyboardButton(text=APPLY, callback_data=confirm))
     kb.row(InlineKeyboardButton(text=CANCEL, callback_data=back))
     await edit_or_send_message(callback.message, text, reply_markup=kb.as_markup())
@@ -658,7 +706,11 @@ async def _confirm_cancel(
         return
     kb = InlineKeyboardBuilder()
     confirm = f"yk_adm_cusub|u{int(user_id)}|{sub.id}" if admin else f"yookassa_confirm_cancel|{sub.id}"
-    back = f"yk_adm_menu|u{int(user_id)}" if admin else "yookassa_manage_subscriptions"
+    back = (
+        f"yk_adm_menu|u{int(user_id)}"
+        if admin
+        else management_return_callback(callback, "yookassa_manage_subscriptions")
+    )
     kb.row(InlineKeyboardButton(text=buttons.YOOKASSA_AUTOPAY_CANCEL_SUBSCRIPTION, callback_data=confirm))
     kb.row(InlineKeyboardButton(text=CANCEL, callback_data=back))
     await edit_or_send_message(
@@ -737,7 +789,11 @@ async def confirm_enable_key(callback: CallbackQuery, state: FSMContext, session
             text=buttons.YOOKASSA_AUTOPAY_ENABLE_SUBSCRIPTION, callback_data=f"yookassa_confirm_enable|{client_id}"
         )
     )
-    kb.row(InlineKeyboardButton(text=CANCEL, callback_data="yookassa_manage_subscriptions"))
+    kb.row(
+        InlineKeyboardButton(
+            text=CANCEL, callback_data=management_return_callback(callback, "yookassa_manage_subscriptions")
+        )
+    )
     await edit_or_send_message(callback.message, text, reply_markup=kb.as_markup())
     await callback.answer()
 

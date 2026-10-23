@@ -40,12 +40,19 @@ from services.keys import execute_renewal, normalize_expiry_ms
 from services.payments.checkout_intent import (
     apply_checkout_intent,
     autopay_terms_for_tariff,
+    checkout_flow,
     checkout_key_snapshot,
     freeze_checkout_intent,
     normalize_legacy_checkout_intent,
     prepare_checkout_completion,
 )
-from services.payments.pipeline import ParsedPayment, PipelineResult, process_cancelled_payment, process_success_payment
+from services.payments.pipeline import (
+    CheckoutCompletion,
+    ParsedPayment,
+    PipelineResult,
+    process_cancelled_payment,
+    process_success_payment,
+)
 from services.payments.yookassa.amounts import YOOKASSA_AMOUNTS, quote_yookassa_amount, saved_yookassa_amounts
 from settings import texts
 from settings.buttons import YOOKASSA_AUTOPAY_SERVICE_CONFIRM_PAYMENT
@@ -519,7 +526,7 @@ async def _submit_attempt(attempt_id: str) -> PipelineResult:
 
 async def _complete_attempt(
     session: AsyncSession, owner: UserId, amount: float, payment_row, *, attempt_id: str, verified: dict
-) -> None:
+) -> CheckoutCompletion | str | None:
     attempt = await dal.lock_attempt(session, attempt_id)
     if attempt is None or int(attempt.user_id) != int(owner):
         raise ValueError("Владелец оплаты изменился")
@@ -530,6 +537,8 @@ async def _complete_attempt(
     await dal.update_attempt_result(session, attempt_id, status="succeeded")
     await _restore_reservation(session, attempt)
     intent = attempt.intent or {}
+    completed_flow = None
+    completed_client_id = None
     if intent.get("fulfillment_unavailable"):
         await _paid_review(session, owner, attempt, str(intent["fulfillment_unavailable"]))
         return
@@ -614,6 +623,7 @@ async def _complete_attempt(
         except ServiceError as exc:
             await _paid_review(session, owner, attempt, str(exc))
             return
+        completed_flow, completed_client_id = "key_renewal", key.client_id
         next_date = datetime.utcfromtimestamp(final_expiry / 1000) - timedelta(
             days=int(YOOKASSA_AUTOPAY_CONFIG.get("DAYS_BEFORE_EXPIRY", 3))
         )
@@ -627,6 +637,7 @@ async def _complete_attempt(
         except ServiceError as exc:
             await _paid_review(session, owner, attempt, str(exc))
             return
+        completed_flow, completed_client_id = checkout_flow(checkout), created_client
         metadata = intent.get("metadata") or {}
         flow = str(metadata.get("payment_flow") or (checkout.get("data") or {}).get("payment_flow") or "")
         if (
@@ -652,7 +663,9 @@ async def _complete_attempt(
                     await dal.mark_attempt_applied(session, attempt_id)
                     if attempt.payment_id:
                         await dal.mark_payment_status(session, attempt.payment_id, "succeeded")
-                    return
+                    if completed_client_id and completed_flow in {"tariff_purchase", "trial_purchase", "key_renewal"}:
+                        return CheckoutCompletion(completed_flow, completed_client_id)
+                    return completed_flow if completed_flow != "balance_topup" else None
                 consent = {"accepted": True, "source": "paid_checkout"}
                 if approved is not None:
                     consent["amount"] = approved
@@ -667,6 +680,10 @@ async def _complete_attempt(
         await dal.mark_attempt_applied(session, attempt_id)
     if attempt.payment_id:
         await dal.mark_payment_status(session, attempt.payment_id, "succeeded")
+
+    if completed_client_id and completed_flow in {"tariff_purchase", "trial_purchase", "key_renewal"}:
+        return CheckoutCompletion(completed_flow, completed_client_id)
+    return completed_flow if completed_flow != "balance_topup" else None
 
 
 async def _paid_review(session: AsyncSession, owner: UserId, attempt, reason: str) -> None:
@@ -716,7 +733,7 @@ async def reconcile_payment(payment_id: str) -> PipelineResult:
     if data.get("status") == "succeeded" and data.get("paid") is True:
 
         async def completion(session, owner, amount, row):
-            await _complete_attempt(session, owner, amount, row, attempt_id=attempt.id, verified=data)
+            return await _complete_attempt(session, owner, amount, row, attempt_id=attempt.id, verified=data)
 
         processed = await process_success_payment(
             "YOOKASSA_AUTOPAY", parsed, completion=completion, use_temporary_checkout=False
@@ -1096,7 +1113,7 @@ async def _reconcile_legacy(legacy) -> PipelineResult:
             attempt_id = existing.id
 
     async def completion(session, owner, amount, row):
-        await _complete_attempt(session, owner, amount, row, attempt_id=attempt_id, verified=data)
+        return await _complete_attempt(session, owner, amount, row, attempt_id=attempt_id, verified=data)
 
     return await process_success_payment(
         "YOOKASSA_AUTOPAY", parsed, completion=completion, use_temporary_checkout=False

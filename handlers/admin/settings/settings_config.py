@@ -1,5 +1,6 @@
 from typing import Final
 
+from core.settings.autopay_locations import AUTOPAY_MANAGEMENT_OPTIONS
 from settings.buttons import KASSA2328, YOOKASSA_SBP
 
 
@@ -77,6 +78,7 @@ PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
     "PLATEGA_CRYPTO": "Platega крипто",
     "OVERPAY_CARDS": "Overpay карты",
     "OVERPAY_SBP": "Overpay СБП",
+    "OVERPAY_AUTOPAY": "OverPay · автоплатёж по карте",
     "TRIBUTE": "Tribute",
     "HELEKET": "Heleket",
     "CRYPTOBOT": "CryptoBot",
@@ -116,7 +118,7 @@ PAYMENT_CASHBOX_GROUPS: Final[dict[str, tuple[str, ...]]] = {
     "WATA": ("WATA_RU", "WATA_INT"),
     "PARITYPAY": ("PARITYPAY_SBP",),
     "PLATEGA": ("PLATEGA_SBP", "PLATEGA_CARDS", "PLATEGA_INT", "PLATEGA_CRYPTO"),
-    "OVERPAY": ("OVERPAY_CARDS", "OVERPAY_SBP"),
+    "OVERPAY": ("OVERPAY_CARDS", "OVERPAY_SBP", "OVERPAY_AUTOPAY"),
     "TRIBUTE": ("TRIBUTE",),
     "HELEKET": ("HELEKET",),
     "CRYPTOBOT": ("CRYPTOBOT",),
@@ -240,11 +242,7 @@ YOOKASSA_AUTOPAY_TITLES: Final[dict[str, str]] = {
     "PAYMENT_SUBJECT": "Код предмета расчёта ЮКассы",
 }
 YOOKASSA_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {
-    "MANAGE_BUTTON_LOCATION": [
-        {"value": "profile", "label": "В профиле"},
-        {"value": "pay_menu", "label": "В меню оплаты"},
-        {"value": "both", "label": "В профиле и меню оплаты"},
-    ]
+    "MANAGE_BUTTON_LOCATION": AUTOPAY_MANAGEMENT_OPTIONS
 }
 
 KASSAI_AUTOPAY_TITLES: Final[dict[str, str]] = {
@@ -255,10 +253,14 @@ KASSAI_AUTOPAY_TITLES: Final[dict[str, str]] = {
     "MANAGE_BUTTON_LOCATION": "Кнопка управления автоплатежами",
     "API_TIMEOUT": "Ожидание ответа KassaAI (секунды)",
 }
-KASSAI_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {
-    "MANAGE_BUTTON_LOCATION": [
-        {"value": "profile", "label": "В профиле"},
-        {"value": "pay_menu", "label": "В меню оплаты"},
-        {"value": "both", "label": "В профиле и меню оплаты"},
-    ]
+KASSAI_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {"MANAGE_BUTTON_LOCATION": AUTOPAY_MANAGEMENT_OPTIONS}
+
+OVERPAY_AUTOPAY_TITLES: Final[dict[str, str]] = {
+    "DAYS_BEFORE_EXPIRY": "Начинать автопродление за (дни)",
+    "MAX_RETRY_ATTEMPTS": "Максимум попыток списания",
+    "RETRY_INTERVAL_HOURS": "Интервал повторных попыток (часы)",
+    "MIN_PAYMENT_AMOUNT": "Минимальная сумма списания (₽)",
+    "MANAGE_BUTTON_LOCATION": "Кнопка управления автоплатежами",
+    "API_TIMEOUT": "Ожидание ответа OverPay (секунды)",
 }
+OVERPAY_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {"MANAGE_BUTTON_LOCATION": AUTOPAY_MANAGEMENT_OPTIONS}

@@ -264,6 +264,9 @@ async def purchase_tariff_with_balance(
         kassai_autopay_terms = autopay_terms_for_tariff(
             tariff, body.selected_device_limit, body.selected_traffic_gb, provider_id="KASSAI_AUTOPAY"
         )
+        overpay_autopay_terms = autopay_terms_for_tariff(
+            tariff, body.selected_device_limit, body.selected_traffic_gb, provider_id="OVERPAY_AUTOPAY"
+        )
         return TariffPurchaseResponse(
             ok=True,
             message="Расчет обновлен",
@@ -274,6 +277,8 @@ async def purchase_tariff_with_balance(
             autopay_period_days=autopay_terms["period_days"] if autopay_terms else None,
             kassai_autopay_price_rub=kassai_autopay_terms["amount"] if kassai_autopay_terms else None,
             kassai_autopay_period_days=kassai_autopay_terms["period_days"] if kassai_autopay_terms else None,
+            overpay_autopay_price_rub=overpay_autopay_terms["amount"] if overpay_autopay_terms else None,
+            overpay_autopay_period_days=overpay_autopay_terms["period_days"] if overpay_autopay_terms else None,
             discount_rub=int(discount_rub),
             final_price_rub=int(final_price),
             applied_coupon_code=applied_coupon_code,

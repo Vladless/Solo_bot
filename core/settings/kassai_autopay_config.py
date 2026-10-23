@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.settings import get_setting, set_setting
 from database.settings_cache import settings_cache
 
+from .autopay_locations import AUTOPAY_MANAGEMENT_LOCATIONS
 from .payments_config import PAYMENTS_CONFIG
 from .runtime_sync import publish_runtime_config, register_runtime_config
 
@@ -49,7 +50,7 @@ def validate_kassai_autopay_settings(values: dict[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in values.items():
         if key == "MANAGE_BUTTON_LOCATION":
-            if not isinstance(value, str) or value.strip() not in {"profile", "pay_menu", "both"}:
+            if not isinstance(value, str) or value.strip() not in AUTOPAY_MANAGEMENT_LOCATIONS:
                 raise ValueError(KASSAI_AUTOPAY_SETTINGS_INVALID)
             result[key] = value.strip()
             continue

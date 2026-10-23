@@ -52,6 +52,14 @@ class ParsedPayment:
     metadata: dict | None = field(default=None)
 
 
+@dataclass(frozen=True)
+class CheckoutCompletion:
+    """Результат фактически исполненной покупки или продления подписки."""
+
+    flow: str
+    client_id: str
+
+
 @dataclass
 class PipelineResult:
     """Результат обработки платежа для ответа провайдеру."""
@@ -87,7 +95,7 @@ async def process_success_payment(
     credit_amount_override: float | None = None,
     update_currency: str | None = None,
     update_original_amount: float | None = None,
-    completion: Callable[..., Awaitable[str | None]] | None = None,
+    completion: Callable[..., Awaitable[CheckoutCompletion | str | None]] | None = None,
     use_temporary_checkout: bool = True,
 ) -> PipelineResult:
     """Подтверждает платёж, зачисляет баланс и завершает покупку."""
@@ -129,6 +137,7 @@ async def process_success_payment(
                     "robokassa",
                     "kassai",
                     "kassai_autopay",
+                    "overpay_autopay",
                     "paritypay",
                     "overpay",
                     "payhot",
@@ -203,6 +212,9 @@ async def process_success_payment(
                 if tg_id is None:
                     raise ValueError("Paid payment has no owner")
                 completed_checkout_flow = await completion(session, tg_id, credit_amount, row)
+                if isinstance(completed_checkout_flow, CheckoutCompletion):
+                    notification_kwargs["completed_checkout_client_id"] = completed_checkout_flow.client_id
+                    completed_checkout_flow = completed_checkout_flow.flow
                 if isinstance(completed_checkout_flow, str) and completed_checkout_flow:
                     notification_kwargs["completed_checkout_flow"] = completed_checkout_flow
             if credit_amount > 0:

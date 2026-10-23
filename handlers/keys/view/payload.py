@@ -88,7 +88,9 @@ moscow_tz = pytz.timezone("Europe/Moscow")
 DEVICES_PER_PAGE = 3
 
 
-async def build_keys_response(records: list[Key] | None, session: AsyncSession, page: int = 0):
+async def build_keys_response(
+    records: list[Key] | None, session: AsyncSession, page: int = 0, *, user_id: UserId | None = None
+):
     builder = InlineKeyboardBuilder()
 
     page_size = 5
@@ -181,6 +183,12 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
     else:
         response_message = NO_SUBSCRIPTIONS_MSG
 
+    if user_id is not None:
+        from handlers.payments.autopay_management import subscription_management_button
+
+        button = await subscription_management_button(session, user_id)
+        if button is not None:
+            builder.row(button)
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     return builder.as_markup(), response_message
@@ -207,8 +215,13 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
     final_link = record.get("link")
 
     builder = InlineKeyboardBuilder()
+    from handlers.payments.autopay_management import subscription_management_button
+
+    autopay_button = await subscription_management_button(session, UserId(key_obj.user_id), client_id, key_name)
 
     if is_frozen:
+        if autopay_button is not None:
+            builder.row(autopay_button)
         builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         return FROZEN_SUBSCRIPTION_MSG, builder.as_markup(), True
@@ -397,6 +410,14 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
         builder.row(*row)
 
     builder = insert_hook_buttons(builder, module_directives)
+    if autopay_button is not None:
+        rows = builder.export()
+        insert_at = next(
+            (index for index, row in enumerate(rows) if any(button.callback_data == "profile" for button in row)),
+            len(rows),
+        )
+        rows.insert(insert_at, [autopay_button])
+        builder = InlineKeyboardBuilder(markup=rows)
 
     return response_message, builder.as_markup(), False
 

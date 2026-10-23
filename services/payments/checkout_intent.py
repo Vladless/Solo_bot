@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.settings.kassai_autopay_config import KASSAI_AUTOPAY_CONFIG
 from core.settings.modes_config import MODES_CONFIG
+from core.settings.overpay_autopay_config import OVERPAY_AUTOPAY_CONFIG
 from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
 from core.settings.yookassa_autopay_config import YOOKASSA_AUTOPAY_CONFIG
 from database.access.resolution import UserId
@@ -42,6 +43,22 @@ _FLOW_STATES = {
     "key_addons": "waiting_for_addons_payment",
     "gift_create": "waiting_for_gift_payment",
 }
+
+
+def checkout_flow(intent: dict) -> str:
+    """Определяет вид исполненной операции по сохранённому состоянию."""
+    state = intent.get("state")
+    if state == "waiting_for_payment":
+        return (
+            "trial_purchase"
+            if (intent.get("data") or {}).get("payment_flow") == "trial_purchase"
+            else "tariff_purchase"
+        )
+    return {
+        "waiting_for_renewal_payment": "key_renewal",
+        "waiting_for_addons_payment": "key_addons",
+        "waiting_for_gift_payment": "gift_create",
+    }.get(state, "balance_topup")
 
 
 def checkout_key_snapshot(key) -> dict:
@@ -145,7 +162,11 @@ def autopay_terms_for_tariff(
     if str(tariff.get("group_code") or "").strip() in DEFAULT_RENEWAL_FORBIDDEN_GROUPS:
         return None
     full_price = calculate_config_price(tariff, devices, traffic)
-    config = KASSAI_AUTOPAY_CONFIG if provider_id == "KASSAI_AUTOPAY" else YOOKASSA_AUTOPAY_CONFIG
+    config = {
+        "YOOKASSA_AUTOPAY": YOOKASSA_AUTOPAY_CONFIG,
+        "KASSAI_AUTOPAY": KASSAI_AUTOPAY_CONFIG,
+        "OVERPAY_AUTOPAY": OVERPAY_AUTOPAY_CONFIG,
+    }.get(provider_id, YOOKASSA_AUTOPAY_CONFIG)
     discount = max(0, min(100, float(config.get("AUTOPAY_DISCOUNT_PERCENT", 0))))
     period = int(tariff.get("duration_days") or 0)
     factor = (Decimal("100") - Decimal(str(discount))) / Decimal("100")

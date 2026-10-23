@@ -14,6 +14,7 @@ from database.settings import get_setting, set_setting
 from database.settings_cache import settings_cache
 from logger import logger
 
+from .autopay_locations import AUTOPAY_MANAGEMENT_LOCATIONS
 from .payments_config import PAYMENTS_CONFIG
 from .runtime_sync import publish_runtime_config, register_runtime_config
 
@@ -104,7 +105,7 @@ _AUTOPAY_SETTING_VALUES = {
         "health_insurance_with_payouts",
         "health_insurance",
     },
-    "MANAGE_BUTTON_LOCATION": {"profile", "pay_menu", "both"},
+    "MANAGE_BUTTON_LOCATION": frozenset(AUTOPAY_MANAGEMENT_LOCATIONS),
 }
 
 
@@ -208,7 +209,7 @@ def _normalized_config(values: dict[str, Any]) -> dict[str, Any]:
     result["RETRY_INTERVAL_HOURS"] = max(1, result["RETRY_INTERVAL_HOURS"])
     result["API_TIMEOUT"] = max(1, result["API_TIMEOUT"])
     result["AUTOPAY_DISCOUNT_PERCENT"] = min(100, result["AUTOPAY_DISCOUNT_PERCENT"])
-    if result["MANAGE_BUTTON_LOCATION"] not in {"profile", "pay_menu", "both"}:
+    if result["MANAGE_BUTTON_LOCATION"] not in AUTOPAY_MANAGEMENT_LOCATIONS:
         result["MANAGE_BUTTON_LOCATION"] = "profile"
     if not re.fullmatch(r"/[A-Za-z0-9_/-]+", result["WEBHOOK_PATH"]) or "//" in result["WEBHOOK_PATH"]:
         logger.error("[Autopay] Некорректный WEBHOOK_PATH; используется стандартный адрес уведомлений")

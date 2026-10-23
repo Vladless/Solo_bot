@@ -10,6 +10,7 @@ from .identity_session import IdentitySession
 from .kassai_autopay import KassaIAutopayAttempt, KassaISavedMethod, KassaISubscription
 from .keys import Key, KeyTrafficHistory, KeyTrafficHourly
 from .notifications import Notification, ScheduledBroadcast
+from .overpay_autopay import OverPayAutopayAttempt, OverPayAutopayLog, OverPaySavedMethod, OverPaySubscription
 from .payments import Payment
 from .polls import Poll, PollMessage, PollVote
 from .rate_limit import RateLimitCounter
@@ -106,6 +107,10 @@ __all__ = [
     "KassaISavedMethod",
     "KassaISubscription",
     "KassaIAutopayAttempt",
+    "OverPaySavedMethod",
+    "OverPaySubscription",
+    "OverPayAutopayAttempt",
+    "OverPayAutopayLog",
     "RefundOperation",
     "RemnawaveInstall",
 ]

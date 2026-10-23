@@ -6,14 +6,13 @@ from datetime import datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.autopay import ensure_no_other_autopay
 from database.models import (
     KassaIAutopayAttempt,
     KassaISavedMethod,
     KassaISubscription,
     Key,
     User,
-    YooKassaAutopayAttempt,
-    YooKassaSubscription,
 )
 
 
@@ -158,27 +157,7 @@ async def upsert_subscription(
     await get_owner(session, user_id, lock=True)
     if consent.get("accepted") is not True or period_days <= 0:
         raise ValueError("Требуется согласие на условия автоплатежа")
-    if await session.scalar(
-        select(YooKassaSubscription.id)
-        .where(
-            YooKassaSubscription.user_id == user_id,
-            YooKassaSubscription.client_id == client_id,
-            YooKassaSubscription.is_active.is_(True),
-        )
-        .limit(1)
-    ):
-        raise ValueError("Сначала отключите автоплатёж ЮКассы для этой подписки")
-    if await session.scalar(
-        select(YooKassaAutopayAttempt.id)
-        .join(YooKassaSubscription, YooKassaSubscription.id == YooKassaAutopayAttempt.subscription_id)
-        .where(
-            YooKassaSubscription.user_id == user_id,
-            YooKassaSubscription.client_id == client_id,
-            YooKassaAutopayAttempt.status.in_(UNFINISHED_STATUSES),
-        )
-        .limit(1)
-    ):
-        raise ValueError("Сначала дождитесь результата предыдущего автоплатежа ЮКассы")
+    await ensure_no_other_autopay(session, user_id, client_id, "KASSAI_AUTOPAY")
     key = await get_owned_key(session, user_id, client_id)
     method = await get_owned_method(session, user_id, method_id)
     if key is None or method is None:

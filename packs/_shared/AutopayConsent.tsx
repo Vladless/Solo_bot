@@ -7,7 +7,7 @@ type ConsentCheckout = Pick<CheckoutFlowContextValue, "providerId" | "requiredTo
 
 /** Проверяет необходимость согласия на сохранение способа оплаты. */
 export function isAutopayConsentRequired(checkout: ConsentCheckout | null | undefined): boolean {
-  return checkout?.providerId === "YOOKASSA_AUTOPAY" && (checkout.requiredToPayRub ?? 0) > 0;
+  return ["YOOKASSA_AUTOPAY", "KASSAI_AUTOPAY", "OVERPAY_AUTOPAY"].includes(checkout?.providerId ?? "") && (checkout?.requiredToPayRub ?? 0) > 0;
 }
 
 /** Показывает согласие на автопродление в оформлении набора. */
@@ -29,7 +29,9 @@ export function AutopayConsent({ checkout, style }: { checkout: ConsentCheckout 
       <span>
         {(checkout.mode === "purchase" || checkout.mode === "renew") && checkout.autopayAmountRub > 0 && checkout.autopayPeriodDays > 0
           ? `Согласен сохранить способ оплаты и включить автопродление этой подписки: до ${checkout.autopayGrossAmountRub ?? checkout.autopayAmountRub} ₽ за ${checkout.autopayPeriodDays} дн., перед истечением срока. Сначала используется баланс, недостающая сумма списывается с сохранённого способа оплаты. Автопродление можно отключить.`
-          : "Согласен сохранить способ оплаты. Автопродление подписки включается отдельно; сохранение карты само по себе не разрешает списания."}
+          : checkout.providerId === "KASSAI_AUTOPAY"
+            ? "Согласен привязать счёт СБП. Автопродление подписки включается отдельно после согласия на сумму и период. Привязку можно удалить."
+            : "Согласен сохранить способ оплаты. Автопродление подписки включается отдельно; сохранение карты само по себе не разрешает списания."}
       </span>
     </label>
     </>

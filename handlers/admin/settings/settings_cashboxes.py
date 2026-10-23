@@ -18,6 +18,7 @@ from .keyboard import (
 )
 from .settings_config import PAYMENT_CASHBOX_GROUPS, PAYMENT_CASHBOX_TITLES
 from .settings_kassai import show_kassai_settings
+from .settings_overpay import show_overpay_settings
 from .settings_yookassa import show_yookassa_settings
 
 
@@ -67,6 +68,9 @@ async def show_cashbox_settings(callback: CallbackQuery, cashbox: str) -> None:
     if cashbox == "KASSAI":
         await show_kassai_settings(callback)
         return
+    if cashbox == "OVERPAY":
+        await show_overpay_settings(callback)
+        return
     text = menu_text(PAYMENT_CASHBOX_TITLES[cashbox], quote(PAYMENT_CASHBOX_SETTINGS_HINT))
     keyboard = build_settings_cashbox_kb(cashbox, await load_payment_providers_settings())
     await callback.message.edit_text(text=text, reply_markup=keyboard)
@@ -100,7 +104,7 @@ async def toggle_cashbox_setting(
 
     provider_code = keys[index - 1]
 
-    if provider_code == "KASSAI_AUTOPAY":
+    if provider_code in {"KASSAI_AUTOPAY", "OVERPAY_AUTOPAY"}:
         _, is_super, _ = await get_admin_context(callback.from_user.id, fresh=True)
         if not is_super:
             await callback.answer("Недостаточно прав для этого действия.", show_alert=True)

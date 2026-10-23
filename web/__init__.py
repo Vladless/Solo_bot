@@ -26,6 +26,7 @@ async def register_web_routes(router: UrlDispatcher) -> None:
     router.add_post(PARITYPAY_WEBHOOK_PATH, paritypay_webhook)
     router.add_post(PLATEGA_WEBHOOK_PATH, platega_webhook)
     router.add_post(OVERPAY_WEBHOOK_PATH, overpay_webhook)
+    router.add_get(OVERPAY_WEBHOOK_PATH, overpay_webhook, allow_head=False)
     router.add_post(PAYHOT_WEBHOOK_PATH, payhot_webhook)
 
     try:
