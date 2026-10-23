@@ -18,7 +18,6 @@ from services.payments.currency_rates import format_for_user
 from settings.buttons import (
     ABOUT_VPN,
     ADD_SUB,
-    ADMIN_BTN,
     BACK,
     BALANCE,
     BIND_EMAIL,
@@ -43,7 +42,7 @@ from settings.config import (
 )
 from settings.texts import ADD_SUBSCRIPTION_HINT, PROFILE_CHANNEL_LINK, PROFILE_TEXT
 
-from .admin.panel.keyboard import AdminPanelCallback
+from .admin.panel.keyboard import ADMIN_BTN, AdminPanelCallback
 from .menu_layout import PROFILE_MENU, arrange_menu, split_hook_buttons
 from .utils import edit_or_send_message, get_username, join_blocks, render_text
 

@@ -17,7 +17,9 @@ from filters.admin_actions import (
     state_action_permissions,
 )
 from filters.permissions import GRANULAR_ACTIONS_CONFIGURED, PERM_KEY_DEVICES, PERM_KEY_TRAFFIC
-from settings.texts import ADMIN_ACTION_PERMISSION_DENIED
+
+
+ADMIN_ACTION_PERMISSION_DENIED = "Недостаточно прав для этого действия."
 
 
 _ADMIN_ACTION_STATE: ContextVar[object | None] = ContextVar("admin_action_state", default=None)

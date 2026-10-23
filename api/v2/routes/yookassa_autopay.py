@@ -14,6 +14,9 @@ from services.payments.yookassa_autopay.service import (
 from settings import texts
 
 
+YOOKASSA_AUTOPAY_API_PAYMENT_UNCONFIRMED = "Не удалось подтвердить платёж"
+
+
 router = APIRouter(prefix="/yookassa-autopay", tags=["YooKassaAutopay"])
 
 
@@ -156,7 +159,7 @@ async def admin_attempts(session: AsyncSession = Depends(get_session), identity=
 async def admin_resolve(attempt_id: str, body: ResolveRequest, identity=Depends(verify_identity_admin)):
     result = await resolve_unknown_attempt(attempt_id, body.payment_id)
     if not result.ok:
-        raise HTTPException(status_code=400, detail=result.error or texts.YOOKASSA_AUTOPAY_API_PAYMENT_UNCONFIRMED)
+        raise HTTPException(status_code=400, detail=result.error or YOOKASSA_AUTOPAY_API_PAYMENT_UNCONFIRMED)
     return {"ok": True, "already_processed": result.already_processed, "message": result.error}
 
 

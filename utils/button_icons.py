@@ -48,6 +48,6 @@ def apply_button_icons_patch(config: dict[str, dict[str, str]] | None = None) ->
 
 
 def set_button_icon_config(config: dict[str, dict[str, str]]) -> None:
-    """Подставить конфиг кнопок (вызвать после загрузки handlers, из handlers.buttons.BUTTON_ICON_CONFIG)."""
+    """Применяет настройки иконок кнопок из конфигурации бота."""
     _button_icon_config.clear()
     _button_icon_config.update(config)

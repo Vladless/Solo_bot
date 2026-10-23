@@ -6,12 +6,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MODES_CONFIG, update_modes_config
 from core.defaults import DEFAULT_MODES_CONFIG
 from filters.admin import IsAdminFilter
-from settings.texts import SETTING_INVALID_VALUE, SETTING_UPDATED, SINGLE_SUBSCRIPTION_SCREEN_HINT
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_settings_modes_kb, build_settings_single_subscription_kb
 from .settings_config import MODES_TITLES, SINGLE_SUBSCRIPTION_TITLES
+
+
+SETTING_INVALID_VALUE = "Некорректное значение настройки."
+SETTING_UPDATED = "Настройка обновлена."
+SINGLE_SUBSCRIPTION_SCREEN_HINT = (
+    "В режиме одной подписки: включено — открыть личный кабинет после создания; "
+    "выключено — показать обычный экран с кнопками подключения и просмотра подписки."
+)
 
 
 router = Router(name="admin_settings_modes")

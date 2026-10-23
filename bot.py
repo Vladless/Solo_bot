@@ -11,7 +11,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from core.settings.modes_config import resolve_protect_content
 from database import async_session_maker
 from filters.private import IsPrivateFilter
-from settings.config import API_TOKEN, REDIS_URL
+from settings.config import API_TOKEN, BUTTON_ICON_CONFIG, REDIS_URL
 from utils.button_icons import apply_button_icons_patch, set_button_icon_config
 from utils.custom_emojis import initialize_custom_emojis
 from utils.errors import setup_error_handlers
@@ -51,8 +51,6 @@ dp = Dispatcher(bot=bot, storage=storage)
 dp.include_router(modules_hub)
 
 load_modules_from_folder()
-
-from settings.buttons import BUTTON_ICON_CONFIG
 
 
 set_button_icon_config(BUTTON_ICON_CONFIG)

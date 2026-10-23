@@ -17,19 +17,36 @@ from core.settings.yookassa_autopay_config import (
 from database.settings import get_setting
 from filters.admin import get_admin_context
 from settings.buttons import BACK
-from settings.texts import (
-    SETTING_INVALID_VALUE,
-    SETTING_UPDATED,
-    YOOKASSA_AUTOPAY_SETTINGS_DESCRIPTION,
-    YOOKASSA_AUTOPAY_SETTINGS_INVALID,
-    YOOKASSA_AUTOPAY_SETTINGS_TITLE,
-    YOOKASSA_AUTOPAY_SETTING_HINTS,
-    YOOKASSA_AUTOPAY_SETTING_PROMPT,
-)
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
 from .settings_config import YOOKASSA_AUTOPAY_OPTIONS, YOOKASSA_AUTOPAY_TITLES
+
+
+SETTING_INVALID_VALUE = "Некорректное значение настройки."
+SETTING_UPDATED = "Настройка обновлена."
+YOOKASSA_AUTOPAY_SETTINGS_DESCRIPTION = (
+    "Сроки автопродления, повторные списания, скидка, уведомления и параметры чеков. "
+    "Автоплатежи включаются в разделе «Кассы → ЮКасса». "
+    "Изменение стоимости требует нового согласия клиента, если сумма превышает ранее согласованную."
+)
+YOOKASSA_AUTOPAY_SETTINGS_INVALID = "Некорректные настройки автоплатежей ЮКассы. Проверьте значения полей."
+YOOKASSA_AUTOPAY_SETTINGS_TITLE = "Автоплатежи ЮКассы"
+YOOKASSA_AUTOPAY_SETTING_HINTS = {
+    "DAYS_BEFORE_EXPIRY": "Целое число от 0 до 3650. За сколько дней до окончания начинать автопродление.",
+    "MAX_RETRY_ATTEMPTS": "Целое число от 1 до 1000. Сколько попыток допускается в одном цикле автопродления.",
+    "RETRY_INTERVAL_HOURS": "Целое число от 1 до 8760. Пауза между повторными попытками списания.",
+    "AUTOPAY_DISCOUNT_PERCENT": "Скидка от 0 до 99,99 процента. Бесплатное автопродление не поддерживается.",
+    "MIN_PAYMENT_AMOUNT": "От 0,01 до 1 000 000 рублей, не более двух знаков после запятой.",
+    "QUICK_AMOUNTS": "Целые суммы от 1 до 1 000 000 через запятую, например: 90, 500, 900.",
+    "MANAGE_BUTTON_LOCATION": "Где пользователь сможет управлять сохранёнными способами оплаты и автопродлением.",
+    "SEND_RECEIPT": "Передавать параметры чека при создании оплаты. Реквизиты чека настраиваются на сервере.",
+    "TAX_SYSTEM_CODE": "Код системы налогообложения магазина от 1 до 6. 0 — не передавать код в чеке.",
+    "VAT_CODE": "Код ставки НДС в API ЮКассы от 1 до 12 согласно настройкам вашего магазина.",
+    "PAYMENT_MODE": "Код способа расчёта в API ЮКассы, например: full_payment.",
+    "PAYMENT_SUBJECT": "Код предмета расчёта в API ЮКассы, например: service.",
+}
+YOOKASSA_AUTOPAY_SETTING_PROMPT = "Текущее значение: <b>{value}</b>.\n{hint}\n\nПришлите новое значение."
 
 
 async def _has_full_admin(event: CallbackQuery | Message) -> bool:

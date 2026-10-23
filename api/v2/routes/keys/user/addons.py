@@ -6,6 +6,7 @@ from database.coupons import check_coupon_usage
 from database.keys import lock_owned_key_for_operation, resolve_key_operation_owner
 from database.users import get_locked_balance
 from services.payments.checkout_intent import checkout_key_snapshot
+from services.tariffs.tariff_display import resolve_key_traffic_limit_gb
 
 from .._common import *
 from .._common import (
@@ -87,23 +88,15 @@ async def user_key_addons_preview(
     if not has_device_option and not has_traffic_option:
         raise HTTPException(status_code=400, detail="Доп. опции для этой подписки недоступны")
     selected_device_limit_db = key_details.get("selected_device_limit")
-    selected_traffic_limit_db = key_details.get("selected_traffic_limit")
     current_device_limit_db = key_details.get("current_device_limit")
-    current_traffic_limit_db = key_details.get("current_traffic_limit")
     base_devices = tariff.get("device_limit")
     base_devices = int(base_devices) if base_devices is not None else None
-    base_traffic_bytes = tariff.get("traffic_limit")
-    base_traffic_gb_from_tariff = int(base_traffic_bytes / GB) if base_traffic_bytes else None
     current_device_limit = (
         int(current_device_limit_db)
         if current_device_limit_db is not None
         else (int(selected_device_limit_db) if selected_device_limit_db is not None else base_devices)
     )
-    current_traffic_gb = (
-        int(current_traffic_limit_db)
-        if current_traffic_limit_db is not None
-        else (int(selected_traffic_limit_db) if selected_traffic_limit_db is not None else base_traffic_gb_from_tariff)
-    )
+    current_traffic_gb = resolve_key_traffic_limit_gb(key_details, tariff)
     if pack_mode and current_device_limit is not None and int(current_device_limit) == 0:
         has_device_option = False
         device_options = []
@@ -307,23 +300,15 @@ async def user_key_apply_addons(
     if not has_device_option and not has_traffic_option:
         raise HTTPException(status_code=400, detail="Доп. опции для этой подписки недоступны")
     selected_device_limit_db = key_details.get("selected_device_limit")
-    selected_traffic_limit_db = key_details.get("selected_traffic_limit")
     current_device_limit_db = key_details.get("current_device_limit")
-    current_traffic_limit_db = key_details.get("current_traffic_limit")
     base_devices = tariff.get("device_limit")
     base_devices = int(base_devices) if base_devices is not None else None
-    base_traffic_bytes = tariff.get("traffic_limit")
-    base_traffic_gb_from_tariff = int(base_traffic_bytes / GB) if base_traffic_bytes else None
     current_device_limit = (
         int(current_device_limit_db)
         if current_device_limit_db is not None
         else (int(selected_device_limit_db) if selected_device_limit_db is not None else base_devices)
     )
-    current_traffic_gb = (
-        int(current_traffic_limit_db)
-        if current_traffic_limit_db is not None
-        else (int(selected_traffic_limit_db) if selected_traffic_limit_db is not None else base_traffic_gb_from_tariff)
-    )
+    current_traffic_gb = resolve_key_traffic_limit_gb(key_details, tariff)
     if pack_mode and current_device_limit is not None and int(current_device_limit) == 0:
         has_device_option = False
         device_options = []
@@ -623,7 +608,7 @@ async def user_key_apply_addons(
         selected_traffic_for_effective = (
             int(selected_traffic)
             if has_traffic_option and include_traffic_effective and selected_traffic is not None
-            else 0
+            else current_traffic_gb
         )
         device_limit_effective_new, traffic_limit_bytes_effective_new = await get_effective_limits_for_key(
             session=session,

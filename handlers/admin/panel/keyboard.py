@@ -26,6 +26,9 @@ from hooks.hooks import run_hooks
 from settings.buttons import BACK, MAIN_MENU
 
 
+ADMIN_BTN = "📊 Администратор"
+
+
 class AdminPanelCallback(CallbackData, prefix="admin_panel"):
     action: str
     page: int

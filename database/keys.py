@@ -758,6 +758,14 @@ async def save_key_config_with_mode(
             values["current_device_limit"] = int(selected_devices)
         if has_traffic_choice and selected_traffic_gb is not None:
             values["current_traffic_limit"] = int(selected_traffic_gb)
+    elif config_mode == "addon":
+        device_val = int(selected_devices) if selected_devices is not None and has_device_choice else None
+        values["selected_device_limit"] = device_val
+        values["current_device_limit"] = device_val
+        if has_traffic_choice and selected_traffic_gb is not None:
+            values["selected_traffic_limit"] = int(selected_traffic_gb)
+            values["current_traffic_limit"] = int(selected_traffic_gb)
+        values["selected_price_rub"] = int(total_price)
     else:
         device_val = int(selected_devices) if selected_devices is not None and has_device_choice else None
         traffic_val = int(selected_traffic_gb) if selected_traffic_gb is not None and has_traffic_choice else None

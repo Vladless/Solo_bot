@@ -13,6 +13,13 @@ from core.settings import kassa2328_config as config
 from settings import texts
 
 
+KASSA2328_SERVICE_INVALID_CURRENCY = "Валюта счёта 2328 должна быть RUB или USD"
+KASSA2328_SERVICE_INVALID_LIMITS = "Минимальная сумма 2328 превышает максимальную"
+KASSA2328_SERVICE_INVALID_TTL = "Срок счёта 2328 должен составлять от 300 до 86400 секунд"
+KASSA2328_SERVICE_PROJECT_CREDENTIALS_REQUIRED = "Для 2328 не настроены Project ID и Payment API Key"
+KASSA2328_SERVICE_PUBLIC_WEBHOOK_REQUIRED = "Для 2328 требуется публичный HTTPS-адрес уведомлений"
+
+
 class PaymentError(ValueError):
     pass
 
@@ -74,7 +81,7 @@ def rub_amount(value) -> Decimal:
 def validate_config() -> None:
     """Проверяет настройки создания счетов."""
     if not config.KASSA2328_PROJECT_UUID or not config.KASSA2328_API_KEY:
-        raise PaymentError(texts.KASSA2328_SERVICE_PROJECT_CREDENTIALS_REQUIRED)
+        raise PaymentError(KASSA2328_SERVICE_PROJECT_CREDENTIALS_REQUIRED)
     callback = urlsplit(config.KASSA2328_CALLBACK_URL)
     if (
         callback.scheme != "https"
@@ -83,13 +90,13 @@ def validate_config() -> None:
         or callback.fragment
         or callback.path != config.KASSA2328_WEBHOOK_PATH
     ):
-        raise PaymentError(texts.KASSA2328_SERVICE_PUBLIC_WEBHOOK_REQUIRED)
+        raise PaymentError(KASSA2328_SERVICE_PUBLIC_WEBHOOK_REQUIRED)
     if config.KASSA2328_INVOICE_CURRENCY not in {"RUB", "USD"}:
-        raise PaymentError(texts.KASSA2328_SERVICE_INVALID_CURRENCY)
+        raise PaymentError(KASSA2328_SERVICE_INVALID_CURRENCY)
     if not 300 <= config.KASSA2328_TTL_SECONDS <= 86400:
-        raise PaymentError(texts.KASSA2328_SERVICE_INVALID_TTL)
+        raise PaymentError(KASSA2328_SERVICE_INVALID_TTL)
     if config.KASSA2328_MIN_AMOUNT_RUB > config.KASSA2328_MAX_AMOUNT_RUB:
-        raise PaymentError(texts.KASSA2328_SERVICE_INVALID_LIMITS)
+        raise PaymentError(KASSA2328_SERVICE_INVALID_LIMITS)
 
 
 async def api_request(path: str, payload: dict) -> dict:

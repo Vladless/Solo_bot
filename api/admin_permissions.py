@@ -31,7 +31,9 @@ from filters.permissions import (
     normalize_permissions,
 )
 from settings.config import ADMIN_ID
-from settings.texts import ADMIN_ACTION_PERMISSION_DENIED
+
+
+ADMIN_ACTION_PERMISSION_DENIED = "Недостаточно прав для этого действия."
 
 
 KEY_FIELD_PERMISSIONS = {

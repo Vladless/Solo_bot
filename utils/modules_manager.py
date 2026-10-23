@@ -8,8 +8,10 @@ from aiogram import Router
 from core.executor import run_io
 from hooks.hooks import unregister_module_hooks
 from logger import logger
-from settings.texts import MODULE_MOVED_TO_CORE
 from utils.core_features import is_core_replaced_module
+
+
+MODULE_MOVED_TO_CORE = "Функции этого модуля перенесены в ядро и работают без его запуска."
 
 
 IGNORE_SUBMODULES = {"models", "schemas", "db"}

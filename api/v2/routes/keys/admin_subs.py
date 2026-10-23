@@ -24,12 +24,12 @@ from filters.permissions import (
     PERM_KEY_VIEW,
 )
 from logger import logger
-from settings.texts import (
-    MY_DEVICES_UNAVAILABLE_TEXT,
-    MY_DEVICES_UPDATE_FAILED_TEXT,
-    TRAFFIC_RESET_FAILED,
-    TRAFFIC_RESET_PARTIAL_TEXT,
-)
+from settings.texts import MY_DEVICES_UNAVAILABLE_TEXT
+
+
+MY_DEVICES_UPDATE_FAILED_TEXT = "Не удалось изменить список устройств. Попробуйте позже."
+TRAFFIC_RESET_FAILED = "Не удалось сбросить трафик: панели не подтвердили операцию. Попробуйте позже."
+TRAFFIC_RESET_PARTIAL_TEXT = "Трафик сброшен на: {successful_servers}. Не удалось сбросить на: {failed_servers}."
 
 
 subs_router = APIRouter()

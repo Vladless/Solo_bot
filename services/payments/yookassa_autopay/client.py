@@ -13,6 +13,9 @@ from settings import texts
 from settings.config import YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 
 
+YOOKASSA_AUTOPAY_SERVICE_INVALID_REFUND_ID = "Некорректный идентификатор возврата"
+
+
 _OBJECT_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
@@ -102,7 +105,7 @@ class YooKassaClient:
 
     async def get_refund(self, refund_id: str) -> APIResult:
         if not isinstance(refund_id, str) or not _OBJECT_ID.fullmatch(refund_id):
-            return APIResult(error=texts.YOOKASSA_AUTOPAY_SERVICE_INVALID_REFUND_ID)
+            return APIResult(error=YOOKASSA_AUTOPAY_SERVICE_INVALID_REFUND_ID)
         return await self.request("GET", f"refunds/{refund_id}")
 
 

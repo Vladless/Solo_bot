@@ -21,13 +21,6 @@ from filters.permissions import (
     action_permissions,
     normalize_permissions,
 )
-from settings.texts import (
-    ADMIN_ACTION_PERMISSIONS_HINT,
-    ADMIN_ACTION_PERMISSIONS_SAVED,
-    ADMIN_ACTION_PERMISSIONS_STALE,
-    ADMIN_ACTION_PERMISSIONS_TITLE,
-    ADMIN_ACTION_PERMISSION_DENIED,
-)
 
 from ..panel.headers import menu_text, quote, section
 from . import router
@@ -42,6 +35,15 @@ from .keyboard import (
     build_single_admin_menu,
     build_token_result_kb,
 )
+
+
+ADMIN_ACTION_PERMISSIONS_HINT = (
+    "Настройте доступ к отдельным действиям. Пока детальные права не сохранены, действует прежний доступ."
+)
+ADMIN_ACTION_PERMISSIONS_SAVED = "Детальные права сохранены."
+ADMIN_ACTION_PERMISSIONS_STALE = "Откройте настройки прав заново."
+ADMIN_ACTION_PERMISSIONS_TITLE = "Действия модератора"
+ADMIN_ACTION_PERMISSION_DENIED = "Недостаточно прав для этого действия."
 
 
 class AdminState(StatesGroup):

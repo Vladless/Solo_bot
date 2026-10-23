@@ -33,7 +33,7 @@ from services.keys import create_vpn_key_headless
 from services.tariffs import ConfigOptionRejected, calculate_config_price, ensure_allowed_config, filter_config_options
 from services.tariffs.pricing import resolve_config_base_limits
 from services.user_audit import record_admin_user_event
-from settings import texts
+from settings import buttons, texts
 
 
 router = APIRouter()
@@ -349,7 +349,7 @@ async def send_user_cabinet(
     chat_id = await chat_id_for_user(session, UserId(user.id))
     if chat_id is None:
         raise HTTPException(status_code=409, detail="У клиента нет Telegram")
-    button_text = getattr(texts, "ADMIN_CLIENT_CABINET_BUTTON", "Личный кабинет")
+    button_text = buttons.ADMIN_CLIENT_CABINET_BUTTON
     button = (
         InlineKeyboardButton(text=button_text, url=url)
         if is_web_open_in_browser()

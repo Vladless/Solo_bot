@@ -53,7 +53,7 @@ async def start_support_polling() -> None:
     delay = 5
     while True:
         try:
-            await support_bot.delete_webhook(drop_pending_updates=True)
+            await support_bot.delete_webhook()
         except Exception:
             pass
         try:

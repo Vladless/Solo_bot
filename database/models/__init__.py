@@ -17,7 +17,8 @@ from .remnawave_install import RemnawaveInstall
 from .servers import Server, ServerSpecialgroup, ServerSubgroup
 from .subscription_events import DailySubscriptionMetric, SubscriptionEvent
 from .tariffs import Tariff, TariffSubgroupSetting
-from .tickets import Ticket, TicketMessage
+from .ticket_deliveries import TicketDelivery
+from .tickets import Ticket, TicketMessage, TicketTelegramMessage
 from .traffic_notifications import TrafficNotificationState
 from .users import BlockedUser, ManualBan, TemporaryData, TrackingSource, User
 from .web import (
@@ -64,6 +65,8 @@ __all__ = [
     "TariffSubgroupSetting",
     "Ticket",
     "TicketMessage",
+    "TicketTelegramMessage",
+    "TicketDelivery",
     "Server",
     "ServerSubgroup",
     "ServerSpecialgroup",

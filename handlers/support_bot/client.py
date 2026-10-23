@@ -1,7 +1,9 @@
 import asyncio
 
+from html import escape
+
 from aiogram import F, Router
-from aiogram.filters import CommandObject, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
@@ -11,9 +13,23 @@ from core.bootstrap import MODES_CONFIG
 from core.executor import spawn
 from database import async_session_maker
 from database.identities import get_or_create_identity_for_tg
-from handlers.support_bot.media import collect_attachment
+from handlers.support_bot.media import AttachmentUnavailableError, collect_required_attachment
 from services import tickets as svc
-from settings.texts import TRIAGE_ITEMS
+from services.tickets.telegram import (
+    apply_telegram_edit,
+    confirm_delete,
+    find_source_message,
+    register_source,
+    request_delete,
+    source_from_message,
+)
+from settings.texts import (
+    SUPPORT_ATTACHMENT_UNAVAILABLE,
+    SUPPORT_MESSAGE_DELETED_TEXT,
+    SUPPORT_MESSAGE_DELETE_HINT,
+    SUPPORT_MESSAGE_EDITED_TEXT,
+    TRIAGE_ITEMS,
+)
 
 
 router = Router()
@@ -108,7 +124,8 @@ async def start_deeplink(message: Message, command: CommandObject, state: FSMCon
         "━━━━━━━━━━━━━━━\n\n"
         f"{topic}"
         "Опишите проблему <b>одним сообщением</b> — оператор ответит вам прямо здесь.\n\n"
-        "💡 Можно приложить скриншот или файл."
+        "💡 Можно приложить скриншот или файл.\n"
+        f"{SUPPORT_MESSAGE_DELETE_HINT}"
     )
 
 
@@ -128,12 +145,13 @@ async def start_plain(message: Message, state: FSMContext) -> None:
         await message.answer(
             "<b>Служба поддержки</b>\n━━━━━━━━━━━━━━━\n\n"
             "Просто напишите ваш вопрос — оператор ответит прямо здесь.\n\n"
-            "💡 Можно приложить скриншот или файл.",
+            "💡 Можно приложить скриншот или файл.\n"
+            f"{SUPPORT_MESSAGE_DELETE_HINT}",
             reply_markup=kb,
         )
         return
     await state.set_state(IntakeSG.categorizing)
-    await state.update_data(pending_body=None, pending_attachments=None)
+    await state.update_data(pending_body=None, pending_attachments=None, pending_source=None)
     await message.answer(
         f"<b>Служба поддержки</b>\n━━━━━━━━━━━━━━━\n\n{_CATEGORY_PROMPT}",
         reply_markup=_cat_kb(bool(tickets)).as_markup(),
@@ -147,7 +165,7 @@ async def cb_new(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     await state.set_state(IntakeSG.categorizing)
-    await state.update_data(pending_body=None, pending_attachments=None)
+    await state.update_data(pending_body=None, pending_attachments=None, pending_source=None)
     await callback.message.answer(_CATEGORY_PROMPT, reply_markup=_cat_kb().as_markup())
     await callback.answer()
 
@@ -159,10 +177,18 @@ async def cb_cat(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     pending_body = data.get("pending_body")
     pending_att = data.get("pending_attachments")
+    pending_source = data.get("pending_source")
     await callback.answer()
     if pending_body or pending_att:
         await state.clear()
-        await _create_from_intake(callback.message, callback.from_user.id, category, pending_body or "", pending_att)
+        await _create_from_intake(
+            callback.message,
+            callback.from_user.id,
+            category,
+            pending_body or "",
+            pending_att,
+            source=pending_source,
+        )
         return
     await state.set_state(IntakeSG.describing)
     await state.update_data(category=category)
@@ -170,7 +196,8 @@ async def cb_cat(callback: CallbackQuery, state: FSMContext) -> None:
     topic = f"📌 Тема: <b>{label}</b>\n\n" if label else ""
     await callback.message.answer(
         f"{topic}Опишите проблему <b>одним сообщением</b> — оператор ответит здесь.\n\n"
-        "💡 Можно приложить скриншот или файл."
+        "💡 Можно приложить скриншот или файл.\n"
+        f"{SUPPORT_MESSAGE_DELETE_HINT}"
     )
 
 
@@ -247,7 +274,9 @@ async def cb_open(callback: CallbackQuery, state: FSMContext) -> None:
     visible = [m for m in thread if m.author != "note"]
     for m in visible[-12:]:
         tag = svc.support_persona() if m.author == "agent" else "Вы"
-        lines.append(f"<b>{tag}</b> <i>{_fmt_dt(m.created_at)}</i>\n{(m.body or '').strip()}")
+        body = SUPPORT_MESSAGE_DELETED_TEXT if m.deleted_at else escape((m.body or "").strip())
+        edited = f" · {SUPPORT_MESSAGE_EDITED_TEXT}" if m.edited_at and not m.deleted_at else ""
+        lines.append(f"<b>{escape(tag)}</b> <i>{_fmt_dt(m.created_at)}{edited}</i>\n{body}")
     text = "\n".join(head) + "\n\n".join(lines)
     if len(text) > 3900:
         text = text[-3900:]
@@ -258,36 +287,40 @@ async def cb_open(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-async def _append_client_message(message: Message, ticket_id: str) -> None:
-    body, attachments = await collect_attachment(message)
+async def _append_client_message(
+    message: Message, ticket_id: str, *, collected: tuple[str, list[str] | None] | None = None
+) -> None:
+    source = source_from_message(message)
+    async with async_session_maker() as session:
+        if await find_source_message(session, source) is not None:
+            return
+    body, attachments = collected if collected is not None else await collect_required_attachment(message)
     if not body and not attachments:
         return
-    assigned = None
     ticket = None
     async with async_session_maker() as session:
         msg = await svc.add_message(
             session, ticket_id=ticket_id, author="client", body=body[:4000], attachments=attachments
         )
+        if msg is not None:
+            await register_source(session, msg, source)
         ticket = await svc.get_ticket(session, ticket_id)
-        assigned = ticket.assigned_agent_tg_id if ticket is not None else None
         await session.commit()
     if msg is None or ticket is None:
         return
-    if svc.forum_enabled():
-        await svc.post_client_message(ticket, body, attachments)
-        return
-    if assigned:
-        short = ticket_id.split("-")[0][:8]
-        try:
-            await message.bot.send_message(assigned, f"🆕 Новое сообщение по обращению <code>{short}</code>")
-            if attachments:
-                await message.copy_to(assigned)
-        except Exception:
-            pass
 
 
-async def _create_from_intake(target: Message, user_id: int, category, body: str, attachments) -> None:
+async def _create_from_intake(
+    target: Message,
+    user_id: int,
+    category,
+    body: str,
+    attachments,
+    source: dict | None = None,
+) -> None:
     async with async_session_maker() as session:
+        if source is not None and await find_source_message(session, source) is not None:
+            return
         identity = await get_or_create_identity_for_tg(session, user_id)
         try:
             ticket = await svc.create_ticket(
@@ -306,7 +339,10 @@ async def _create_from_intake(target: Message, user_id: int, category, body: str
             else:
                 await target.answer("Вы только что создали обращение — подождите немного перед новым.")
             return
-        await session.commit()
+        if source is not None:
+            thread = await svc.get_thread(session, ticket.id)
+            if thread:
+                await register_source(session, thread[0], source)
         ticket_id = ticket.id
         await svc.notify_agents_new_ticket(session, ticket=ticket)
         await session.commit()
@@ -319,25 +355,69 @@ async def _create_from_intake(target: Message, user_id: int, category, body: str
     )
 
 
-@router.message(IntakeSG.describing, F.text | F.caption | F.photo | F.document)
+@router.message(Command("delete"), F.chat.type == "private")
+async def on_delete(message: Message) -> None:
+    await request_delete(message, forum=False)
+
+
+@router.callback_query(F.data.startswith("tm:delete:") | (F.data == "tm:cancel"), F.message.chat.type == "private")
+async def on_delete_confirmation(callback: CallbackQuery) -> None:
+    await confirm_delete(callback, forum=False)
+
+
+@router.edited_message(F.chat.type == "private", F.text | F.caption | F.photo | F.document | F.animation)
+async def on_client_edit(message: Message, state: FSMContext) -> None:
+    if await state.get_state() == IntakeSG.categorizing.state:
+        data = await state.get_data()
+        pending = data.get("pending_source")
+        source = source_from_message(message)
+        if pending and all(pending.get(key) == source.get(key) for key in ("bot_id", "chat_id", "telegram_message_id")):
+            try:
+                body, attachments = await collect_required_attachment(message)
+            except AttachmentUnavailableError:
+                await message.answer(SUPPORT_ATTACHMENT_UNAVAILABLE)
+                return
+            if body or attachments:
+                await state.update_data(
+                    pending_body=body,
+                    pending_attachments=attachments,
+                    pending_source=source,
+                )
+            return
+    await apply_telegram_edit(message, forum=False)
+
+
+@router.message(IntakeSG.describing, F.text | F.caption | F.photo | F.document | F.animation)
 async def on_intake(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     category = data.get("category")
-    await state.clear()
-    body, attachments = await collect_attachment(message)
+    try:
+        body, attachments = await collect_required_attachment(message)
+    except AttachmentUnavailableError:
+        await message.answer(SUPPORT_ATTACHMENT_UNAVAILABLE)
+        return
     if not body and not attachments:
         await message.answer("Пустое сообщение. Опишите проблему текстом или пришлите скриншот.")
         return
-    await _create_from_intake(message, message.from_user.id, category, body, attachments)
+    await state.clear()
+    await _create_from_intake(
+        message,
+        message.from_user.id,
+        category,
+        body,
+        attachments,
+        source=source_from_message(message),
+    )
 
 
 async def _shadow_reopen_and_append(message: Message, ticket_id: str) -> bool:
+    collected = await collect_required_attachment(message)
     async with async_session_maker() as session:
         ticket = await svc.set_status(session, ticket_id=ticket_id, status=svc.OPEN)
         await session.commit()
     if ticket is None:
         return False
-    await _append_client_message(message, ticket_id)
+    await _append_client_message(message, ticket_id, collected=collected)
     try:
         await svc.set_topic_state(ticket, closed=False)
     except Exception:
@@ -345,8 +425,15 @@ async def _shadow_reopen_and_append(message: Message, ticket_id: str) -> bool:
     return True
 
 
-@router.message(F.text | F.caption | F.photo | F.document)
+@router.message(F.text | F.caption | F.photo | F.document | F.animation)
 async def on_free_text(message: Message, state: FSMContext) -> None:
+    try:
+        await _handle_free_text(message, state)
+    except AttachmentUnavailableError:
+        await message.answer(SUPPORT_ATTACHMENT_UNAVAILABLE)
+
+
+async def _handle_free_text(message: Message, state: FSMContext) -> None:
     if (message.text or "").startswith("/"):
         return
     async with async_session_maker() as session:
@@ -364,18 +451,29 @@ async def on_free_text(message: Message, state: FSMContext) -> None:
         if closed_id is not None and await _shadow_reopen_and_append(message, closed_id):
             await _answer_ephemeral(message, "✅ Передал в поддержку.")
             return
-        body, attachments = await collect_attachment(message)
+        body, attachments = await collect_required_attachment(message)
         if not body and not attachments:
             await _answer_ephemeral(message, "Опишите проблему текстом или пришлите скриншот.")
             return
-        await _create_from_intake(message, message.from_user.id, None, body, attachments)
+        await _create_from_intake(
+            message,
+            message.from_user.id,
+            None,
+            body,
+            attachments,
+            source=source_from_message(message),
+        )
         return
-    body, attachments = await collect_attachment(message)
+    body, attachments = await collect_required_attachment(message)
     if not body and not attachments:
         await message.answer("Опишите проблему текстом или пришлите скриншот.")
         return
     await state.set_state(IntakeSG.categorizing)
-    await state.update_data(pending_body=body, pending_attachments=attachments)
+    await state.update_data(
+        pending_body=body,
+        pending_attachments=attachments,
+        pending_source=source_from_message(message),
+    )
     await message.answer(
         f"Спасибо, приняли ваше сообщение. {_CATEGORY_PROMPT}",
         reply_markup=_cat_kb().as_markup(),

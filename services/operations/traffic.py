@@ -21,8 +21,10 @@ from panels.remnawave_runtime import (
     with_remnawave_api,
 )
 from settings.config import SUPERNODE
-from settings.texts import TRAFFIC_RESET_FAILED
 from utils.traffic_resources import traffic_resource_id
+
+
+TRAFFIC_RESET_FAILED = "Не удалось сбросить трафик: панели не подтвердили операцию. Попробуйте позже."
 
 
 async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dict[str, Any]:

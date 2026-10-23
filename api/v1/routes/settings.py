@@ -19,7 +19,11 @@ from database.models import Setting
 from database.settings import set_setting
 from database.settings_cache import settings_cache
 from handlers.admin.settings.settings_config import ADMIN_NOTIFICATION_TITLES, NOTIFICATION_TITLES
-from settings.texts import SETTING_INVALID_VALUE, TRAFFIC_SETTINGS_INVALID, YOOKASSA_MARKUP_INVALID
+from settings.texts import YOOKASSA_MARKUP_INVALID
+
+
+SETTING_INVALID_VALUE = "Некорректное значение настройки."
+TRAFFIC_SETTINGS_INVALID = "Пороги должны быть целыми числами от 1 до 100; первый включённый порог — выше второго."
 
 
 router = APIRouter()

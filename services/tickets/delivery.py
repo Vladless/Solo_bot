@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,17 +15,6 @@ def support_persona() -> str:
     return f"Поддержка {name}" if name else "Поддержка"
 
 
-_UPLOAD_PREFIX = "/api/web/uploads/"
-_UPLOAD_DIR = Path("static/web_uploads")
-_IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif")
-
-
-def _local_upload(url: str) -> Path | None:
-    if not isinstance(url, str) or not url.startswith(_UPLOAD_PREFIX):
-        return None
-    return _UPLOAD_DIR / url[len(_UPLOAD_PREFIX) :]
-
-
 def support_bot_instance():
     """Возвращает бота поддержки, если он запущен."""
     try:
@@ -43,68 +30,17 @@ async def notify_agents_new_ticket(session: AsyncSession, *, ticket: Ticket) -> 
     cat = f" · {ticket.category}" if ticket.category else ""
     rows = [int(t) for t in (await session.execute(select(Admin.tg_id))).scalars().all() if t]
 
-    from .forum import ensure_topic, forum_enabled
+    from .queue import queue_new_ticket
 
-    if forum_enabled():
-        from .service import build_client_context, get_thread
-
-        client = await session.get(Identity, ticket.identity_id)
-        context = await build_client_context(session, client) if client is not None else None
-        thread = await get_thread(session, ticket.id)
-        first = thread[0] if thread else None
-        await ensure_topic(
-            session,
-            ticket,
-            client=client,
-            context=context,
-            first_body=(first.body if first is not None else None),
-            first_attachments=(first.attachments if first is not None else None),
-        )
-        await _webpush_agents(
-            session, [t for t in rows if t > 0], f"Новое обращение {short}", f"Категория{cat or ': —'}"
-        )
-        return
-
-    bot = support_bot_instance()
-    if bot is not None:
-        text = f"🆕 <b>Новое обращение</b> <code>{short}</code>{cat}\nОткройте бота поддержки, чтобы ответить."
-        for tg_id in rows:
-            if tg_id <= 0:
-                continue
-            try:
-                await bot.send_message(tg_id, text)
-            except Exception:
-                pass
+    await queue_new_ticket(session, ticket)
     await _webpush_agents(session, [t for t in rows if t > 0], f"Новое обращение {short}", f"Категория{cat or ': —'}")
 
 
 async def notify_client_ticket_closed(session: AsyncSession, *, ticket: Ticket) -> None:
-    if ticket.rating is not None:
-        return
-    client = await get_ticket_delivery_identity(session, ticket.id)
-    if client is None:
-        return
-    tg_id = client.tg_id or 0
-    if tg_id <= 0:
-        return
-    bot = support_bot_instance()
-    if bot is None:
-        return
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from .queue import queue_closed
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=f"{n}⭐", callback_data=f"sc:rate:{ticket.id}:{n}") for n in range(1, 6)]
-        ]
-    )
-    try:
-        await bot.send_message(
-            tg_id,
-            "<b>Обращение закрыто</b>\n━━━━━━━━━━━━━━━\n\nПомогите нам стать лучше — оцените работу поддержки:",
-            reply_markup=kb,
-        )
-    except Exception:
-        pass
+    if ticket.rating is None:
+        await queue_closed(session, ticket)
 
 
 async def _webpush_agents(session: AsyncSession, agent_tgs: list[int], title: str, body: str) -> None:
@@ -196,7 +132,7 @@ async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: 
         preview,
         await _client_ticket_href(session, ticket.id),
     )
-    await publish_client_ticket_changed(client.id)
+    await publish_client_ticket_changed(session, client.id)
     client = await get_ticket_delivery_identity(session, ticket.id)
     if client is None:
         return
@@ -204,27 +140,6 @@ async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: 
     if tg_id <= 0:
         await _email_client_reply(client, ticket, body)
         return
-    support_bot = support_bot_instance()
-    if support_bot is None:
-        return
-    try:
-        await support_bot.send_message(tg_id, body)
-    except Exception:
-        pass
-    from aiogram.types import FSInputFile
+    from .queue import queue_message
 
-    for att in msg.attachments or []:
-        local = _local_upload(att)
-        if local is None or not local.exists():
-            continue
-        client = await get_ticket_delivery_identity(session, ticket.id)
-        tg_id = client.tg_id if client is not None else None
-        if tg_id is None or tg_id <= 0:
-            return
-        try:
-            if str(local).lower().endswith(_IMAGE_EXT):
-                await support_bot.send_photo(tg_id, FSInputFile(str(local)))
-            else:
-                await support_bot.send_document(tg_id, FSInputFile(str(local)))
-        except Exception:
-            pass
+    await queue_message(session, msg)

@@ -29,6 +29,7 @@ from database.models import Key, Notification
 from logger import logger
 from services.formatting import format_days, format_hours, format_minutes
 from settings.config import ADMIN_ID
+from utils.media import get_media_type
 
 
 ALLOWED_GROUP_CODES = ["trial", "discounts", "discounts_max", "cold_discounts", "cold_discounts_max", "gifts"]
@@ -234,24 +235,6 @@ def render_text(template: str, **values: object) -> str:
 def join_blocks(*blocks: str) -> str:
     """Склеивает блоки экрана, пропуская пустые."""
     return "\n".join(block for block in blocks if block)
-
-
-def get_media_type(media_path: str) -> str:
-    if not media_path:
-        return "photo"
-
-    ext = os.path.splitext(media_path.lower())[1]
-
-    if ext in [".jpg", ".jpeg", ".png", ".webp"]:
-        return "photo"
-
-    if ext in [".mp4", ".mov", ".avi"]:
-        return "video"
-
-    if ext == ".gif":
-        return "animation"
-
-    return "photo"
 
 
 def find_media_file(original_path: str) -> str | None:

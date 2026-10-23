@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MONEY_CONFIG, update_money_config
 from filters.admin import IsAdminFilter
 from settings.buttons import BACK
-from settings.texts import MONEY_SETTINGS_DESCRIPTION
 
 from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import MONEY_FIELDS, build_settings_money_kb
+
+
+MONEY_SETTINGS_DESCRIPTION = "Валюты, курс, кэшбэк и наценка на конвертацию."
 
 
 router = Router()
