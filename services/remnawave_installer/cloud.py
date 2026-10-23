@@ -7,15 +7,17 @@ import time
 import uuid
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from urllib.parse import quote
 
 import httpx
 import jwt
 
-from .types import InstallError, InstallSpec, InstallWaitingError
+from .types import InstallError, InstallSpec, InstallWaitingError, _domain
 
 
-VK_API = "https://msk.cloud.vk.com/api/cdn/api/v1"
+VK_API = "https://msk.cloud.vk.ru/api/cdn/api/v1"
+VK_KEYSTONE = "https://infra.mail.ru/infra/identity/v3/auth/tokens"
 YANDEX_CDN = "https://cdn.api.cloud.yandex.net/cdn/v1"
 YANDEX_CERTIFICATES = "https://certificate-manager.api.cloud.yandex.net/certificate-manager/v1"
 YANDEX_IAM = "https://iam.api.cloud.yandex.net/iam/v1/tokens"
@@ -44,6 +46,14 @@ def _identifier(value) -> str:
 def _dns_name(value: str) -> str:
     """Нормализует имя записи DNS."""
     return value.lower().rstrip(".")
+
+
+def _vk_project_id(spec: InstallSpec) -> str:
+    """Проверяет проект перед обращением к VK Cloud."""
+    value = spec.cloud.get("project_id", "")
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value):
+        raise InstallError("cloud_auth", "Укажите ID проекта VK Cloud")
+    return value
 
 
 async def _cname_visible(client: httpx.AsyncClient, record: dict) -> bool:
@@ -101,6 +111,9 @@ class _Cloud:
         self.state = artifacts.setdefault("cloud", {})
         self.checkpoint = checkpoint
         self.iam_token = ""
+        self.vk_token = ""
+        self.vk_token_expires_at = 0.0
+        self.vk_token_project = ""
 
     async def save(self) -> None:
         """Сохраняет артефакты перед продолжением установки."""
@@ -120,10 +133,13 @@ class _Cloud:
         """Выполняет запрос без раскрытия токенов в ошибках."""
         request_headers = dict(headers or {})
         if auth == "vk":
-            token = self.secrets.get("vk_token")
-            if not isinstance(token, str) or not token.strip():
-                raise InstallError("cloud_auth", "Укажите действующий токен VK Cloud")
-            request_headers["X-Auth-Token"] = token.strip()
+            project_id = _vk_project_id(self.spec)
+            if self.state.get("project_id") not in {None, project_id}:
+                raise InstallError("cloud", "Проект сохранённого CDN VK отличается от выбранного", retryable=False)
+            if not url.startswith(VK_API + "/"):
+                raise InstallError("cloud", "Некорректный адрес API VK Cloud", retryable=False)
+            url = f"{VK_API}/projects/{quote(project_id, safe='')}/{url.removeprefix(VK_API + '/')}"
+            request_headers["X-Auth-Token"] = await self.vk_auth_token()
         if auth == "yandex":
             if not self.iam_token:
                 await self.refresh_iam()
@@ -134,19 +150,30 @@ class _Cloud:
                 await self.refresh_iam()
                 request_headers["Authorization"] = f"Bearer {self.iam_token}"
                 response = await self.client.request(method, url, json=body, params=params, headers=request_headers)
+            elif (
+                response.status_code == 401
+                and auth == "vk"
+                and self.spec.cloud.get("auth_mode", "token") == "service_account"
+            ):
+                await self.refresh_vk()
+                request_headers["X-Auth-Token"] = self.vk_token
+                response = await self.client.request(method, url, json=body, params=params, headers=request_headers)
         except (asyncio.CancelledError, InstallError):
             raise
         except httpx.HTTPError as error:
             raise InstallError("cloud", "Облако недоступно; созданные ресурсы сохранены для повтора") from error
         if response.status_code in {401, 403}:
             message = (
-                "Обновите токен VK Cloud"
+                "Проверьте права сервисной учётной записи VK Cloud в указанном проекте"
+                if auth == "vk" and self.spec.cloud.get("auth_mode", "token") == "service_account"
+                else "Проверьте токен VK Cloud и его доступ к указанному проекту"
                 if auth == "vk"
                 else "Проверьте ключ сервисного аккаунта и его права editor на каталог"
             )
             raise InstallError("cloud_auth", message)
         if not 200 <= response.status_code < 300:
-            raise InstallError("cloud", f"Облачный API отклонил запрос: HTTP {response.status_code}")
+            path = httpx.URL(url).path
+            raise InstallError("cloud", f"Облачный API отклонил запрос: HTTP {response.status_code}, {method} {path}")
         if not response.content:
             return {}
         try:
@@ -156,6 +183,73 @@ class _Cloud:
         if not isinstance(payload, dict | list):
             raise InstallError("cloud", "Облако вернуло некорректный ответ")
         return payload
+
+    async def vk_auth_token(self) -> str:
+        """Возвращает ручной или временный токен VK Cloud."""
+        mode = self.spec.cloud.get("auth_mode", "token")
+        if mode == "token":
+            token = self.secrets.get("vk_token")
+            if not isinstance(token, str) or not token.strip():
+                raise InstallError("cloud_auth", "Укажите действующий токен VK Cloud")
+            return token.strip()
+        if mode != "service_account":
+            raise InstallError("cloud_auth", "Выберите способ доступа к VK Cloud")
+        if (
+            not self.vk_token
+            or self.vk_token_expires_at - time.time() <= 60
+            or self.vk_token_project != _vk_project_id(self.spec)
+        ):
+            await self.refresh_vk()
+        return self.vk_token
+
+    async def refresh_vk(self) -> None:
+        """Получает временный токен СУЗ для выбранного проекта."""
+        project_id = _vk_project_id(self.spec)
+        values = {name: self.secrets.get(name) for name in ("vk_username", "vk_password", "vk_user_domain")}
+        if any(not isinstance(value, str) or not value.strip() for value in values.values()):
+            raise InstallError("cloud_auth", "Укажите логин, пароль и домен сервисной учётной записи VK Cloud")
+        body = {
+            "auth": {
+                "identity": {
+                    "methods": ["password"],
+                    "password": {
+                        "user": {
+                            "name": values["vk_username"].strip(),
+                            "domain": {"name": values["vk_user_domain"].strip()},
+                            "password": values["vk_password"],
+                        }
+                    },
+                },
+                "scope": {"project": {"id": project_id}},
+            }
+        }
+        self.vk_token, self.vk_token_expires_at, self.vk_token_project = "", 0.0, ""
+        try:
+            response = await self.client.post(VK_KEYSTONE, json=body, follow_redirects=False)
+        except httpx.HTTPError:
+            raise InstallError("cloud_auth", "Сервис авторизации VK Cloud недоступен; повторите попытку") from None
+        if response.status_code in {401, 403}:
+            raise InstallError(
+                "cloud_auth", "Проверьте логин, пароль, домен и доступ сервисной учётной записи VK Cloud к проекту"
+            )
+        if not 200 <= response.status_code < 300:
+            raise InstallError("cloud_auth", f"Авторизация VK Cloud отклонена: HTTP {response.status_code}")
+        try:
+            token = response.headers.get("X-Subject-Token", "").strip()
+            payload = response.json()["token"]
+            if not token or any(not 33 <= ord(character) <= 126 for character in token):
+                raise ValueError
+            if not isinstance(payload, dict) or payload.get("project", {}).get("id") != project_id:
+                raise ValueError
+            expires = datetime.fromisoformat(payload["expires_at"].replace("Z", "+00:00"))
+            if expires.tzinfo is None or expires.utcoffset() is None:
+                raise ValueError
+            expires_at = expires.astimezone(timezone.utc).timestamp()
+            if expires_at <= time.time():
+                raise ValueError
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            raise InstallError("cloud_auth", "VK Cloud не вернул действующий токен для выбранного проекта") from None
+        self.vk_token, self.vk_token_expires_at, self.vk_token_project = token, expires_at, project_id
 
     async def refresh_iam(self) -> None:
         """Обменивает авторизованный ключ на временный IAM-токен."""
@@ -456,23 +550,26 @@ class _Cloud:
 
     @staticmethod
     def vk_target(payload) -> str:
-        """Извлекает единственную выданную VK цель CNAME."""
-        values = []
-        pending = [payload]
-        while pending:
-            value = pending.pop()
-            if isinstance(value, dict):
-                pending.extend(value.values())
-            elif isinstance(value, list):
-                pending.extend(value)
-            elif isinstance(value, str) and re.fullmatch(r"cl-[a-zA-Z0-9-]+\.service\.cdn\.msk\.vkcs\.cloud\.?", value):
-                values.append(_dns_name(value))
-        if len(set(values)) != 1:
-            raise InstallError("cloud", "VK Cloud не вернул однозначную цель CNAME")
-        return values[0]
+        """Проверяет выданную VK цель CNAME аккаунта."""
+        value = payload.get("cname") if isinstance(payload, dict) else None
+        if not isinstance(value, str):
+            raise InstallError("cloud", "VK Cloud не вернул корректную цель CNAME")
+        try:
+            return _domain(value)
+        except ValueError as error:
+            raise InstallError("cloud", "VK Cloud не вернул корректную цель CNAME") from error
 
     async def configure_vk(self) -> dict:
         """Создаёт VK CDN и продолжает установку после DNS-паузы."""
+        project_id = _vk_project_id(self.spec)
+        if self.state.get("project_id") not in {None, project_id}:
+            raise InstallError("cloud", "Проект сохранённого CDN VK отличается от выбранного", retryable=False)
+        if not self.state.get("project_id") and any(self.state.get(key) for key in ("origin_group_id", "resource_id")):
+            raise InstallError(
+                "cloud", "У сохранённых ресурсов VK не указан проект; подтвердите замену CDN", retryable=False
+            )
+        self.state["project_id"] = project_id
+        await self.save()
         client = await self.request("GET", f"{VK_API}/clients/me", auth="vk")
         target = self.vk_target(client)
         self.state["cname_target"] = target
@@ -526,7 +623,7 @@ class _Cloud:
             await self.save()
         if not self.state.get("cache_purged"):
             await self.save()
-            await self.request("POST", f"{VK_API}/resources/{resource_id}/purge", body={"type": "full"}, auth="vk")
+            await self.request("POST", f"{VK_API}/resources/{resource_id}/purge", body={"paths": []}, auth="vk")
             self.state["cache_purged"] = True
             await self.save()
         return await self.wait_delivery()
@@ -563,8 +660,10 @@ def cloud_change_plan(previous_spec: InstallSpec, spec: InstallSpec) -> dict:
         reasons.append("провайдер CDN")
     if current_cdn and previous_spec.cdn_domain != spec.cdn_domain:
         reasons.append("основной CNAME")
-    if current_cdn and previous_spec.cloud.get("folder_id", "") != spec.cloud.get("folder_id", ""):
+    if spec.transport == "cdn_yandex" and previous_spec.cloud.get("folder_id", "") != spec.cloud.get("folder_id", ""):
         reasons.append("каталог облака")
+    if spec.transport == "cdn_vk" and previous_spec.cloud.get("project_id", "") != spec.cloud.get("project_id", ""):
+        reasons.append("проект VK Cloud")
     return {
         "requires_replacement": bool(reasons),
         "recreate": bool(reasons),
@@ -577,7 +676,8 @@ def cloud_change_plan(previous_spec: InstallSpec, spec: InstallSpec) -> dict:
 
 def _change_target(spec: InstallSpec, artifacts: dict) -> str:
     """Связывает изменение облака с точным набором параметров."""
-    value = [spec.transport, spec.domain, spec.cdn_domain, spec.cloud, artifacts.get("xhttp_path")]
+    cloud = {key: value for key, value in spec.cloud.items() if key != "auth_mode"}
+    value = [spec.transport, spec.domain, spec.cdn_domain, cloud, artifacts.get("xhttp_path")]
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
@@ -589,10 +689,14 @@ def _retain_cloud(artifacts: dict, state: dict) -> None:
         return
     retained = artifacts.setdefault("retained_resources", [])
     identity = tuple(
-        state.get(key) for key in ("provider", "resource_id", "origin_group_id", "certificate_id", "nonce")
+        state.get(key)
+        for key in ("provider", "project_id", "resource_id", "origin_group_id", "certificate_id", "nonce")
     )
     if any(
-        tuple(item.get(key) for key in ("provider", "resource_id", "origin_group_id", "certificate_id", "nonce"))
+        tuple(
+            item.get(key)
+            for key in ("provider", "project_id", "resource_id", "origin_group_id", "certificate_id", "nonce")
+        )
         == identity
         for item in retained
     ):
@@ -609,6 +713,7 @@ def _retain_cloud(artifacts: dict, state: dict) -> None:
                 "origin_group_id",
                 "certificate_id",
                 "folder_id",
+                "project_id",
                 "nonce",
                 "operations",
                 "requests",
@@ -661,6 +766,8 @@ async def _update_existing_cdn(cloud: _Cloud, previous_spec: InstallSpec, target
     provider = "vk" if spec.transport == "cdn_vk" else "yandex"
     if state.get("provider") != provider or state.get("domain") != spec.cdn_domain:
         raise InstallError("cloud", "Сохранённый CDN не соответствует изменяемой установке", retryable=False)
+    if provider == "vk" and state.get("project_id") != spec.cloud.get("project_id"):
+        raise InstallError("cloud", "Проект сохранённого CDN VK отличается от выбранного", retryable=False)
     group_id, resource_id = _identifier(state.get("origin_group_id")), _identifier(state.get("resource_id"))
     name = state.get("origin_group_name", "solo-" + str(state.get("nonce", "")))
     if not re.fullmatch(r"solo-[a-f0-9]{24}", name):
@@ -844,22 +951,26 @@ async def update_cdn(
     if current.get("edit_target") == target and current.get("ready"):
         return current
     plan = cloud_change_plan(previous_spec, spec)
-    if plan["requires_replacement"]:
-        if not allow_recreate:
+    if plan["requires_replacement"] or pending:
+        if not pending and not allow_recreate:
             raise InstallError(
                 "cloud", "Требуется подтверждение замены только ресурсов CDN: " + plan["reason"], retryable=False
             )
         if not pending:
             state = {}
             same_folder = previous_spec.cloud.get("folder_id", "") == spec.cloud.get("folder_id", "")
+            same_project = current.get("project_id") == spec.cloud.get("project_id")
             if (
                 current.get("resource_id")
                 and previous_spec.transport == spec.transport
                 and current.get("origin_domain", previous_spec.domain) == spec.domain
                 and same_folder
+                and (spec.transport != "cdn_vk" or same_project)
                 and not current.get("origin_update_pending")
             ):
-                state.update({key: current[key] for key in ("origin_group_id", "folder_id") if current.get(key)})
+                state.update({
+                    key: current[key] for key in ("origin_group_id", "folder_id", "project_id") if current.get(key)
+                })
                 state["origin_group_name"] = current.get("origin_group_name", "solo-" + str(current.get("nonce", "")))
             pending = {"target": target, "state": state}
             artifacts["cloud_pending"] = pending

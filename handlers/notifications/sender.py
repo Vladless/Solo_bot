@@ -6,6 +6,7 @@ import time
 
 from collections import OrderedDict, deque
 from datetime import datetime
+from typing import Any
 
 import aiofiles
 import pytz
@@ -24,6 +25,7 @@ from logger import logger
 from services.formatting import format_hours, format_minutes
 from services.tariffs.tariff_display import get_key_tariff_display
 from utils.custom_emojis import _process_text
+from utils.media import get_media_type
 
 
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -85,7 +87,7 @@ class NotificationRateLimiter:
 
 
 def rate_limited_send(func):
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: Any, **kwargs: Any):
         while True:
             try:
                 tg_id = kwargs.get("tg_id") or (args[1] if len(args) > 1 else None)
@@ -129,45 +131,67 @@ async def send_notification(
         return await _send_text(bot, tg_id, caption, keyboard, user_id=user_id)
 
     photo_path = os.path.join("img", image_filename)
-    cached_id = await _get_cached_file_id(photo_path)
-    if cached_id:
-        return await _send_photo(bot, tg_id, photo_path, image_filename, caption, keyboard, cached_id, user_id=user_id)
-
     actual_path = _find_photo_file(photo_path)
     if actual_path:
-        return await _send_photo(bot, tg_id, actual_path, image_filename, caption, keyboard, user_id=user_id)
+        return await _send_media(bot, tg_id, actual_path, caption, keyboard, user_id=user_id)
     else:
         logger.warning(f"Файл изображения не найден: {photo_path}")
         return await _send_text(bot, tg_id, caption, keyboard, user_id=user_id)
 
 
-@rate_limited_send
-async def _send_photo(
+async def _send_media_message(
     bot: Bot,
     tg_id: int,
-    photo_path: str,
-    image_filename: str,
+    media_path: str,
     caption: str,
     keyboard: InlineKeyboardMarkup | None = None,
-    cached_file_id: str | None = None,
+    *,
+    caption_entities: list | None = None,
+) -> None:
+    """Отправляет медиа по фактическому типу и кеширует file_id."""
+    media_type = "animation" if get_media_type(media_path) == "animation" else "photo"
+    cached_file_id = await _get_cached_file_id(media_path)
+    media = cached_file_id
+    if not media:
+        async with aiofiles.open(media_path, "rb") as f:
+            image_data = await f.read()
+        media = BufferedInputFile(image_data, filename=os.path.basename(media_path))
+    kwargs = {media_type: media, "caption": caption, "reply_markup": keyboard}
+    if caption_entities:
+        kwargs.update(caption_entities=caption_entities, parse_mode=None)
+    send = bot.send_animation if media_type == "animation" else bot.send_photo
+    result = await send(chat_id=tg_id, **kwargs)
+    if not cached_file_id and result:
+        if media_type == "animation":
+            animation = getattr(result, "animation", None)
+            file_id = animation.file_id if animation else None
+        else:
+            photos = getattr(result, "photo", None)
+            file_id = photos[-1].file_id if photos else None
+        if file_id:
+            await _set_cached_file_id(media_path, file_id)
+
+
+@rate_limited_send
+async def _send_media(
+    bot: Bot,
+    tg_id: int,
+    media_path: str,
+    caption: str,
+    keyboard: InlineKeyboardMarkup | None = None,
     *,
     user_id: int | None = None,
 ) -> bool:
+    """Отправляет медиа уведомления с повтором при ограничении Telegram."""
     try:
-        if cached_file_id:
-            await bot.send_photo(tg_id, cached_file_id, caption=caption, reply_markup=keyboard)
-            return True
-        async with aiofiles.open(photo_path, "rb") as f:
-            image_data = await f.read()
-        buffered = BufferedInputFile(image_data, filename=image_filename)
-        result = await bot.send_photo(tg_id, buffered, caption=caption, reply_markup=keyboard)
-        if result and hasattr(result, "photo") and result.photo:
-            await _set_cached_file_id(os.path.join("img", image_filename), result.photo[-1].file_id)
+        await _send_media_message(bot, tg_id, media_path, caption, keyboard)
         return True
+    except TelegramRetryAfter:
+        raise
     except (TelegramForbiddenError, TelegramBadRequest):
         return False
     except Exception as e:
-        logger.error(f"Ошибка отправки фото пользователю {tg_id}: {e}")
+        logger.error(f"Ошибка отправки медиа пользователю {tg_id}: {e}")
         return await _send_text(bot, tg_id, caption, keyboard, user_id=user_id)
 
 
@@ -188,6 +212,8 @@ async def _send_text(
             kwargs["parse_mode"] = None
         await bot.send_message(tg_id, processed, **kwargs)
         return True
+    except TelegramRetryAfter:
+        raise
     except (TelegramForbiddenError, TelegramBadRequest):
         return False
     except Exception as e:
@@ -231,44 +257,25 @@ class FastNotificationSender:
 
             if msg.get("photo"):
                 photo_path = os.path.join("img", msg["photo"])
-                cached_id = await _get_cached_file_id(photo_path)
-
-                caption_kwargs = {"caption_entities": entities} if entities else {}
-
-                if cached_id:
-                    await self.bot.send_photo(
-                        chat_id=tg_id,
-                        photo=cached_id,
-                        caption=processed_text,
-                        reply_markup=msg.get("keyboard"),
-                        **emoji_kwargs,
-                        **caption_kwargs,
+                actual_path = _find_photo_file(photo_path)
+                if actual_path:
+                    await _send_media_message(
+                        self.bot,
+                        tg_id,
+                        actual_path,
+                        processed_text,
+                        msg.get("keyboard"),
+                        caption_entities=entities,
                     )
                 else:
-                    actual_path = _find_photo_file(photo_path)
-                    if actual_path:
-                        async with aiofiles.open(actual_path, "rb") as f:
-                            image_data = await f.read()
-                        buffered = BufferedInputFile(image_data, filename=os.path.basename(actual_path))
-                        result = await self.bot.send_photo(
-                            chat_id=tg_id,
-                            photo=buffered,
-                            caption=processed_text,
-                            reply_markup=msg.get("keyboard"),
-                            **emoji_kwargs,
-                            **caption_kwargs,
-                        )
-                        if result and hasattr(result, "photo") and result.photo:
-                            await _set_cached_file_id(photo_path, result.photo[-1].file_id)
-                    else:
-                        text_kwargs = {"entities": entities} if entities else {}
-                        await self.bot.send_message(
-                            chat_id=tg_id,
-                            text=processed_text,
-                            reply_markup=msg.get("keyboard"),
-                            **emoji_kwargs,
-                            **text_kwargs,
-                        )
+                    text_kwargs = {"entities": entities} if entities else {}
+                    await self.bot.send_message(
+                        chat_id=tg_id,
+                        text=processed_text,
+                        reply_markup=msg.get("keyboard"),
+                        **emoji_kwargs,
+                        **text_kwargs,
+                    )
             else:
                 text_kwargs = {"entities": entities} if entities else {}
                 await self.bot.send_message(

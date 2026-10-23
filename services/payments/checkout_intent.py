@@ -29,7 +29,7 @@ from services.tariffs import calculate_config_price
 from services.tariffs.cooldown import get_tariff_cooldown_remaining
 from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS
 from services.tariffs.renewal_window import is_renewal_available
-from services.tariffs.tariff_display import GB, get_effective_limits_for_key
+from services.tariffs.tariff_display import GB, get_effective_limits_for_key, resolve_key_traffic_limit_gb
 from services.tariffs.visibility import is_tariff_visible_for
 from settings.texts import RENEWAL_NOT_YET_AVAILABLE
 
@@ -387,7 +387,7 @@ async def _freeze_addons(session, data, key, tariff, devices, traffic, now_ms):
     has_device = bool(cfg.get("device_options")) and (not pack_mode or pack_mode in {"devices", "all"})
     has_traffic = bool(cfg.get("traffic_options_gb")) and (not pack_mode or pack_mode in {"traffic", "all"})
     cur_devices = key.current_device_limit if key.current_device_limit is not None else key.selected_device_limit
-    cur_traffic = key.current_traffic_limit if key.current_traffic_limit is not None else key.selected_traffic_limit
+    cur_traffic = resolve_key_traffic_limit_gb(checkout_key_snapshot(key), tariff)
     base = int(calculate_config_price(tariff, cur_devices, cur_traffic))
     if pack_mode:
         extra = int(
@@ -413,13 +413,15 @@ async def _freeze_addons(session, data, key, tariff, devices, traffic, now_ms):
         if has_traffic and traffic is not None:
             effective_traffic = 0 if traffic <= 0 or effective_traffic <= 0 else effective_traffic + traffic
     else:
-        total = int(calculate_config_price(tariff, devices if has_device else None, traffic if has_traffic else None))
+        target_devices = devices if has_device else None
+        target_traffic = traffic if has_traffic and traffic is not None else cur_traffic
+        total = int(calculate_config_price(tariff, target_devices, target_traffic))
         extra = max(0, total - base)
         effective_devices, traffic_bytes = await get_effective_limits_for_key(
             session,
             int(tariff["id"]),
-            devices if has_device else None,
-            traffic if has_traffic and traffic is not None else 0,
+            target_devices,
+            target_traffic,
             tariff=tariff,
         )
         effective_traffic = int(traffic_bytes / GB) if traffic_bytes else 0
@@ -543,12 +545,21 @@ async def _apply_addons(session, user_id, data):
     tariff = await get_tariff_by_id(session, int(data["tariff_id"]))
     if not tariff:
         raise ValidationError("Тариф не найден")
+    traffic_changed = (
+        bool(data.get("has_traffic_choice")) and _optional_int(data.get("selected_traffic_limit_gb")) is not None
+    )
+    traffic_limit_gb = int(data["target_traffic_limit"])
+    if not traffic_changed and traffic_limit_gb == 0:
+        preserved_traffic = data.get("current_traffic_gb")
+        if preserved_traffic is None:
+            preserved_traffic = resolve_key_traffic_limit_gb(checkout_key_snapshot(key), tariff)
+        traffic_limit_gb = int(preserved_traffic or 0)
     succeeded = await renew_key_in_cluster(
         cluster_id=key.server_id,
         email=key.email,
         client_id=key.client_id,
         new_expiry_time=max(int(data["new_expiry_time"]), normalize_expiry_ms(key.expiry_time)),
-        total_gb=int(data["target_traffic_limit"]),
+        total_gb=traffic_limit_gb,
         session=session,
         hwid_device_limit=int(data["target_device_limit"]),
         reset_traffic=False,
@@ -566,7 +577,7 @@ async def _apply_addons(session, user_id, data):
         selected_devices=int(data["target_device_limit"])
         if data.get("pack_mode")
         else _optional_int(data.get("selected_device_limit")),
-        selected_traffic_gb=int(data["target_traffic_limit"])
+        selected_traffic_gb=traffic_limit_gb
         if data.get("pack_mode")
         else _optional_int(data.get("selected_traffic_limit_gb")),
         total_price=int(data["total_price"]),

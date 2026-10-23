@@ -33,7 +33,7 @@ from services.errors import InsufficientFundsError, ValidationError
 from services.payments.checkout_intent import checkout_key_snapshot
 from services.payments.currency_rates import format_for_user
 from services.tariffs.pricing import calculate_config_price
-from services.tariffs.tariff_display import GB, get_effective_limits_for_key
+from services.tariffs.tariff_display import GB, get_effective_limits_for_key, resolve_key_traffic_limit_gb
 from settings.buttons import PAYMENT
 from settings.config import USE_NEW_PAYMENT_FLOW
 from settings.texts import (
@@ -172,26 +172,17 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
     )
 
     selected_device_limit_db = record.get("selected_device_limit")
-    selected_traffic_limit_db = record.get("selected_traffic_limit")
     current_device_limit_db = record.get("current_device_limit")
-    current_traffic_limit_db = record.get("current_traffic_limit")
 
     base_devices = tariff.get("device_limit")
     base_devices = int(base_devices) if base_devices is not None else None
-
-    base_traffic_bytes = tariff.get("traffic_limit")
-    base_traffic_gb_value = int(base_traffic_bytes / GB) if base_traffic_bytes else None
 
     current_devices = (
         int(current_device_limit_db)
         if current_device_limit_db is not None
         else (int(selected_device_limit_db) if selected_device_limit_db is not None else base_devices)
     )
-    current_traffic_gb = (
-        int(current_traffic_limit_db)
-        if current_traffic_limit_db is not None
-        else (int(selected_traffic_limit_db) if selected_traffic_limit_db is not None else base_traffic_gb_value)
-    )
+    current_traffic_gb = resolve_key_traffic_limit_gb(record, tariff)
 
     pack_devices, pack_traffic, pack_mode = get_pack_flags()
 

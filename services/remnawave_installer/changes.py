@@ -31,7 +31,7 @@ LABELS = {
     "trusted_ssh_sources": "Доверенные адреса SSH",
     "addons": "Дополнения",
     "shaping": "Шейпинг",
-    "cloud": "Каталог облака",
+    "cloud": "Доступ и проект / каталог облака",
     "replace_existing": "Разрешение замены",
     "publish_host": "Публикация хоста",
 }

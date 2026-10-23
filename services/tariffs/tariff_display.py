@@ -20,6 +20,20 @@ GB = 1024 * 1024 * 1024
 CRYPTO_LINK_LENGTH = 200
 
 
+def normalize_tariff_traffic_limit_gb(value: Any) -> int | None:
+    """Приводит лимит тарифа к ГБ с учётом прежнего хранения в байтах."""
+    if value is None:
+        return None
+    limit = int(value)
+    return limit // GB if limit >= GB else limit
+
+
+def resolve_key_traffic_limit_gb(key_record: dict[str, Any], tariff: dict[str, Any]) -> int | None:
+    """Берёт текущий, выбранный или базовый лимит трафика подписки."""
+    limit = resolve_effective_limit(key_record.get("current_traffic_limit"), key_record.get("selected_traffic_limit"))
+    return limit if limit is not None else normalize_tariff_traffic_limit_gb(tariff.get("traffic_limit"))
+
+
 def plain_tariff_name(tariff_name: str) -> str:
     """Убирает из названия тарифа приписку о безлимитах: лимиты идут отдельными строками."""
     for suffix in (

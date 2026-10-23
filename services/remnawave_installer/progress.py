@@ -191,7 +191,7 @@ def job_status_text(view: dict) -> str:
         }.get(status, label)
     lines = [
         "<b>" + escape(str(params.get("name") or "Новая нода")[:80]) + "</b> · " + label,
-        "Сервер: " + escape(str(params.get("address") or "не задано")[:64]),
+        "Сервер: <code>" + escape(str(params.get("address") or "не задано")[:64]) + "</code>",
     ]
     if progress:
         lines.append(
@@ -208,11 +208,17 @@ def job_status_text(view: dict) -> str:
     if view.get("error"):
         lines.append("Ошибка: " + escape(str(view["error"])[:512]))
     for record in (view.get("dns_records") or [])[:6]:
-        name, value = str(record.get("name", ""))[:100], str(record.get("value", ""))[:120]
-        lines.append("DNS: " + escape(name) + " → " + escape(value))
+        name, value = str(record.get("name", "")), str(record.get("value", ""))
+        lines.extend([
+            "",
+            "DNS · " + escape(str(record.get("type") or "CNAME")),
+            "Имя: <code>" + escape(name) + "</code>",
+            "Значение: <code>" + escape(value) + "</code>",
+        ])
     logs = view.get("logs") or []
-    if logs:
-        lines.append("<pre>" + escape("\n".join(str(line) for line in logs[-12:])[-1500:]) + "</pre>")
+    log_limit = min(1500, max(0, 4000 - len("\n".join(lines))))
+    if logs and log_limit:
+        lines.append("<pre>" + escape("\n".join(str(line) for line in logs[-12:])[-log_limit:]) + "</pre>")
     return "\n".join(lines)
 
 

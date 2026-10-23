@@ -129,11 +129,16 @@ class InstallSpec:
         if not isinstance(spec.addons, list) or any(addon not in ADDONS for addon in spec.addons):
             raise ValueError("Неизвестное дополнение")
         spec.addons = list(dict.fromkeys(spec.addons))
-        if not isinstance(spec.cloud, dict) or set(spec.cloud) - {"folder_id"}:
+        if not isinstance(spec.cloud, dict) or set(spec.cloud) - {"folder_id", "project_id", "auth_mode"}:
             raise ValueError("Неизвестные параметры облака; ключи доступа вводятся отдельно")
+        if spec.cloud.get("auth_mode", "token") not in ("token", "service_account"):
+            raise ValueError("Неизвестный способ авторизации VK Cloud")
         folder_id = spec.cloud.get("folder_id", "")
         if not isinstance(folder_id, str) or (folder_id and not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", folder_id)):
             raise ValueError("Некорректный ID каталога облака")
+        project_id = spec.cloud.get("project_id", "")
+        if not isinstance(project_id, str) or (project_id and not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", project_id)):
+            raise ValueError("Некорректный ID проекта VK Cloud")
         shaping_types = {
             "enabled": bool,
             "ceiling_mbps": int,

@@ -73,6 +73,11 @@ FIELDS = {
     "ei": ("exit_ip", "Выходной IP", "Дополнительный IP сервера; «-» использует основной адрес."),
     "ef": ("exit_interface", "Интерфейс выходного IP", "Например: eth0; «-» для автоматического определения."),
     "fd": ("folder_id", "Каталог Яндекс Cloud", "ID каталога; «-» выберет первый доступный каталог."),
+    "vp": (
+        "project_id",
+        "ID проекта VK Cloud",
+        "Скопируйте ID проекта из личного кабинета VK Cloud. Это не токен доступа.",
+    ),
 }
 SECRET_FIELDS = {
     "pw": ("ssh_password", "Пароль SSH", "Отправьте пароль одним сообщением."),
@@ -83,10 +88,21 @@ SECRET_FIELDS = {
     ),
     "pp": ("ssh_key_passphrase", "Пароль приватного ключа", "Отправьте пароль ключа; «-» если ключ без пароля."),
     "vk": ("vk_token", "Токен VK Cloud", "Отправьте токен доступа к CDN VK Cloud."),
+    "vd": (
+        "vk_user_domain",
+        "Домен пользователя VK Cloud",
+        "Создайте пользователя в VK Cloud: «Управление доступами → Сервисные пользователи», роль — администратор проекта. Отправьте точное значение OS_USER_DOMAIN_NAME из OpenStack RC. Не подставляйте default вместо значения из файла.",
+    ),
+    "vu": (
+        "vk_username",
+        "Логин сервисной учётной записи VK",
+        "Отправьте логин созданного сервисного пользователя VK Cloud.",
+    ),
+    "vw": ("vk_password", "Пароль сервисной учётной записи VK", "Отправьте пароль сервисного пользователя VK Cloud."),
     "ya": (
         "yandex_key",
         "Ключ Яндекс Cloud",
-        "Отправьте JSON авторизованного ключа сервисного аккаунта: id, service_account_id, private_key. Можно документом до 64 КБ.",
+        "Отправьте файл .json, скачанный при создании авторизованного ключа сервисного аккаунта Яндекс Cloud (до 64 КБ). Можно также вставить содержимое JSON текстом.",
     ),
     "pc": (
         "psiphon_config",
@@ -152,6 +168,11 @@ def _display(value) -> str:
     if isinstance(value, list):
         value = ", ".join(str(item) for item in value)
     return escape(str(value or "не задано"))
+
+
+def _copyable(value) -> str:
+    """Выделяет заполненное значение для копирования."""
+    return f"<code>{_display(value)}</code>" if value or value == 0 else _display(value)
 
 
 def _endpoint(params: dict) -> str:
@@ -290,6 +311,7 @@ async def _reset_input(state: FSMContext, **values: Any) -> None:
             "wizard_step",
             "squad_label",
             "server_field",
+            "vk_auth_setup",
         )
         if key in data
     }
@@ -346,11 +368,49 @@ def _secret_status(job: dict, field: str) -> str:
     return "введён" if field in (job.get("credential_fields") or []) else "не введён"
 
 
+def _vk_auth_fields(params: dict) -> tuple[str, ...]:
+    """Выбирает поля доступа VK Cloud для текущего режима."""
+    return ("vd", "vu", "vw") if params["cloud"].get("auth_mode", "token") == "service_account" else ("vk",)
+
+
+def _vk_missing_auth(job: dict) -> tuple[str, bool]:
+    """Находит следующее незаполненное поле доступа VK Cloud."""
+    params = _params(job)
+    if not params["cloud"].get("project_id"):
+        return "vp", False
+    credentials = set(job.get("credential_fields") or [])
+    for code in _vk_auth_fields(params):
+        if SECRET_FIELDS[code][0] not in credentials:
+            return code, True
+    return "", False
+
+
+def _vk_auth_choices(builder, params: dict, job_id: str) -> None:
+    """Добавляет выбор способа авторизации VK Cloud."""
+    current = params["cloud"].get("auth_mode", "token")
+    for value, title in (("token", "Готовый токен"), ("service_account", "Сервисная учётная запись")):
+        _button(builder, ("✅ " if value == current else "") + title, "vkauth", job_id, value)
+
+
+async def _vk_auth_setup(event, state: FSMContext, job: dict) -> None:
+    """Последовательно запрашивает доступ к проекту VK Cloud."""
+    job = await _effective_job(job, state)
+    code, secret = _vk_missing_auth(job)
+    if code:
+        await _reset_input(state, job_id=job["id"], step="2", wizard_step="2", vk_auth_setup=True)
+        return await _prompt(event, state, job, code, secret=secret)
+    await state.update_data(vk_auth_setup=False)
+    data = await state.get_data()
+    if job["status"] not in EDITABLE_STATUSES and not data.get("edit_mode"):
+        return await _job_screen(event, state, job)
+    return await _step(event, state, job, "2")
+
+
 def _field_button(builder, lines: list[str], params: dict, job_id: str, code: str) -> None:
     """Добавляет текущее значение и кнопку изменения поля."""
     field, title, _ = FIELDS[code]
-    value = params["cloud"].get("folder_id") if code == "fd" else params[field]
-    lines.append(f"{title}: {_display(value)}")
+    value = params["cloud"].get(field) if code in {"fd", "vp"} else params[field]
+    lines.append(f"{title}: {_copyable(value)}")
     _button(builder, title, "f", job_id, code)
 
 
@@ -359,7 +419,7 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
     job = await _effective_job(job, state)
     if step not in BASIC_STEPS:
         return await _advanced(event, state, job, step)
-    await _reset_input(state, job_id=job["id"], step=step, wizard_step=step)
+    await _reset_input(state, job_id=job["id"], step=step, wizard_step=step, vk_auth_setup=False)
     editing = (await state.get_data()).get("edit_mode", False)
     if step == "1" and job["status"] == "draft" and not editing:
         data = await state.get_data()
@@ -372,9 +432,9 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
     ]
     if step == "1":
         lines.extend([
-            f"IP сервера: {_display(params['address'])}",
-            f"SSH-порт: {params['ssh_port']}",
-            f"SSH-логин: {_display(params['ssh_username'])}",
+            f"IP сервера: {_copyable(params['address'])}",
+            f"SSH-порт: {_copyable(params['ssh_port'])}",
+            f"SSH-логин: {_copyable(params['ssh_username'])}",
             "Пароль SSH: " + _secret_status(job, "ssh_password"),
         ])
         if "ssh_private_key" in (job.get("credential_fields") or []):
@@ -398,9 +458,19 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
                 _field_button(builder, lines, params, job_id, code)
         if params["transport"].startswith("cdn_"):
             _field_button(builder, lines, params, job_id, "cd")
-            code, field = ("vk", "vk_token") if params["transport"] == "cdn_vk" else ("ya", "yandex_key")
-            lines.append(SECRET_FIELDS[code][1] + ": " + _secret_status(job, field))
-            _button(builder, SECRET_FIELDS[code][1], "s", job_id, code)
+            if params["transport"] == "cdn_vk":
+                _field_button(builder, lines, params, job_id, "vp")
+                _vk_auth_choices(builder, params, job_id)
+                codes = _vk_auth_fields(params)
+                if params["cloud"].get("auth_mode", "token") == "service_account":
+                    lines.append(
+                        "Создайте сервисного пользователя в VK Cloud: «Управление доступами → Сервисные пользователи», роль — администратор проекта. Токен бот получит автоматически."
+                    )
+            else:
+                codes = ("ya",)
+            for code in codes:
+                lines.append(SECRET_FIELDS[code][1] + ": " + _secret_status(job, SECRET_FIELDS[code][0]))
+                _button(builder, SECRET_FIELDS[code][1], "s", job_id, code)
             lines.append(
                 "Укажите два домена: origin с A/AAAA на IP сервера и домен CDN. После создания CDN бот покажет нужную запись CNAME и дождётся DNS."
             )
@@ -417,9 +487,9 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
         if params["role"] == "exit":
             lines.append("Для выхода каскада клиентский сквад и хост не создаются. Можно продолжить.")
         else:
-            lines.append(f"Название хоста: {_display(params['host_remark'] or params['name'])}")
+            lines.append(f"Название хоста: {_copyable(params['host_remark'] or params['name'])}")
             _button(builder, "Название хоста", "f", job_id, "hr")
-            lines.append(f"Сквад: {_display(job.get('squad_name') or params['squad_uuid'])}")
+            lines.append(f"Сквад: {_copyable(job.get('squad_name') or params['squad_uuid'])}")
             _button(builder, "Выбрать сквад", "squads", job_id)
             _button(builder, ("✅ " if params["publish_host"] else "⬜ ") + "Создать хост", "flag", job_id, "host")
             lines.append(
@@ -469,7 +539,7 @@ async def _advanced(event, state: FSMContext, job: dict, section: str) -> None:
     """Скрывает необязательные параметры от основного сценария."""
     params = _params(job)
     job_id = job["id"]
-    await _reset_input(state, job_id=job_id, step=section)
+    await _reset_input(state, job_id=job_id, step=section, vk_auth_setup=False)
     data = await state.get_data()
     builder = InlineKeyboardBuilder()
     lines = [f"<b>{STEP_NAMES[section]}</b>"]
@@ -479,6 +549,8 @@ async def _advanced(event, state: FSMContext, job: dict, section: str) -> None:
             _button(builder, STEP_NAMES[key], "step", job_id, key)
         if params["transport"] == "cdn_yandex":
             _field_button(builder, lines, params, job_id, "fd")
+        elif params["transport"] == "cdn_vk":
+            _field_button(builder, lines, params, job_id, "vp")
         if "psiphon" in params["addons"]:
             _button(builder, "Собственная конфигурация Psiphon", "s", job_id, "pc")
         _button(
@@ -516,7 +588,7 @@ async def _advanced(event, state: FSMContext, job: dict, section: str) -> None:
             lines.append(f"Роль: {ROLES[params['role']]}")
             _button(builder, "Роль ноды", "roles", job_id)
             if params["role"] == "entry":
-                lines.append(f"Выходная нода: {_display(params['exit_install_id'])}")
+                lines.append(f"Выходная нода: {_copyable(params['exit_install_id'])}")
                 _button(builder, "Выходная нода каскада", "exits", job_id)
             for code in ("ei", "ef"):
                 _field_button(builder, lines, params, job_id, code)
@@ -539,30 +611,36 @@ def _summary(job: dict) -> str:
         addons.append("Шейпинг скорости")
     lines = [
         "<b>Всё готово к установке</b>",
-        f"Сервер: {_display(params['address'])}",
-        f"SSH: {_display(params['ssh_username'])}, порт {params['ssh_port']}",
+        f"Сервер: {_copyable(params['address'])}",
+        f"SSH: {_copyable(params['ssh_username'])}, порт {_copyable(params['ssh_port'])}",
         f"Транспорт: {TRANSPORTS[params['transport']]}",
         "Дополнения: " + (", ".join(addons) or "без дополнений"),
     ]
     if params["role"] != "normal":
         lines.append("Роль: " + ROLES[params["role"]])
     if params["client_port"] != 443 and not params["transport"].startswith("cdn_"):
-        lines.append(f"Порт клиентов: {params['client_port']}")
+        lines.append(f"Порт клиентов: {_copyable(params['client_port'])}")
     if params["transport"] in {"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex"}:
         lines.extend([
-            f"Домен / origin: {_display(params['domain'])}",
-            f"Email сертификата: {_display(params['email'])}",
+            f"Домен / origin: {_copyable(params['domain'])}",
+            f"Email сертификата: {_copyable(params['email'])}",
         ])
     if params["transport"].startswith("cdn_"):
         lines.extend([
-            f"Домен CDN: {_display(params['cdn_domain'])}",
+            f"Домен CDN: {_copyable(params['cdn_domain'])}",
             "Ресурсы CDN оплачиваются у провайдера и сохраняются при отмене установки.",
         ])
+        if params["transport"] == "cdn_vk":
+            lines.append(f"ID проекта VK Cloud: {_copyable(params['cloud'].get('project_id'))}")
+            lines.append(
+                "Авторизация VK Cloud: "
+                + ("сервисная учётная запись" if _vk_auth_fields(params) != ("vk",) else "готовый токен")
+            )
     if params["role"] != "exit":
-        lines.append(f"Название хоста: {_display(params['host_remark'] or params['name'])}")
+        lines.append(f"Название хоста: {_copyable(params['host_remark'] or params['name'])}")
         lines.append("Создать хост: " + ("да" if params["publish_host"] else "нет"))
     if params["squad_uuid"]:
-        lines.append(f"Сквад: {_display(job.get('squad_name') or params['squad_uuid'])}")
+        lines.append(f"Сквад: {_copyable(job.get('squad_name') or params['squad_uuid'])}")
     elif params["role"] != "exit":
         lines.append(
             "Сквад не выбран. После установки добавьте инбаунд в нужный сквад или выберите его на шаге «Сквад и хост»."
@@ -632,6 +710,7 @@ async def _resources_screen(event, job: dict, page: str, state: FSMContext) -> N
             ("origin_group_id", "Группа источников"),
             ("certificate_id", "Сертификат"),
             ("folder_id", "Каталог"),
+            ("project_id", "Проект VK Cloud"),
             ("status", "Статус"),
             ("ready", "Готов"),
         ):
@@ -660,7 +739,7 @@ async def _changes_screen(event, state: FSMContext, job: dict, owner: int) -> No
     lines = ["<b>Проверка изменений</b>"]
     for change in changes:
         lines.append(
-            f"{_display(change.get('label') or change.get('field'))}: {_display(change.get('before'))} → {_display(change.get('after'))}"
+            f"{_display(change.get('label') or change.get('field'))}: {_copyable(change.get('before'))} → {_copyable(change.get('after'))}"
         )
     if not changes:
         lines.append("Параметры не изменились.")
@@ -782,6 +861,8 @@ def _parse_value(code: str, text: str):
         raise ValueError("Некорректное имя интерфейса")
     if code == "fd" and value and not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value):
         raise ValueError("Некорректный ID каталога")
+    if code == "vp" and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value):
+        raise ValueError("Укажите ID проекта VK Cloud: латиница, цифры, дефис и подчёркивание")
     return value
 
 
@@ -803,14 +884,14 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
         if code == "ip":
             lines.extend(["", "<b>Введите IP сервера</b>", escape(FIELDS["ip"][2])])
             if params["address"]:
-                lines.append(f"Текущий IP: {_display(params['address'])}")
+                lines.append(f"Текущий IP: {_copyable(params['address'])}")
                 _button(builder, "Оставить IP →", "servernext", job["id"], "pw")
         else:
-            lines.extend([f"IP сервера: {_display(params['address'])}", "", "<b>Введите пароль SSH</b>", escape(hint)])
+            lines.extend([f"IP сервера: {_copyable(params['address'])}", "", "<b>Введите пароль SSH</b>", escape(hint)])
             if set(job.get("credential_fields") or []).intersection({"ssh_password", "ssh_private_key"}):
                 _button(builder, "Использовать сохранённый доступ →", "servernext", job["id"], "2")
             _button(builder, "← Изменить IP", "f", job["id"], "ip")
-        lines.append(f"Подключение: {_display(params['ssh_username'])}, порт {params['ssh_port']}.")
+        lines.append(f"Подключение: {_copyable(params['ssh_username'])}, порт {_copyable(params['ssh_port'])}.")
         _button(builder, "⚙️ Дополнительные настройки SSH", "step", job["id"], "ssh")
         _button(builder, "Сохранить и закрыть", "show", job["id"])
         if secret:
@@ -857,12 +938,21 @@ async def _missing_input(event, state: FSMContext, job: dict, step: str) -> bool
         if not code and params["transport"].startswith("cdn_"):
             if not params["cdn_domain"]:
                 code = "cd"
+            elif params["transport"] == "cdn_vk":
+                code, secret = _vk_missing_auth(job)
             else:
                 provider, field = ("vk", "vk_token") if params["transport"] == "cdn_vk" else ("ya", "yandex_key")
                 if field not in credentials:
                     code, secret = provider, True
     if not code:
         return False
+    if (
+        params["transport"] == "cdn_vk"
+        and params["cloud"].get("auth_mode") == "service_account"
+        and code in {"vp", "vd", "vu", "vw"}
+    ):
+        await _vk_auth_setup(event, state, job)
+        return True
     await _reset_input(state, job_id=job["id"], step=step, wizard_step=step)
     await _prompt(event, state, job, code, secret=secret)
     return True
@@ -995,9 +1085,18 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                     await state.update_data(edit_mode=True, edit_job=job_id, pending_params=params)
                 return await _step(callback, state, job, "server")
             builder = InlineKeyboardBuilder()
+            if params["transport"] == "cdn_vk":
+                _vk_auth_choices(builder, params, job_id)
+            cloud_codes = (
+                _vk_auth_fields(params)
+                if params["transport"] == "cdn_vk"
+                else ("ya",)
+                if params["transport"] == "cdn_yandex"
+                else ()
+            )
             for code in (
                 "pw",
-                "vk" if params["transport"] == "cdn_vk" else "ya" if params["transport"] == "cdn_yandex" else "",
+                *cloud_codes,
                 "pc" if "psiphon" in params["addons"] else "",
             ):
                 if code:
@@ -1016,6 +1115,15 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 builder,
                 state=state,
             )
+        if action == "vkauth":
+            if params["transport"] != "cdn_vk" or value not in {"token", "service_account"}:
+                raise ValueError("Выберите способ авторизации VK Cloud")
+            if job["status"] not in SETTINGS_EDIT_STATUSES:
+                raise ValueError("Сейчас учётные данные обновлять нельзя")
+            if not editing and job["status"] not in EDITABLE_STATUSES:
+                await state.update_data(edit_mode=True, edit_job=job_id, pending_params=params)
+            job = await _save(job, owner, {"cloud": {**params["cloud"], "auth_mode": value}}, state)
+            return await _vk_auth_setup(callback, state, job)
         if action in {"f", "s", "sf"}:
             if (
                 job["status"] not in EDITABLE_STATUSES
@@ -1024,6 +1132,14 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 and not (action == "s" and job["status"] in SECRET_EDIT_STATUSES)
             ):
                 raise ValueError("Параметры выполняющейся установки менять нельзя")
+            await state.update_data(vk_auth_setup=False)
+            if action == "s" and value in {"vk", "vd", "vu", "vw"} and value not in _vk_auth_fields(params):
+                raise ValueError("Откройте настройки выбранного способа авторизации VK Cloud")
+            if action == "s" and value in {"vk", "vd", "vu", "vw"} and not params["cloud"].get("project_id"):
+                if not editing and job["status"] not in EDITABLE_STATUSES:
+                    await state.update_data(edit_mode=True, edit_job=job_id, pending_params=params)
+                await _reset_input(state, job_id=job_id, step="2", wizard_step="2")
+                return await _prompt(callback, state, job, "vp")
             return await _prompt(callback, state, job, value, secret=action == "s")
         if action in {"roles", "tr"}:
             if action == "roles":
@@ -1098,7 +1214,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             )
             lines = [
                 "<b>Проверка ключа сервера</b>",
-                f"Сервер: {_display(params['address'])}, порт {params['ssh_port']}",
+                f"Сервер: {_copyable(params['address'])}, порт {_copyable(params['ssh_port'])}",
             ]
             previous = result.get("previous_fingerprint")
             if previous:
@@ -1284,6 +1400,15 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             job = await jobs.start_job(job_id, owner, message_id=callback.message.message_id)
             return await _job_screen(callback, state, job)
         if action == "retry":
+            if (
+                not job.get("deletion")
+                and job["status"] in {"failed", "paused", "warning"}
+                and params["transport"] == "cdn_vk"
+                and _vk_missing_auth(job)[0]
+            ):
+                if not editing and not params["cloud"].get("project_id"):
+                    await state.update_data(edit_mode=True, edit_job=job_id, pending_params=params)
+                return await _vk_auth_setup(callback, state, job)
             if editing and params != stored_params:
                 return await _changes_screen(callback, state, job, owner)
             job = await jobs.retry_job(job_id, owner)
@@ -1305,8 +1430,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             builder = InlineKeyboardBuilder()
             lines = [
                 "<b>Удаление установки</b>",
-                f"Нода: {_display(stored_params['name'])}",
-                f"Сервер: {_display(stored_params['address'])}",
+                f"Нода: {_copyable(stored_params['name'])}",
+                f"Сервер: {_copyable(stored_params['address'])}",
                 "",
             ]
             if has_panel_changes:
@@ -1470,6 +1595,10 @@ async def installer_input(message: Message, state: FSMContext, session=None):
             if not text or len(text.encode()) > 65536:
                 raise ValueError("Отправьте текст или документ не больше 64 КБ")
             field = SECRET_FIELDS[code][0]
+            if code in {"vd", "vu"}:
+                text = text.strip()
+                if not text or any(ord(char) < 32 or ord(char) == 127 for char in text) or len(text) > 255:
+                    raise ValueError("Отправьте значение из OpenStack RC одной строкой")
             if code in {"ya", "pc"} and not (code == "pc" and text == "-"):
                 try:
                     parsed = json.loads(text)
@@ -1491,6 +1620,8 @@ async def installer_input(message: Message, state: FSMContext, session=None):
             await state.update_data(preview_token=None)
             job = await jobs.get_job(job_id, message.from_user.id)
             context = await state.get_data()
+            if context.get("vk_auth_setup") and code in {"vk", "vd", "vu", "vw"}:
+                return await _vk_auth_setup(message, state, job)
             if context.get("edit_mode") and context.get("edit_job") == job_id:
                 if job["status"] == "failed" and context.get("pending_params") == _params(job):
                     return await _job_screen(message, state, job)
@@ -1508,7 +1639,7 @@ async def installer_input(message: Message, state: FSMContext, session=None):
                 data.get("step")
                 if data.get("step") in STEP_NAMES
                 else "2"
-                if code in {"vk", "ya"}
+                if code in {"vk", "vd", "vu", "vw", "ya"}
                 else "4"
                 if code == "pc"
                 else "1",
@@ -1527,8 +1658,14 @@ async def installer_input(message: Message, state: FSMContext, session=None):
             else:
                 job = await _save(job, message.from_user.id, {"shaping": shaping}, state)
             return await _shaping(message, state, job, manage=bool(data.get("manage")))
-        values = {"cloud": {**_params(job)["cloud"], "folder_id": value}} if code == "fd" else {FIELDS[code][0]: value}
+        values = (
+            {"cloud": {**_params(job)["cloud"], FIELDS[code][0]: value}}
+            if code in {"fd", "vp"}
+            else {FIELDS[code][0]: value}
+        )
         job = await _save(job, message.from_user.id, values, state)
+        if code == "vp" and data.get("vk_auth_setup"):
+            return await _vk_auth_setup(message, state, job)
         if code == "ip" and data.get("step") == "1" and job["status"] == "draft" and not data.get("edit_mode"):
             return await _server_input(message, state, job, "pw")
         return await _step(message, state, job, data.get("step", "1"))

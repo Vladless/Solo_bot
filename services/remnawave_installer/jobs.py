@@ -25,7 +25,17 @@ from .types import DELETABLE_STATUSES, NODE_IMAGE, InstallError, InstallSpec, In
 from .vault import vault
 
 
-_SECRET_FIELDS = {"ssh_password", "ssh_private_key", "ssh_key_passphrase", "vk_token", "yandex_key", "psiphon_config"}
+_SECRET_FIELDS = {
+    "ssh_password",
+    "ssh_private_key",
+    "ssh_key_passphrase",
+    "vk_token",
+    "vk_username",
+    "vk_password",
+    "vk_user_domain",
+    "yandex_key",
+    "psiphon_config",
+}
 _ACTIVE = {"queued", "running", "waiting_dns", "cancel_requested"}
 _STAGES = (
     "keys",
@@ -104,6 +114,7 @@ def _view(row, *, include_credentials: bool = True) -> dict:
                     "resource_id",
                     "origin_group_id",
                     "certificate_id",
+                    "project_id",
                     "ready",
                 )
                 if key in artifacts.get("cloud", {})
@@ -121,6 +132,7 @@ def _view(row, *, include_credentials: bool = True) -> dict:
                     "origin_group_id",
                     "certificate_id",
                     "folder_id",
+                    "project_id",
                     "status",
                 )
                 if key in item
@@ -154,6 +166,12 @@ def _secrets(value: dict) -> dict:
             item = json.dumps(item)
         if not isinstance(item, str) or len(item.encode()) > 128_000:
             raise ValueError("Секрет должен быть текстом размером до 128 КБ")
+        if key in {"vk_username", "vk_user_domain"}:
+            item = item.strip()
+            if not item or len(item) > 255 or any(ord(char) < 32 or ord(char) == 127 for char in item):
+                raise ValueError("Логин и домен пользователя VK должны быть строками до 255 символов")
+        if key in {"vk_password", "vk_token"} and item and not item.strip():
+            raise ValueError("Пароль или токен VK Cloud не должен состоять только из пробелов")
         result[key] = item
     return result
 
@@ -550,8 +568,19 @@ def _require_credentials(spec: InstallSpec, secrets: dict) -> None:
     """Проверяет наличие секретов до любых изменений сервера."""
     if not (secrets.get("ssh_password") or secrets.get("ssh_private_key")):
         raise ValueError("Введите SSH-пароль или приватный ключ")
-    if spec.transport == "cdn_vk" and not secrets.get("vk_token"):
-        raise ValueError("Введите токен VK Cloud")
+    if spec.transport == "cdn_vk":
+        if not spec.cloud.get("project_id"):
+            raise ValueError("Введите ID проекта VK Cloud")
+        if spec.cloud.get("auth_mode", "token") == "service_account":
+            for field, label in (
+                ("vk_user_domain", "домен пользователя VK Cloud (OS_USER_DOMAIN_NAME)"),
+                ("vk_username", "логин сервисной учётной записи VK Cloud"),
+                ("vk_password", "пароль сервисной учётной записи VK Cloud"),
+            ):
+                if not isinstance(secrets.get(field), str) or not secrets[field].strip():
+                    raise ValueError("Введите " + label)
+        elif not isinstance(secrets.get("vk_token"), str) or not secrets["vk_token"].strip():
+            raise ValueError("Введите токен VK Cloud")
     if spec.transport == "cdn_yandex":
         try:
             key = json.loads(secrets.get("yandex_key", ""))
