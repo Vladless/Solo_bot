@@ -137,3 +137,18 @@ async def remnawave_installer_loop(bot, sessionmaker) -> None:
     from services.remnawave_installer.jobs import installer_loop
 
     await installer_loop(bot, sessionmaker)
+
+
+async def tickets_delivery_loop(_bot, sessionmaker) -> None:
+    """Доставляет сохранённые события поддержки после фиксации транзакции."""
+    from services.tickets.outbox import process_due
+
+    while True:
+        try:
+            processed = await process_due(sessionmaker=sessionmaker)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error("[Tickets] Ошибка очереди доставки: {}", type(exc).__name__)
+            processed = 0
+        await asyncio.sleep(0.5 if processed else 2)

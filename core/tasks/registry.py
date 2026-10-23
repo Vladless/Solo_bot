@@ -46,6 +46,7 @@ from core.tasks.loop_tasks import (
     remnawave_monitor_loop,
     scheduled_broadcasts_loop_task,
     server_checks_loop,
+    tickets_delivery_loop,
     yookassa_autopay_loop,
     yookassa_refunds_loop,
 )
@@ -92,6 +93,7 @@ def register_periodic_tasks() -> None:
 
     periodic_task_manager.register_loop_task("remnawave_monitor", remnawave_monitor_loop)
     periodic_task_manager.register_loop_task("remnawave_installer", remnawave_installer_loop)
+    periodic_task_manager.register_loop_task("tickets_delivery", tickets_delivery_loop)
     periodic_task_manager.register_loop_task("yookassa_autopay", yookassa_autopay_loop)
     periodic_task_manager.register_loop_task("yookassa_refunds", yookassa_refunds_loop)
     for task_id, runner in discover_module_loop_tasks():

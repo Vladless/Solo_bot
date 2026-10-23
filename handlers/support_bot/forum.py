@@ -4,9 +4,17 @@ from aiogram.types import CallbackQuery, Message
 
 from database import async_session_maker
 from database.models import Identity
-from handlers.support_bot.media import collect_attachment
+from handlers.support_bot.media import AttachmentUnavailableError, collect_required_attachment
 from services import tickets as svc
 from services.tickets.forum import forum_chat_id
+from services.tickets.telegram import (
+    apply_telegram_edit,
+    confirm_delete,
+    find_source_message,
+    register_source,
+    request_delete,
+    source_from_message,
+)
 
 
 router = Router()
@@ -18,6 +26,12 @@ class InSupportForum(BaseFilter):
         return fid is not None and message.chat is not None and message.chat.id == fid
 
 
+class InSupportForumCallback(BaseFilter):
+    async def __call__(self, callback: CallbackQuery) -> bool:
+        fid = forum_chat_id()
+        return fid is not None and callback.message is not None and callback.message.chat.id == fid
+
+
 router.message.filter(InSupportForum())
 
 
@@ -26,27 +40,18 @@ async def _ticket_for(message: Message):
     if not topic_id:
         return None
     async with async_session_maker() as session:
-        ticket = await svc.get_ticket_by_topic(session, int(topic_id))
+        ticket = await svc.get_ticket_by_topic(session, int(topic_id), chat_id=message.chat.id, bot_id=message.bot.id)
     return ticket
-
-
-async def _notify_assignee(message: Message, ticket, target: int) -> None:
-    fid = forum_chat_id()
-    link = ""
-    if fid and ticket.topic_id:
-        link = f"\nhttps://telegram.me/c/{str(fid).replace('-100', '', 1)}/{ticket.topic_id}"
-    try:
-        await message.bot.send_message(
-            target, f"🎫 Вам назначено обращение <code>{ticket.id.split('-')[0][:8]}</code>.{link}"
-        )
-    except Exception:
-        pass
 
 
 @router.message(F.forum_topic_closed)
 async def on_topic_closed(message: Message) -> None:
+    if message.from_user is not None and message.from_user.id == message.bot.id:
+        return
     async with async_session_maker() as session:
-        ticket = await svc.get_ticket_by_topic(session, int(message.message_thread_id or 0))
+        ticket = await svc.get_ticket_by_topic(
+            session, int(message.message_thread_id or 0), chat_id=message.chat.id, bot_id=message.bot.id
+        )
         if ticket is not None and ticket.status != svc.CLOSED:
             await svc.set_status(session, ticket_id=ticket.id, status=svc.CLOSED)
             await svc.notify_client_ticket_closed(session, ticket=ticket)
@@ -55,8 +60,12 @@ async def on_topic_closed(message: Message) -> None:
 
 @router.message(F.forum_topic_reopened)
 async def on_topic_reopened(message: Message) -> None:
+    if message.from_user is not None and message.from_user.id == message.bot.id:
+        return
     async with async_session_maker() as session:
-        ticket = await svc.get_ticket_by_topic(session, int(message.message_thread_id or 0))
+        ticket = await svc.get_ticket_by_topic(
+            session, int(message.message_thread_id or 0), chat_id=message.chat.id, bot_id=message.bot.id
+        )
         if ticket is not None and ticket.status == svc.CLOSED:
             await svc.set_status(session, ticket_id=ticket.id, status=svc.OPEN)
             await session.commit()
@@ -84,10 +93,8 @@ async def on_command(message: Message, command: CommandObject) -> None:
             return
         if cmd == "priority":
             val = arg.lower() if arg.lower() in ("low", "normal", "high") else "high"
-            fresh = await svc.get_ticket(session, ticket.id)
-            if fresh is not None:
-                fresh.priority = val
-                await session.commit()
+            await svc.set_priority(session, ticket_id=ticket.id, priority=val)
+            await session.commit()
             await message.reply(f"Приоритет: {val}")
             return
         if cmd in ("assign", "unassign"):
@@ -97,8 +104,6 @@ async def on_command(message: Message, command: CommandObject) -> None:
                 target = int(raw) if raw.isdigit() else message.from_user.id
             await svc.assign_ticket(session, ticket_id=ticket.id, agent_tg_id=target)
             await session.commit()
-            if target and target != message.from_user.id:
-                await _notify_assignee(message, ticket, target)
             await message.reply("Снято назначение." if target is None else f"Назначено на <code>{target}</code>.")
             return
         if cmd in ("tag", "untag"):
@@ -157,7 +162,9 @@ async def on_agent_button(callback: CallbackQuery) -> None:
         elif action == "mine":
             await svc.assign_ticket(session, ticket_id=ticket_id, agent_tg_id=callback.from_user.id)
         elif action == "prio":
-            ticket.priority = "normal" if (ticket.priority or "normal") == "high" else "high"
+            await svc.set_priority(
+                session, ticket_id=ticket.id, priority="normal" if (ticket.priority or "normal") == "high" else "high"
+            )
         else:
             await callback.answer()
             return
@@ -190,14 +197,37 @@ async def on_agent_button(callback: CallbackQuery) -> None:
     await callback.answer(labels.get(action, "Готово"))
 
 
-@router.message(F.message_thread_id, F.text | F.caption | F.photo | F.document)
+@router.message(Command("delete"), InSupportForum(), F.message_thread_id)
+async def on_delete(message: Message) -> None:
+    await request_delete(message, forum=True)
+
+
+@router.callback_query(F.data.startswith("tm:delete:") | (F.data == "tm:cancel"), InSupportForumCallback())
+async def on_delete_confirmation(callback: CallbackQuery) -> None:
+    await confirm_delete(callback, forum=True)
+
+
+@router.edited_message(InSupportForum(), F.message_thread_id, F.text | F.caption | F.photo | F.document | F.animation)
+async def on_agent_edit(message: Message) -> None:
+    await apply_telegram_edit(message, forum=True)
+
+
+@router.message(F.message_thread_id, F.text | F.caption | F.photo | F.document | F.animation)
 async def on_agent_reply(message: Message) -> None:
     if (message.text or "").startswith("/"):
         return
     ticket = await _ticket_for(message)
     if ticket is None:
         return
-    body, attachments = await collect_attachment(message)
+    source = source_from_message(message)
+    async with async_session_maker() as session:
+        if await find_source_message(session, source) is not None:
+            return
+    try:
+        body, attachments = await collect_required_attachment(message)
+    except AttachmentUnavailableError:
+        await message.reply("Не удалось сохранить вложение. Сообщение не отправлено клиенту. Повторите отправку файла.")
+        return
     if not body and not attachments:
         return
     async with async_session_maker() as session:
@@ -211,6 +241,7 @@ async def on_agent_reply(message: Message) -> None:
         )
         if msg is None:
             return
+        await register_source(session, msg, source)
         fresh = await svc.get_ticket(session, ticket.id)
         if fresh is not None:
             await svc.notify_client_of_reply(session, ticket=fresh, msg=msg)

@@ -1,24 +1,6 @@
 from typing import Final
 
-from settings.buttons import (
-    KASSA2328,
-    PAYMENT_CASHBOX_TITLES as PAYMENT_CASHBOX_TITLES,
-    SETTING_ADMIN_GRANULAR_PERMISSIONS,
-    SETTING_EXPIRY_SKIP_TRIAL,
-    SETTING_SINGLE_SUBSCRIPTION_SCREEN,
-    SETTING_TRAFFIC_EXHAUSTED,
-    SETTING_TRAFFIC_LEVEL_1,
-    SETTING_TRAFFIC_LEVEL_2,
-    SETTING_TRAFFIC_PERCENT_1,
-    SETTING_TRAFFIC_PERCENT_2,
-    SETTING_TRAFFIC_WARNING,
-    YOOKASSA_AUTOPAY_SETTING_OPTIONS,
-    YOOKASSA_AUTOPAY_SETTING_TITLES,
-    YOOKASSA_CARDS,
-    YOOKASSA_MARKUP_ENABLED,
-    YOOKASSA_MARKUP_PERCENT,
-    YOOKASSA_SBP,
-)
+from settings.buttons import KASSA2328, YOOKASSA_SBP
 
 
 BUTTON_TITLES: Final[dict[str, str]] = {
@@ -46,11 +28,11 @@ NOTIFICATION_TITLES: Final[dict[str, str]] = {
     "HOT_LEADS_ENABLED": "Горячие лиды",
     "COLD_LEADS_ENABLED": "Холодные лиды",
     "RETURNING_ENABLED": "Возврат давно ушедших",
-    "EXPIRY_24H_SKIP_TRIAL_ENABLED": SETTING_EXPIRY_SKIP_TRIAL,
-    "TRAFFIC_WARNING_ENABLED": SETTING_TRAFFIC_WARNING,
-    "TRAFFIC_WARNING_LEVEL_1_ENABLED": SETTING_TRAFFIC_LEVEL_1,
-    "TRAFFIC_WARNING_LEVEL_2_ENABLED": SETTING_TRAFFIC_LEVEL_2,
-    "TRAFFIC_EXHAUSTED_ENABLED": SETTING_TRAFFIC_EXHAUSTED,
+    "EXPIRY_24H_SKIP_TRIAL_ENABLED": "24ч: исключать пробные тарифы",
+    "TRAFFIC_WARNING_ENABLED": "Уведомления о трафике",
+    "TRAFFIC_WARNING_LEVEL_1_ENABLED": "Трафик: первый порог",
+    "TRAFFIC_WARNING_LEVEL_2_ENABLED": "Трафик: второй порог",
+    "TRAFFIC_EXHAUSTED_ENABLED": "Трафик: лимит исчерпан",
 }
 
 ADMIN_NOTIFICATION_TITLES: Final[dict[str, str]] = {
@@ -75,12 +57,12 @@ NOTIFICATION_TIME_FIELDS: Final[dict[str, str]] = {
     "HWID_DELETE_PENALTY": "HWID штраф",
     "HWID_DAILY_RECOVERY": "HWID восст/сут",
     "HWID_MIN_TRUST_TO_DELETE": "HWID порог",
-    "TRAFFIC_WARNING_LEVEL_1_PERCENT": SETTING_TRAFFIC_PERCENT_1,
-    "TRAFFIC_WARNING_LEVEL_2_PERCENT": SETTING_TRAFFIC_PERCENT_2,
+    "TRAFFIC_WARNING_LEVEL_1_PERCENT": "Первый порог остатка трафика (%)",
+    "TRAFFIC_WARNING_LEVEL_2_PERCENT": "Второй порог остатка трафика (%)",
 }
 
 PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
-    "YOOKASSA": YOOKASSA_CARDS,
+    "YOOKASSA": "ЮКасса · карты",
     "YOOMONEY": "YooMoney",
     "ROBOKASSA": "Robokassa",
     "KASSAI_CARDS": "KassaAI карты",
@@ -105,6 +87,24 @@ PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
     "PAYHOT_CARDS": "PayHOT карты",
     "PAYHOT_SBP": "PayHOT СБП",
     "PAYHOT_SBERPAY": "PayHOT SberPay",
+}
+
+PAYMENT_CASHBOX_TITLES: Final[dict[str, str]] = {
+    "YOOKASSA": "ЮКасса",
+    "YOOMONEY": "YooMoney",
+    "ROBOKASSA": "Robokassa",
+    "KASSAI": "KassaAI",
+    "WATA": "WATA",
+    "PARITYPAY": "ParityPay",
+    "PLATEGA": "Platega",
+    "OVERPAY": "Overpay",
+    "TRIBUTE": "Tribute",
+    "HELEKET": "Heleket",
+    "CRYPTOBOT": "CryptoBot",
+    "FREEKASSA": "FreeKassa",
+    "STARS": "Telegram Stars",
+    "KASSA2328": "2328 (криптовалюта)",
+    "PAYHOT": "PayHOT",
 }
 
 PAYMENT_CASHBOX_GROUPS: Final[dict[str, tuple[str, ...]]] = {
@@ -151,7 +151,7 @@ MODES_TITLES: Final[dict[str, str]] = {
     "GIFT_EXTEND_ENABLED": "Подарок продлить",
     "KEYWORD_REPLIES_ENABLED": "Горячие слова",
     "WEBAPP_ONLY_MODE": "Только веб-приложение",
-    "SINGLE_SUBSCRIPTION_OPEN_PROFILE": SETTING_SINGLE_SUBSCRIPTION_SCREEN,
+    "SINGLE_SUBSCRIPTION_OPEN_PROFILE": "После создания: кабинет",
 }
 
 SINGLE_SUBSCRIPTION_TITLES: Final[dict[str, str]] = {
@@ -212,13 +212,36 @@ REMNAWAVE_TITLES: Final[dict[str, str]] = {
 
 MANAGEMENT_TITLES: Final[dict[str, str]] = {
     "MAINTENANCE_ENABLED": "Режим обслуживания",
-    "ADMIN_GRANULAR_PERMISSIONS_ENABLED": SETTING_ADMIN_GRANULAR_PERMISSIONS,
+    "ADMIN_GRANULAR_PERMISSIONS_ENABLED": "Детальные права модераторов",
 }
 
 YOOKASSA_TITLES: Final[dict[str, str]] = {
-    "MARKUP_ENABLED": YOOKASSA_MARKUP_ENABLED,
-    "MARKUP_PERCENT": YOOKASSA_MARKUP_PERCENT,
+    "MARKUP_ENABLED": "Наценка ЮКассы",
+    "MARKUP_PERCENT": "Наценка ЮКассы (%)",
 }
 
-YOOKASSA_AUTOPAY_TITLES: Final[dict[str, str]] = YOOKASSA_AUTOPAY_SETTING_TITLES
-YOOKASSA_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = YOOKASSA_AUTOPAY_SETTING_OPTIONS
+YOOKASSA_AUTOPAY_TITLES: Final[dict[str, str]] = {
+    "DAYS_BEFORE_EXPIRY": "Начинать автопродление за (дни)",
+    "MAX_RETRY_ATTEMPTS": "Максимум попыток списания",
+    "RETRY_INTERVAL_HOURS": "Интервал повторных попыток (часы)",
+    "AUTOPAY_DISCOUNT_PERCENT": "Скидка на автопродление (%)",
+    "MIN_PAYMENT_AMOUNT": "Минимальная сумма списания (₽)",
+    "QUICK_AMOUNTS": "Готовые суммы пополнения (₽)",
+    "NOTIFY_SUCCESS": "Уведомлять об успешном автопродлении",
+    "NOTIFY_FAILED_ATTEMPT": "Уведомлять о неудачной попытке",
+    "NOTIFY_ALL_ATTEMPTS_FAILED": "Уведомлять об исчерпании попыток",
+    "NOTIFY_SUBSCRIPTION_CANCELLED": "Уведомлять об отключении автопродления",
+    "MANAGE_BUTTON_LOCATION": "Кнопка управления автоплатежами",
+    "SEND_RECEIPT": "Передавать чек в ЮКассу",
+    "TAX_SYSTEM_CODE": "Код системы налогообложения ЮКассы",
+    "VAT_CODE": "Код ставки НДС ЮКассы",
+    "PAYMENT_MODE": "Код способа расчёта ЮКассы",
+    "PAYMENT_SUBJECT": "Код предмета расчёта ЮКассы",
+}
+YOOKASSA_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {
+    "MANAGE_BUTTON_LOCATION": [
+        {"value": "profile", "label": "В профиле"},
+        {"value": "pay_menu", "label": "В меню оплаты"},
+        {"value": "both", "label": "В профиле и меню оплаты"},
+    ]
+}

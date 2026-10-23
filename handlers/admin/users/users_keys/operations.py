@@ -1,11 +1,14 @@
 from html import escape
 
 from database.access.resolution import UserId
-from settings.texts import TRAFFIC_RESET_FAILED, TRAFFIC_RESET_PARTIAL_TEXT
 
 from ...panel.headers import menu_text, quote, section
 from ._common import *
 from .edit import handle_key_edit
+
+
+TRAFFIC_RESET_FAILED = "Не удалось сбросить трафик: панели не подтвердили операцию. Попробуйте позже."
+TRAFFIC_RESET_PARTIAL_TEXT = "Трафик сброшен на: {successful_servers}. Не удалось сбросить на: {failed_servers}."
 
 
 @router.callback_query(

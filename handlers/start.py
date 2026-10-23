@@ -41,7 +41,6 @@ from logger import logger
 from middlewares.session import release_session_early
 from settings.buttons import (
     ABOUT_VPN,
-    ADMIN_BTN,
     BACK,
     CHANNEL,
     DONAT_BUTTON,
@@ -71,7 +70,7 @@ from settings.texts import (
 )
 from utils.referral_codes import decode_referral_code, encode_referral_code
 
-from .admin.panel.keyboard import AdminPanelCallback
+from .admin.panel.keyboard import ADMIN_BTN, AdminPanelCallback
 from .refferal import handle_referral_link
 from .utils import build_support_button, edit_or_send_message, resolve_actor_data, safe_answer_callback
 

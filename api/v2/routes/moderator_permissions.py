@@ -14,28 +14,7 @@ from filters.permissions import (
     action_permissions,
     normalize_permissions,
 )
-from settings.buttons import (
-    ADMIN_ACTION_PERMISSIONS_SAVE,
-    ADMIN_MODERATOR_PERMISSIONS_REFRESH,
-    ADMIN_MODERATOR_PERMISSIONS_SAVING,
-    CANCEL,
-)
 from settings.config import ADMIN_ID
-from settings.texts import (
-    ADMIN_ACCESS_SETTINGS_TITLE,
-    ADMIN_ACTION_PERMISSIONS_SAVED,
-    ADMIN_MODERATOR_PERMISSIONS_DESCRIPTION,
-    ADMIN_MODERATOR_PERMISSIONS_DISABLED,
-    ADMIN_MODERATOR_PERMISSIONS_EMPTY,
-    ADMIN_MODERATOR_PERMISSIONS_EXPLICIT,
-    ADMIN_MODERATOR_PERMISSIONS_INHERITED,
-    ADMIN_MODERATOR_PERMISSIONS_INVALID,
-    ADMIN_MODERATOR_PERMISSIONS_LOADING,
-    ADMIN_MODERATOR_PERMISSIONS_LOAD_ERROR,
-    ADMIN_MODERATOR_PERMISSIONS_NOT_FOUND,
-    ADMIN_MODERATOR_PERMISSIONS_SAVE_ERROR,
-    ADMIN_MODERATOR_PERMISSIONS_SELECT,
-)
 
 
 router = APIRouter()
@@ -74,23 +53,6 @@ async def get_moderator_permissions(
     return {
         "items": [_moderator_payload(admin) for admin in moderators],
         "actions": [{"key": key, "label": label} for key, label in ACTION_PERMISSION_LABELS.items()],
-        "copy": {
-            "title": ADMIN_ACCESS_SETTINGS_TITLE,
-            "description": ADMIN_MODERATOR_PERMISSIONS_DESCRIPTION,
-            "select": ADMIN_MODERATOR_PERMISSIONS_SELECT,
-            "empty": ADMIN_MODERATOR_PERMISSIONS_EMPTY,
-            "inherited": ADMIN_MODERATOR_PERMISSIONS_INHERITED,
-            "explicit": ADMIN_MODERATOR_PERMISSIONS_EXPLICIT,
-            "disabled": ADMIN_MODERATOR_PERMISSIONS_DISABLED,
-            "loading": ADMIN_MODERATOR_PERMISSIONS_LOADING,
-            "load_error": ADMIN_MODERATOR_PERMISSIONS_LOAD_ERROR,
-            "save_error": ADMIN_MODERATOR_PERMISSIONS_SAVE_ERROR,
-            "save": ADMIN_ACTION_PERMISSIONS_SAVE,
-            "saved": ADMIN_ACTION_PERMISSIONS_SAVED,
-            "saving": ADMIN_MODERATOR_PERMISSIONS_SAVING,
-            "cancel": CANCEL,
-            "refresh": ADMIN_MODERATOR_PERMISSIONS_REFRESH,
-        },
     }
 
 
@@ -105,9 +67,9 @@ async def update_moderator_permissions(
     await require_full_admin(session, identity)
     selected = payload.permissions
     if len(set(selected)) != len(selected) or set(selected).difference(ALL_ACTION_PERMISSIONS):
-        raise HTTPException(status_code=400, detail=ADMIN_MODERATOR_PERMISSIONS_INVALID)
+        raise HTTPException(status_code=400, detail="Указаны неизвестные или повторяющиеся права модератора.")
     admin = await save_moderator_action_permissions(session, tg_id, selected, _protected_tg_ids())
     if admin is None:
-        raise HTTPException(status_code=404, detail=ADMIN_MODERATOR_PERMISSIONS_NOT_FOUND)
+        raise HTTPException(status_code=404, detail="Модератор не найден или его роль изменилась. Обновите список.")
     invalidate_admin_cache(tg_id)
-    return {"item": _moderator_payload(admin), "message": ADMIN_ACTION_PERMISSIONS_SAVED}
+    return {"item": _moderator_payload(admin), "message": "Детальные права сохранены."}

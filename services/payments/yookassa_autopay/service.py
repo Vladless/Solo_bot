@@ -54,6 +54,28 @@ from settings.config import REDIRECT_LINK, SERVICE_NAME
 from .client import client, money
 
 
+YOOKASSA_AUTOPAY_SERVICE_ADMIN_REVIEW_NOTICE = (
+    "ЮКасса: требуется проверка автоплатежа {attempt_id}. {details} Новый платеж не создается."
+)
+YOOKASSA_AUTOPAY_SERVICE_LEGACY_ATTEMPT_NOT_FOUND = "Прежняя попытка оплаты не найдена"
+YOOKASSA_AUTOPAY_SERVICE_LEGACY_CANCEL_CONFIRMED = (
+    "ЮКасса подтвердила отмену прежнего платежа. Новое автопродление можно включить после согласия."
+)
+YOOKASSA_AUTOPAY_SERVICE_LEGACY_CONFIRMED_RESULT = "Средства подтверждены. Проверьте срок подписки и при необходимости продлите ее с баланса; автопродление выключено до нового согласия."
+YOOKASSA_AUTOPAY_SERVICE_LEGACY_FOREIGN_OWNER = "Запись прежнего платежа принадлежит другому клиенту"
+YOOKASSA_AUTOPAY_SERVICE_LEGACY_NOT_PAID = "Прежний платеж еще не подтвержден как оплаченный; проверьте его в ЮКассе"
+YOOKASSA_AUTOPAY_SERVICE_LEGACY_OWNER_CHANGED_RETRY = "Владелец прежней оплаты изменился; повторите проверку"
+YOOKASSA_AUTOPAY_SERVICE_LEGACY_PAYMENT_MISMATCH = "Запись прежнего платежа не совпадает с подтвержденной оплатой"
+YOOKASSA_AUTOPAY_SERVICE_LEGACY_VERIFICATION_FAILED = (
+    "ЮКасса не подтвердила владельца/условия прежнего списания; повторное списание заблокировано"
+)
+YOOKASSA_AUTOPAY_SERVICE_PAID_REVIEW_DETAILS = (
+    "Оплата подтверждена, средства сохранены на балансе; проверьте исполнение заказа."
+)
+YOOKASSA_AUTOPAY_SERVICE_UNFINISHED_ATTEMPT_NOT_FOUND = "Не найдена незавершенная попытка"
+YOOKASSA_AUTOPAY_SERVICE_UNKNOWN_REVIEW_DETAILS = "Найдите платеж в магазине и свяжите его с попыткой."
+
+
 _IDEMPOTENCE_WINDOW = timedelta(hours=23, minutes=50)
 _addons_notifier: Callable[..., Awaitable[None]] | None = None
 
@@ -732,7 +754,7 @@ async def resolve_unknown_attempt(attempt_id: str, payment_id: str) -> PipelineR
         if attempt and attempt.status in {"applied", "canceled"} and attempt.payment_id == payment_id:
             return PipelineResult(ok=True, already_processed=True)
         if attempt is None or attempt.status not in {"unknown", "manual_review", "pending"}:
-            return PipelineResult(ok=False, error=texts.YOOKASSA_AUTOPAY_SERVICE_UNFINISHED_ATTEMPT_NOT_FOUND)
+            return PipelineResult(ok=False, error=YOOKASSA_AUTOPAY_SERVICE_UNFINISHED_ATTEMPT_NOT_FOUND)
     verified = await client.get_payment(payment_id)
     if not verified.data:
         return PipelineResult(ok=False, error=verified.error)
@@ -764,13 +786,13 @@ async def _resolve_legacy_unknown(marker, data: dict) -> PipelineResult:
     except (ValueError, KeyError, TypeError):
         verified = False
     if not verified:
-        return PipelineResult(ok=False, error=texts.YOOKASSA_AUTOPAY_SERVICE_LEGACY_VERIFICATION_FAILED)
+        return PipelineResult(ok=False, error=YOOKASSA_AUTOPAY_SERVICE_LEGACY_VERIFICATION_FAILED)
     if data.get("status") != "succeeded" or data.get("paid") is not True:
         if data.get("status") == "canceled":
             async with async_session_maker() as session:
                 prior = await lock_payment_for_processing(session, data["id"])
                 if prior is not None and prior.user_id != int(marker.user_id):
-                    return PipelineResult(ok=False, error=texts.YOOKASSA_AUTOPAY_SERVICE_LEGACY_FOREIGN_OWNER)
+                    return PipelineResult(ok=False, error=YOOKASSA_AUTOPAY_SERVICE_LEGACY_FOREIGN_OWNER)
             canceled = await process_cancelled_payment(
                 "YOOKASSA_AUTOPAY", ParsedPayment(data["id"], UserId(marker.user_id), float(amount), "RUB")
             )
@@ -779,7 +801,7 @@ async def _resolve_legacy_unknown(marker, data: dict) -> PipelineResult:
             async with async_session_maker() as session:
                 current = await dal.lock_attempt(session, marker.id)
                 if current is None:
-                    return PipelineResult(ok=False, error=texts.YOOKASSA_AUTOPAY_SERVICE_LEGACY_ATTEMPT_NOT_FOUND)
+                    return PipelineResult(ok=False, error=YOOKASSA_AUTOPAY_SERVICE_LEGACY_ATTEMPT_NOT_FOUND)
                 if current.status in {"applied", "canceled"}:
                     return PipelineResult(ok=True, already_processed=True)
                 await dal.update_attempt_result(session, marker.id, status="canceled", payment_id=data["id"])
@@ -791,17 +813,17 @@ async def _resolve_legacy_unknown(marker, data: dict) -> PipelineResult:
                 await dal.update_subscription_schedule(session, int(intent["legacy_subscription_id"]), is_active=False)
                 await dal.mark_payment_status(session, data["id"], "canceled")
                 await _commit(session)
-            return PipelineResult(ok=True, error=texts.YOOKASSA_AUTOPAY_SERVICE_LEGACY_CANCEL_CONFIRMED)
-        return PipelineResult(ok=False, error=texts.YOOKASSA_AUTOPAY_SERVICE_LEGACY_NOT_PAID)
+            return PipelineResult(ok=True, error=YOOKASSA_AUTOPAY_SERVICE_LEGACY_CANCEL_CONFIRMED)
+        return PipelineResult(ok=False, error=YOOKASSA_AUTOPAY_SERVICE_LEGACY_NOT_PAID)
     uid = UserId(marker.user_id)
     payment_id = data["id"]
     async with async_session_maker() as session:
         row = await lock_payment_for_processing(session, payment_id)
         if row is not None and (row.user_id != int(uid) or money(row.amount) != amount):
-            return PipelineResult(ok=False, error=texts.YOOKASSA_AUTOPAY_SERVICE_LEGACY_PAYMENT_MISMATCH)
+            return PipelineResult(ok=False, error=YOOKASSA_AUTOPAY_SERVICE_LEGACY_PAYMENT_MISMATCH)
         current = await dal.lock_attempt(session, marker.id)
         if current is None or current.user_id != int(uid):
-            return PipelineResult(ok=False, error=texts.YOOKASSA_AUTOPAY_SERVICE_LEGACY_OWNER_CHANGED_RETRY)
+            return PipelineResult(ok=False, error=YOOKASSA_AUTOPAY_SERVICE_LEGACY_OWNER_CHANGED_RETRY)
         if current.status == "applied":
             return PipelineResult(ok=True, already_processed=True)
         await dal.update_attempt_result(session, marker.id, status="manual_review", payment_id=payment_id)
@@ -854,7 +876,7 @@ async def _resolve_legacy_unknown(marker, data: dict) -> PipelineResult:
         use_temporary_checkout=False,
     )
     if result.ok:
-        result.error = texts.YOOKASSA_AUTOPAY_SERVICE_LEGACY_CONFIRMED_RESULT
+        result.error = YOOKASSA_AUTOPAY_SERVICE_LEGACY_CONFIRMED_RESULT
     return result
 
 
@@ -934,12 +956,12 @@ async def _emit_notices(attempt_id: str, bot=None) -> None:
         return
     if kind in {"manual_review", "paid_review"}:
         details = (
-            texts.YOOKASSA_AUTOPAY_SERVICE_PAID_REVIEW_DETAILS
+            YOOKASSA_AUTOPAY_SERVICE_PAID_REVIEW_DETAILS
             if kind == "paid_review"
-            else texts.YOOKASSA_AUTOPAY_SERVICE_UNKNOWN_REVIEW_DETAILS
+            else YOOKASSA_AUTOPAY_SERVICE_UNKNOWN_REVIEW_DETAILS
         )
         await send_admin_alert(
-            texts.YOOKASSA_AUTOPAY_SERVICE_ADMIN_REVIEW_NOTICE.format(attempt_id=attempt_id, details=details)
+            YOOKASSA_AUTOPAY_SERVICE_ADMIN_REVIEW_NOTICE.format(attempt_id=attempt_id, details=details)
         )
     if bot is not None and chat_id is not None:
         buttons = (

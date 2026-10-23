@@ -4,12 +4,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MANAGEMENT_CONFIG, update_management_config
 from filters.admin import IsAdminFilter, IsSuperAdminFilter, get_admin_context
-from settings.buttons import BACK, SETTING_ADMIN_GRANULAR_PERMISSIONS
-from settings.texts import ADMIN_ACCESS_SETTINGS_TITLE, ADMIN_GRANULAR_PERMISSIONS_HINT, SETTING_UPDATED
+from settings.buttons import BACK
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_settings_kb
+from .settings_config import MANAGEMENT_TITLES
+
+
+ADMIN_ACCESS_SETTINGS_TITLE = "Права модераторов"
+ADMIN_GRANULAR_PERMISSIONS_HINT = (
+    "Включает отдельные права модераторов на действия с подписками и пользователями. "
+    "Права задаются в управлении администраторами. Главный администратор сохраняет полный доступ."
+)
+SETTING_UPDATED = "Настройка обновлена."
 
 
 router = Router(name="admin_settings_manage")
@@ -39,7 +47,7 @@ def access_settings_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"{'✅' if enabled else '❌'} {SETTING_ADMIN_GRANULAR_PERMISSIONS}",
+                    text=f"{'✅' if enabled else '❌'} {MANAGEMENT_TITLES['ADMIN_GRANULAR_PERMISSIONS_ENABLED']}",
                     callback_data=AdminPanelCallback(action="settings_access_toggle").pack(),
                 )
             ],

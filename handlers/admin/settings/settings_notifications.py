@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import NOTIFICATIONS_CONFIG, update_notifications_config
 from filters.admin import IsAdminFilter
-from settings.texts import EXPIRY_SKIP_TRIAL_HINT, TRAFFIC_SETTINGS_HINT, TRAFFIC_SETTINGS_INVALID
 
 from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
@@ -18,6 +17,15 @@ from .keyboard import (
     build_settings_notifications_intervals_kb,
     build_settings_notifications_kb,
 )
+
+
+EXPIRY_SKIP_TRIAL_HINT = "Не отправлять первое напоминание об истечении подпискам с текущим пробным тарифом."
+TRAFFIC_SETTINGS_HINT = (
+    "Уровни задаются в процентах оставшегося трафика: от 1 до 100. "
+    "Первый включённый порог должен быть выше второго. "
+    "Исчерпание лимита — отдельное уведомление при 0%."
+)
+TRAFFIC_SETTINGS_INVALID = "Пороги должны быть целыми числами от 1 до 100; первый включённый порог — выше второго."
 
 
 router = Router(name="admin_settings_notifications")

@@ -59,6 +59,21 @@ from settings import buttons, texts
 from settings.buttons import APPLY, BACK, CANCEL, CUSTOM_AMOUNT, MAIN_MENU, PAY_2
 
 
+YOOKASSA_AUTOPAY_ATTEMPT_ITEM = "Платёжная попытка <code>{attempt_id}</code>\nСтатус: {status}"
+YOOKASSA_AUTOPAY_ATTEMPT_NOT_FOUND = "Незавершённая попытка не найдена."
+YOOKASSA_AUTOPAY_CHECK_PAYMENT_ID = "Проверить по ID платежа"
+YOOKASSA_AUTOPAY_CLIENT_MANAGEMENT = "Автопродление клиента"
+YOOKASSA_AUTOPAY_CLIENT_NOT_FOUND = "Клиент не найден. Откройте его карточку заново."
+YOOKASSA_AUTOPAY_MANAGEMENT_OWNER = "Клиент: <code>{user_id}</code>"
+YOOKASSA_AUTOPAY_PAYMENT_ID = "ID в ЮКассе: <code>{payment_id}</code>"
+YOOKASSA_AUTOPAY_RESOLVE_COMPLETED = "Подтверждённый результат платежа обработан."
+YOOKASSA_AUTOPAY_RESOLVE_ERROR = "Не удалось проверить платёж в ЮКассе. Проверьте его ID и повторите попытку."
+YOOKASSA_AUTOPAY_RESOLVE_FAILED = "Не удалось подтвердить платёж. Проверьте его ID."
+YOOKASSA_AUTOPAY_RESOLVE_ID_ONLY = "Отправьте только ID платежа из ЮКассы."
+YOOKASSA_AUTOPAY_RESOLVE_PROMPT = "Попытка: <code>{attempt_id}</code>\n\nОтправьте ID соответствующего платежа из кабинета ЮКассы. По нему проверим владельца, сумму и подтверждённый статус платежа."
+YOOKASSA_AUTOPAY_RESOLVE_REOPEN = "Откройте незавершённую попытку в карточке клиента заново."
+
+
 router = Router(name="core_yookassa_autopay")
 register_addons_notifier(send_key_info)
 _PAGE_SIZE = 8
@@ -156,7 +171,7 @@ async def _admin_uid(callback: CallbackQuery, session: AsyncSession) -> UserId |
     except (ValueError, IndexError, TypeError):
         user = None
     if user is None:
-        await callback.answer(texts.YOOKASSA_AUTOPAY_CLIENT_NOT_FOUND, show_alert=True)
+        await callback.answer(YOOKASSA_AUTOPAY_CLIENT_NOT_FOUND, show_alert=True)
         return None
     return UserId(user.id)
 
@@ -230,7 +245,9 @@ async def _show_consent(
     flow = metadata.get("payment_flow")
     amount_quote = quote_yookassa_amount(amount)
     metadata = {**metadata, "accepted_gross_amount": float(amount_quote.gross)}
-    amount_text = await format_for_user(session, user_id, float(amount_quote.gross), language_code, force_currency="RUB")
+    amount_text = await format_for_user(
+        session, user_id, float(amount_quote.gross), language_code, force_currency="RUB"
+    )
     amount_text = precise_yookassa_amount(amount_quote.gross, amount_text)
     if flow in {"tariff_purchase", "key_renewal"}:
         try:
@@ -244,7 +261,9 @@ async def _show_consent(
             "autopay_accepted_period_days": int(terms["period_days"]),
             "autopay_accepted_gross_amount": float(quote_yookassa_amount(terms["amount"]).gross),
         }
-        recurring_amount = await format_for_user(session, user_id, metadata["autopay_accepted_gross_amount"], language_code, force_currency="RUB")
+        recurring_amount = await format_for_user(
+            session, user_id, metadata["autopay_accepted_gross_amount"], language_code, force_currency="RUB"
+        )
         recurring_amount = precise_yookassa_amount(metadata["autopay_accepted_gross_amount"], recurring_amount)
         text = texts.YOOKASSA_AUTOPAY_CHECKOUT_CONSENT.format(
             amount=amount_text, recurring_amount=recurring_amount, period_days=int(terms["period_days"])
@@ -339,17 +358,25 @@ async def process_custom_amount(message: Message, state: FSMContext, session: As
         return
     amount_quote = quote_yookassa_amount(amount)
     await state.update_data(
-        autopay_checkout={"user_id": int(user_id), "amount": amount,
-                          "metadata": {"payment_flow": "balance_topup", "accepted_gross_amount": float(amount_quote.gross)}}
+        autopay_checkout={
+            "user_id": int(user_id),
+            "amount": amount,
+            "metadata": {"payment_flow": "balance_topup", "accepted_gross_amount": float(amount_quote.gross)},
+        }
     )
     await state.set_state(YooKassaPaymentState.waiting_consent)
     language_code = getattr(message.from_user, "language_code", None)
-    amount_text = await format_for_user(session, user_id, float(amount_quote.gross), language_code, force_currency="RUB")
+    amount_text = await format_for_user(
+        session, user_id, float(amount_quote.gross), language_code, force_currency="RUB"
+    )
     amount_text = precise_yookassa_amount(amount_quote.gross, amount_text)
     await edit_or_send_message(
         target_message,
-        texts.YOOKASSA_AUTOPAY_TOPUP_CONSENT.format(amount=amount_text) + (
-            "\n" + texts.YOOKASSA_PAYMENT_QUOTE.format(**amount_quote.public("YOOKASSA_AUTOPAY")) if amount_quote.fee else ""
+        texts.YOOKASSA_AUTOPAY_TOPUP_CONSENT.format(amount=amount_text)
+        + (
+            "\n" + texts.YOOKASSA_PAYMENT_QUOTE.format(**amount_quote.public("YOOKASSA_AUTOPAY"))
+            if amount_quote.fee
+            else ""
         ),
         reply_markup=_consent_keyboard(),
     )
@@ -415,7 +442,9 @@ async def confirm_checkout(callback: CallbackQuery, state: FSMContext, session: 
     kb.row(InlineKeyboardButton(text=PAY_2, url=url))
     kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
     language_code = getattr(callback.from_user, "language_code", None)
-    amount_text = await format_for_user(session, user_id, float(metadata.get("accepted_gross_amount") or amount), language_code, force_currency="RUB")
+    amount_text = await format_for_user(
+        session, user_id, float(metadata.get("accepted_gross_amount") or amount), language_code, force_currency="RUB"
+    )
     amount_text = precise_yookassa_amount(metadata.get("accepted_gross_amount") or amount, amount_text)
     await edit_or_send_message(
         callback.message, texts.YOOKASSA_AUTOPAY_PAYMENT_CREATED.format(amount=amount_text), reply_markup=kb.as_markup()
@@ -445,7 +474,7 @@ async def _render_management(
     page = min(max(0, page), total_pages - 1)
     lines = [texts.YOOKASSA_AUTOPAY_MANAGEMENT_TITLE]
     if admin:
-        lines.append(texts.YOOKASSA_AUTOPAY_MANAGEMENT_OWNER.format(user_id=int(user_id)))
+        lines.append(YOOKASSA_AUTOPAY_MANAGEMENT_OWNER.format(user_id=int(user_id)))
     if not enabled:
         lines.append(texts.YOOKASSA_AUTOPAY_DISABLED)
     if not cards:
@@ -484,7 +513,9 @@ async def _render_management(
             )
             lines.append(
                 texts.YOOKASSA_AUTOPAY_SUBSCRIPTION_ITEM.format(
-                    client_id=escape(item.client_id), amount=float(accepted_amount if accepted_amount is not None else item.amount), date=date
+                    client_id=escape(item.client_id),
+                    amount=float(accepted_amount if accepted_amount is not None else item.amount),
+                    date=date,
                 )
             )
             cancel_callback = f"yk_adm_unsub|{owner}|{item.id}" if admin else f"yookassa_cancel_subscription|{item.id}"
@@ -495,15 +526,13 @@ async def _render_management(
                 )
             )
         elif kind == "attempt":
-            lines.append(
-                texts.YOOKASSA_AUTOPAY_ATTEMPT_ITEM.format(attempt_id=escape(item.id), status=escape(item.status))
-            )
+            lines.append(YOOKASSA_AUTOPAY_ATTEMPT_ITEM.format(attempt_id=escape(item.id), status=escape(item.status)))
             if item.payment_id:
-                lines.append(texts.YOOKASSA_AUTOPAY_PAYMENT_ID.format(payment_id=escape(item.payment_id)))
+                lines.append(YOOKASSA_AUTOPAY_PAYMENT_ID.format(payment_id=escape(item.payment_id)))
             if item.status in {"unknown", "manual_review", "pending"}:
                 kb.row(
                     InlineKeyboardButton(
-                        text=buttons.YOOKASSA_AUTOPAY_CHECK_PAYMENT_ID, callback_data=f"yk_adm_resolve|{item.id}"
+                        text=YOOKASSA_AUTOPAY_CHECK_PAYMENT_ID, callback_data=f"yk_adm_resolve|{item.id}"
                     )
                 )
         else:
@@ -724,8 +753,11 @@ async def enable_key_handler(callback: CallbackQuery, state: FSMContext, session
         return
     try:
         quote = await quote_autopay_for_key(session, user_id, client_id)
-        if (float(quote["amount"]) != consent.get("amount") or int(quote["period_days"]) != consent.get("period_days")
-                or float(quote["gross_amount"]) != consent.get("gross_amount")):
+        if (
+            float(quote["amount"]) != consent.get("amount")
+            or int(quote["period_days"]) != consent.get("period_days")
+            or float(quote["gross_amount"]) != consent.get("gross_amount")
+        ):
             await callback.answer(texts.YOOKASSA_AUTOPAY_TERMS_CHANGED, show_alert=True)
             return
         await enable_autopay_for_key(
@@ -817,7 +849,7 @@ async def admin_request_attempt_resolution(callback: CallbackQuery, state: FSMCo
     attempt_id = callback.data.split("|", 1)[1]
     attempt = await get_attempt(session, attempt_id)
     if attempt is None or attempt.user_id is None or attempt.status not in {"unknown", "manual_review", "pending"}:
-        await callback.answer(texts.YOOKASSA_AUTOPAY_ATTEMPT_NOT_FOUND, show_alert=True)
+        await callback.answer(YOOKASSA_AUTOPAY_ATTEMPT_NOT_FOUND, show_alert=True)
         return
     await state.update_data(autopay_resolution={"attempt_id": attempt.id, "user_id": int(attempt.user_id)})
     await state.set_state(YooKassaPaymentState.resolving_attempt)
@@ -826,7 +858,7 @@ async def admin_request_attempt_resolution(callback: CallbackQuery, state: FSMCo
     kb.row(InlineKeyboardButton(text=CANCEL, callback_data=f"yk_adm_menu|u{int(attempt.user_id)}"))
     await edit_or_send_message(
         callback.message,
-        texts.YOOKASSA_AUTOPAY_RESOLVE_PROMPT.format(attempt_id=escape(attempt.id)),
+        YOOKASSA_AUTOPAY_RESOLVE_PROMPT.format(attempt_id=escape(attempt.id)),
         reply_markup=kb.as_markup(),
     )
     await callback.answer()
@@ -847,26 +879,26 @@ async def admin_resolve_attempt_input(message: Message, state: FSMContext, sessi
     cancel_markup = cancel_keyboard.as_markup()
     payment_id = (message.text or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", payment_id):
-        await edit_or_send_message(target_message, texts.YOOKASSA_AUTOPAY_RESOLVE_ID_ONLY, reply_markup=cancel_markup)
+        await edit_or_send_message(target_message, YOOKASSA_AUTOPAY_RESOLVE_ID_ONLY, reply_markup=cancel_markup)
         return
     if not isinstance(resolution, dict):
-        await edit_or_send_message(target_message, texts.YOOKASSA_AUTOPAY_RESOLVE_REOPEN, reply_markup=cancel_markup)
+        await edit_or_send_message(target_message, YOOKASSA_AUTOPAY_RESOLVE_REOPEN, reply_markup=cancel_markup)
         return
     attempt = await get_attempt(session, str(resolution.get("attempt_id") or ""))
     if attempt is None or attempt.user_id is None or attempt.user_id != resolution.get("user_id"):
-        await edit_or_send_message(target_message, texts.YOOKASSA_AUTOPAY_ATTEMPT_NOT_FOUND, reply_markup=cancel_markup)
+        await edit_or_send_message(target_message, YOOKASSA_AUTOPAY_ATTEMPT_NOT_FOUND, reply_markup=cancel_markup)
         return
     await _commit(session)
     try:
         result = await resolve_unknown_attempt(attempt.id, payment_id)
     except Exception as exc:
         logger.exception("[Autopay] Не удалось сверить попытку {}: {}", attempt.id, exc)
-        await edit_or_send_message(target_message, texts.YOOKASSA_AUTOPAY_RESOLVE_ERROR, reply_markup=cancel_markup)
+        await edit_or_send_message(target_message, YOOKASSA_AUTOPAY_RESOLVE_ERROR, reply_markup=cancel_markup)
         return
     if not result.ok:
         await edit_or_send_message(
             target_message,
-            escape(str(result.error or texts.YOOKASSA_AUTOPAY_RESOLVE_FAILED)),
+            escape(str(result.error or YOOKASSA_AUTOPAY_RESOLVE_FAILED)),
             reply_markup=cancel_markup,
         )
         return
@@ -874,11 +906,11 @@ async def admin_resolve_attempt_input(message: Message, state: FSMContext, sessi
     kb = InlineKeyboardBuilder()
     kb.row(
         InlineKeyboardButton(
-            text=buttons.YOOKASSA_AUTOPAY_CLIENT_MANAGEMENT, callback_data=f"yk_adm_menu|u{int(attempt.user_id)}"
+            text=YOOKASSA_AUTOPAY_CLIENT_MANAGEMENT, callback_data=f"yk_adm_menu|u{int(attempt.user_id)}"
         )
     )
     await edit_or_send_message(
-        target_message, escape(result.error or texts.YOOKASSA_AUTOPAY_RESOLVE_COMPLETED), reply_markup=kb.as_markup()
+        target_message, escape(result.error or YOOKASSA_AUTOPAY_RESOLVE_COMPLETED), reply_markup=kb.as_markup()
     )
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import io
 import uuid
 
@@ -24,6 +25,44 @@ _ALLOWED_DOC_EXT = frozenset({
     ".yaml",
 })
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+class _BoundedUpload(io.BytesIO):
+    def write(self, data):
+        """Останавливает загрузку до превышения лимита памяти."""
+        if self.tell() + len(data) > MAX_UPLOAD_BYTES:
+            raise ValueError("Превышен размер вложения")
+        return super().write(data)
+
+
+async def host_telegram_animation(bot, file_id: str | None) -> str | None:
+    """Сохраняет GIF или MP4-анимацию без преобразования кадров."""
+    if not file_id:
+        return None
+    try:
+        async with asyncio.timeout(30):
+            tg_file = await bot.get_file(file_id)
+            if tg_file.file_size and int(tg_file.file_size) > MAX_UPLOAD_BYTES:
+                return None
+            file_path = tg_file.file_path or ""
+            if not file_path:
+                return None
+            with _BoundedUpload() as buffer:
+                await bot.download_file(file_path, destination=buffer, timeout=30)
+                data = buffer.getvalue()
+        if len(data) >= 13 and data[:6] in (b"GIF87a", b"GIF89a"):
+            suffix = ".gif"
+        elif len(data) >= 12 and data[4:8] == b"ftyp":
+            suffix = "_animation.mp4"
+        else:
+            return None
+        WEB_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        name = f"{uuid.uuid4().hex}{suffix}"
+        await run_io((WEB_UPLOAD_DIR / name).write_bytes, data)
+        return f"/api/web/uploads/{name}"
+    except Exception as error:
+        logger.warning("[Site:Files] Не удалось сохранить анимацию поддержки: {}", type(error).__name__)
+        return None
 
 
 async def host_telegram_photo(bot, file_id: str | None) -> str | None:

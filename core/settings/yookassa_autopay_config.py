@@ -13,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.settings import get_setting, set_setting
 from database.settings_cache import settings_cache
 from logger import logger
-from settings import texts
 
 from .payments_config import PAYMENTS_CONFIG
 from .runtime_sync import publish_runtime_config, register_runtime_config
+
+
+YOOKASSA_AUTOPAY_SETTINGS_INVALID = "Некорректные настройки автоплатежей ЮКассы. Проверьте значения полей."
 
 
 YOOKASSA_AUTOPAY_SETTING_KEY = "YOOKASSA_AUTOPAY_CONFIG"
@@ -250,12 +252,12 @@ def validate_yookassa_autopay_settings(values: dict[str, Any]) -> dict[str, Any]
     string_keys = {"MANAGE_BUTTON_LOCATION", "PAYMENT_MODE", "PAYMENT_SUBJECT"}
     allowed = boolean_keys | integer_keys | decimal_keys | string_keys | {"QUICK_AMOUNTS"}
     if set(values).difference(allowed):
-        raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+        raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
     result = {}
     for key, value in values.items():
         if key in boolean_keys:
             if not isinstance(value, bool):
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
         elif key in integer_keys:
             minimum, maximum = AUTOPAY_SETTING_LIMITS[key]
             if (
@@ -264,11 +266,11 @@ def validate_yookassa_autopay_settings(values: dict[str, Any]) -> dict[str, Any]
                 or not minimum <= value <= maximum
                 or value != int(value)
             ):
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
             value = int(value)
         elif key in decimal_keys:
             if isinstance(value, bool) or not isinstance(value, int | float | str):
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
             try:
                 amount = Decimal(str(value))
                 minimum, maximum = (Decimal(str(limit)) for limit in AUTOPAY_SETTING_LIMITS[key])
@@ -278,30 +280,30 @@ def validate_yookassa_autopay_settings(values: dict[str, Any]) -> dict[str, Any]
                 )
                 numeric = float(amount)
             except (InvalidOperation, ValueError, OverflowError) as exc:
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID) from exc
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID) from exc
             if not valid or not math.isfinite(numeric):
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
             value = numeric
         elif key == "QUICK_AMOUNTS":
             items = value.split(",") if isinstance(value, str) else value
             if not isinstance(items, list | tuple) or not items:
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
             try:
                 amounts = [Decimal(str(item).strip()) for item in items if not isinstance(item, bool)]
                 if len(amounts) != len(items) or any(
                     not item.is_finite() or not 1 <= item <= 1000000 or item != item.to_integral_value()
                     for item in amounts
                 ):
-                    raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+                    raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
                 value = sorted({int(item) for item in amounts})
             except (InvalidOperation, ValueError, OverflowError) as exc:
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID) from exc
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID) from exc
         elif key in string_keys:
             if not isinstance(value, str):
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
             value = value.strip()
             if value not in _AUTOPAY_SETTING_VALUES[key]:
-                raise ValueError(texts.YOOKASSA_AUTOPAY_SETTINGS_INVALID)
+                raise ValueError(YOOKASSA_AUTOPAY_SETTINGS_INVALID)
         result[key] = value
     return result
 

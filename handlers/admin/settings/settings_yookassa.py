@@ -9,24 +9,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.settings.payments_config import PAYMENTS_CONFIG
 from core.settings.yookassa_config import YOOKASSA_CONFIG, update_yookassa_config
 from filters.admin import IsAdminFilter, get_admin_context
-from settings.buttons import (
-    BACK,
-    PAYMENT_CASHBOX_TITLES,
-    YOOKASSA_AUTOPAY_SETTINGS,
-    YOOKASSA_MARKUP_ENABLED,
-    YOOKASSA_MARKUP_PERCENT,
-)
-from settings.texts import (
-    SETTING_UPDATED,
-    YOOKASSA_MARKUP_INVALID,
-    YOOKASSA_MARKUP_PERCENT_PROMPT,
-    YOOKASSA_METHODS_HINT,
-    YOOKASSA_SETTINGS_HINT,
-)
+from settings.buttons import BACK
+from settings.texts import YOOKASSA_MARKUP_INVALID
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_settings_cashbox_kb
+from .settings_config import PAYMENT_CASHBOX_TITLES, YOOKASSA_TITLES
+
+
+SETTING_UPDATED = "Настройка обновлена."
+YOOKASSA_AUTOPAY_SETTINGS = "⚙️ Параметры автоплатежей"
+YOOKASSA_MARKUP_PERCENT_PROMPT = "Введите процент наценки от 0 до 100. Можно использовать десятичную дробь."
+YOOKASSA_METHODS_HINT = (
+    "Карты и СБП ЮКассы включаются независимо. "
+    "Чтобы предложить оба способа оплаты, включите «ЮКасса · карты» и «ЮКасса · СБП». "
+    "Наценка и параметры автоплатежей находятся в разделе «Кассы → ЮКасса»."
+)
+YOOKASSA_SETTINGS_HINT = (
+    "Наценка добавляется к сумме оплаты, а на баланс зачисляется исходная сумма. "
+    "Клиент видит полную стоимость перед оплатой. Для автоплатежей требуется согласие на полную сумму."
+)
 
 
 router = Router(name="admin_settings_yookassa")
@@ -46,13 +49,13 @@ def markup_keyboard(*, show_autopay_settings: bool = True) -> InlineKeyboardMark
     rows.extend([
         [
             InlineKeyboardButton(
-                text=f"{'✅' if enabled else '❌'} {YOOKASSA_MARKUP_ENABLED}",
+                text=f"{'✅' if enabled else '❌'} {YOOKASSA_TITLES['MARKUP_ENABLED']}",
                 callback_data=AdminPanelCallback(action="settings_yookassa_toggle").pack(),
             )
         ],
         [
             InlineKeyboardButton(
-                text=f"{YOOKASSA_MARKUP_PERCENT}: {percent}",
+                text=f"{YOOKASSA_TITLES['MARKUP_PERCENT']}: {percent}",
                 callback_data=AdminPanelCallback(action="settings_yookassa_percent").pack(),
             )
         ],

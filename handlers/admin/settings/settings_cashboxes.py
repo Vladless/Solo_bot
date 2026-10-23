@@ -7,13 +7,6 @@ from core.bootstrap import PAYMENTS_CONFIG, update_payments_config
 from core.settings.providers_order_config import update_providers_order
 from filters.admin import IsAdminFilter
 from services.payments.providers import PROVIDERS_BASE, _get_effective_order
-from settings.texts import (
-    PAYMENT_CASHBOXES_SETTINGS_HINT,
-    PAYMENT_CASHBOXES_SETTINGS_TITLE,
-    PAYMENT_CASHBOX_NOT_FOUND,
-    PAYMENT_CASHBOX_SETTINGS_HINT,
-    SETTING_UPDATED,
-)
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
@@ -25,6 +18,13 @@ from .keyboard import (
 )
 from .settings_config import PAYMENT_CASHBOX_GROUPS, PAYMENT_CASHBOX_TITLES
 from .settings_yookassa import show_yookassa_settings
+
+
+PAYMENT_CASHBOXES_SETTINGS_HINT = "Выберите кассу, чтобы настроить её способы оплаты и параметры."
+PAYMENT_CASHBOXES_SETTINGS_TITLE = "Кассы"
+PAYMENT_CASHBOX_NOT_FOUND = "Неизвестная касса."
+PAYMENT_CASHBOX_SETTINGS_HINT = "Способы оплаты включаются независимо и применяются в боте и на сайте."
+SETTING_UPDATED = "Настройка обновлена."
 
 
 router = Router(name="admin_settings_cashboxes")

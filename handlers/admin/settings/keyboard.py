@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.money_config import get_currency_mode
-from settings.buttons import ADMIN_ACCESS_SETTINGS, BACK, PAYMENT_CASHBOX_ENABLED
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from .settings_config import (
@@ -109,7 +109,7 @@ def build_settings_kb(*, show_access: bool = False) -> InlineKeyboardMarkup:
     )
     if show_access:
         builder.button(
-            text=ADMIN_ACCESS_SETTINGS,
+            text="🔐 Права модераторов",
             callback_data=AdminPanelCallback(action="settings_access").pack(),
         )
 
@@ -160,7 +160,7 @@ def build_settings_cashbox_kb(cashbox: str, providers_state: dict[str, bool]) ->
     builder = InlineKeyboardBuilder()
     for provider in providers:
         enabled = bool(providers_state.get(provider, False))
-        title = PAYMENT_PROVIDER_TITLES[provider] if len(providers) > 1 else PAYMENT_CASHBOX_ENABLED
+        title = PAYMENT_PROVIDER_TITLES[provider] if len(providers) > 1 else "Приём платежей"
         builder.row(
             InlineKeyboardButton(
                 text=f"{'✅' if enabled else '❌'} {title}",

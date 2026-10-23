@@ -29,6 +29,10 @@ from services.payments.pipeline import ParsedPayment, PipelineResult, process_ca
 from settings import texts
 
 
+PAYHOT_DIFFERENT_PAYMENT = "PayHOT вернул другой платёж."
+PAYHOT_WEBHOOK_INVALID = "Некорректное уведомление PayHOT."
+
+
 PAYHOT_METHODS = {
     "cards": {"provider_id": "PAYHOT_CARDS", "payment_method": "card"},
     "sbp": {"provider_id": "PAYHOT_SBP", "payment_method": "sbp"},
@@ -284,13 +288,13 @@ async def create_invoice(
 async def settle_payment(data: dict, *, event_id: str | None = None) -> PipelineResult:
     """Сверяет подписанное уведомление с API и сохранённым счётом."""
     if not isinstance(data, dict):
-        raise PaymentError(texts.PAYHOT_WEBHOOK_INVALID)
+        raise PaymentError(PAYHOT_WEBHOOK_INVALID)
     invoice = await _load_invoice(data.get("merchant_order_reference"))
     provider_id = _validate_payment(data, invoice)
     response = await api_request("GET", f"/payments/{provider_id}")
     payment = response.get("payment")
     if _validate_payment(payment, invoice) != provider_id:
-        raise PaymentError(texts.PAYHOT_DIFFERENT_PAYMENT)
+        raise PaymentError(PAYHOT_DIFFERENT_PAYMENT)
     return await _process_confirmed(payment, event_id=event_id)
 
 
