@@ -44,6 +44,13 @@ PROVIDERS_BASE: dict[str, dict[str, Any]] = {
         "module": "kassai",
         "order": 5,
     },
+    "KASSAI_AUTOPAY": {
+        "currency": "RUB",
+        "value": "pay_kassai_autopay",
+        "fast": "process_fast_renewal_flow",
+        "module": "kassai_autopay",
+        "order": 20,
+    },
     "WATA_RU": {
         "currency": "RUB",
         "value": "pay_wata_ru",
@@ -182,6 +189,7 @@ WEB_LINK_PROVIDER_IDS = (
     "ROBOKASSA",
     "KASSAI_CARDS",
     "KASSAI_SBP",
+    "KASSAI_AUTOPAY",
     "WATA_RU",
     "WATA_INT",
     "PARITYPAY_SBP",
@@ -268,4 +276,6 @@ async def get_providers_with_hooks(flags: dict[str, bool]) -> dict[str, dict[str
                 providers[name] = base
     if "YOOKASSA_AUTOPAY" in providers:
         providers["YOOKASSA_AUTOPAY"]["enabled"] = bool(flags.get("YOOKASSA_AUTOPAY"))
+    if "KASSAI_AUTOPAY" in providers:
+        providers["KASSAI_AUTOPAY"]["enabled"] = bool(flags.get("KASSAI_AUTOPAY"))
     return _sort_providers(providers)

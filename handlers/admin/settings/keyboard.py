@@ -153,12 +153,16 @@ def build_settings_cashboxes_kb(providers_state: dict[str, bool]) -> InlineKeybo
     return builder.as_markup()
 
 
-def build_settings_cashbox_kb(cashbox: str, providers_state: dict[str, bool]) -> InlineKeyboardMarkup:
+def build_settings_cashbox_kb(
+    cashbox: str, providers_state: dict[str, bool], *, hidden_providers: frozenset[str] = frozenset()
+) -> InlineKeyboardMarkup:
     """Собирает способы оплаты выбранной кассы."""
     providers = PAYMENT_CASHBOX_GROUPS[cashbox]
     keys = list(PAYMENT_PROVIDER_TITLES)
     builder = InlineKeyboardBuilder()
     for provider in providers:
+        if provider in hidden_providers:
+            continue
         enabled = bool(providers_state.get(provider, False))
         title = PAYMENT_PROVIDER_TITLES[provider] if len(providers) > 1 else "Приём платежей"
         builder.row(

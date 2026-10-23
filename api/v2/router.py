@@ -8,6 +8,7 @@ from api.v2.routes import (
     flows,
     gifts,
     identities,
+    kassai_autopay,
     keys,
     management,
     misc,
@@ -72,6 +73,7 @@ router.include_router(partners.router, prefix="/api/partners", tags=["Partners"]
 router.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 router.include_router(payment_links.router, prefix="/api/payment-links", tags=["PaymentLinks"])
 router.include_router(yookassa_autopay.router, prefix="/api")
+router.include_router(kassai_autopay.router, prefix="/api")
 router.include_router(yookassa_refunds.router, prefix="/api")
 router.include_router(identities.router, prefix="/api/identities", tags=["Identities"])
 router.include_router(misc.router, prefix="/api")

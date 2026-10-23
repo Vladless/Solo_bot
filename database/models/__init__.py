@@ -7,6 +7,7 @@ from .gifts import Gift, GiftUsage
 from .identity import Identity
 from .identity_notif_prefs import IdentityNotifPref
 from .identity_session import IdentitySession
+from .kassai_autopay import KassaIAutopayAttempt, KassaISavedMethod, KassaISubscription
 from .keys import Key, KeyTrafficHistory, KeyTrafficHourly
 from .notifications import Notification, ScheduledBroadcast
 from .payments import Payment
@@ -102,6 +103,9 @@ __all__ = [
     "YooKassaPayment",
     "YooKassaLog",
     "YooKassaAutopayAttempt",
+    "KassaISavedMethod",
+    "KassaISubscription",
+    "KassaIAutopayAttempt",
     "RefundOperation",
     "RemnawaveInstall",
 ]

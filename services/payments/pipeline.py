@@ -128,6 +128,7 @@ async def process_success_payment(
                     "yoomoney",
                     "robokassa",
                     "kassai",
+                    "kassai_autopay",
                     "paritypay",
                     "overpay",
                     "payhot",

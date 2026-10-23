@@ -40,6 +40,12 @@ def _has_legacy_binding(server: dict, subgroup: str, group_code: str | None = No
     return isinstance(subgroups, list | tuple | set | frozenset) and subgroup in subgroups
 
 
+def _has_special_binding(server: dict, group_code: str) -> bool:
+    """Проверяет назначение специальной группы серверу."""
+    groups = server.get("special_groups")
+    return isinstance(groups, list | tuple | set | frozenset) and group_code in groups
+
+
 def _group_only_servers(cluster_servers: list[dict], tariff: dict, scope: list[dict]) -> list[dict]:
     """Учитывает назначенную группу без точечных ограничений."""
     group = tariff.get("group_code")
@@ -76,7 +82,7 @@ def resolve_tariff_servers(
     selected_server: str | None = None,
     is_trial: bool = False,
 ) -> list[dict]:
-    """Возвращает только серверы с явным разрешением тарифа."""
+    """Возвращает серверы тарифа с резервным выбором для спецгрупп."""
     if not tariff:
         return []
     tariff_id = _tariff_id(tariff.get("id"))
@@ -85,7 +91,7 @@ def resolve_tariff_servers(
 
     group_code = str(tariff.get("group_code") or "").lower()
     special = "trial" if is_trial else group_code if group_code in _SPECIAL_GROUP_CODES else None
-    scope = cluster_servers if binding_scope is None else binding_scope
+    scope = cluster_servers if binding_scope is None else [*binding_scope, *cluster_servers]
     has_direct_binding = any(_has_tariff_binding(server, tariff_id) for server in scope)
     if has_direct_binding:
         allowed = [server for server in cluster_servers if _has_tariff_binding(server, tariff_id)]
@@ -100,7 +106,7 @@ def resolve_tariff_servers(
             allowed = [
                 server for server in cluster_servers if _has_legacy_binding(server, subgroup, tariff.get("group_code"))
             ]
-        elif special and (subgroup is None or subgroup == ""):
+        elif special and (subgroup is None or isinstance(subgroup, str)):
             allowed = cluster_servers
         elif not special and (subgroup is None or isinstance(subgroup, str)):
             allowed = _group_only_servers(cluster_servers, tariff, scope)
@@ -108,13 +114,8 @@ def resolve_tariff_servers(
             return []
 
     allowed = [server for server in allowed if server.get("enabled") is True]
-    if special:
-        allowed = [
-            server
-            for server in allowed
-            if isinstance(server.get("special_groups"), list | tuple | set | frozenset)
-            and special in server["special_groups"]
-        ]
+    if special and any(_has_special_binding(server, special) for server in scope):
+        allowed = [server for server in allowed if _has_special_binding(server, special)]
     if selected_server is not None:
         allowed = [server for server in allowed if server.get("server_name") == selected_server]
     return allowed

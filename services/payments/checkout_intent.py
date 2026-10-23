@@ -9,6 +9,7 @@ from math import ceil
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.settings.kassai_autopay_config import KASSAI_AUTOPAY_CONFIG
 from core.settings.modes_config import MODES_CONFIG
 from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
 from core.settings.yookassa_autopay_config import YOOKASSA_AUTOPAY_CONFIG
@@ -137,19 +138,24 @@ def _validate_choices(tariff: dict, devices: int | None, traffic: int | None, *,
                 raise ValidationError("Тариф не поддерживает выбранную конфигурацию")
 
 
-def autopay_terms_for_tariff(tariff: dict, devices: int | None, traffic: int | None) -> dict | None:
+def autopay_terms_for_tariff(
+    tariff: dict, devices: int | None, traffic: int | None, *, provider_id: str = "YOOKASSA_AUTOPAY"
+) -> dict | None:
     """Рассчитывает сумму и период автоплатежа по тарифу."""
     if str(tariff.get("group_code") or "").strip() in DEFAULT_RENEWAL_FORBIDDEN_GROUPS:
         return None
     full_price = calculate_config_price(tariff, devices, traffic)
-    discount = max(0, min(100, float(YOOKASSA_AUTOPAY_CONFIG.get("AUTOPAY_DISCOUNT_PERCENT", 0))))
+    config = KASSAI_AUTOPAY_CONFIG if provider_id == "KASSAI_AUTOPAY" else YOOKASSA_AUTOPAY_CONFIG
+    discount = max(0, min(100, float(config.get("AUTOPAY_DISCOUNT_PERCENT", 0))))
     period = int(tariff.get("duration_days") or 0)
     factor = (Decimal("100") - Decimal(str(discount))) / Decimal("100")
     amount = float((Decimal(str(full_price)) * factor).quantize(Decimal("0.01")))
     return {"amount": amount, "period_days": period} if period > 0 and amount > 0 else None
 
 
-async def preview_checkout_autopay_terms(session: AsyncSession, user_id: int, metadata: dict) -> dict | None:
+async def preview_checkout_autopay_terms(
+    session: AsyncSession, user_id: int, metadata: dict, *, provider_id: str = "YOOKASSA_AUTOPAY"
+) -> dict | None:
     snapshot = metadata.get("checkout_intent") or {}
     data = {**(snapshot.get("data") or {}), **metadata}
     if data.get("payment_flow") not in {"tariff_purchase", "key_renewal"}:
@@ -169,7 +175,7 @@ async def preview_checkout_autopay_terms(session: AsyncSession, user_id: int, me
         devices = devices if devices is not None else key.selected_device_limit
         traffic = traffic if traffic is not None else key.selected_traffic_limit
     _validate_choices(tariff, devices, traffic)
-    return autopay_terms_for_tariff(tariff, devices, traffic)
+    return autopay_terms_for_tariff(tariff, devices, traffic, provider_id=provider_id)
 
 
 async def freeze_checkout_intent(
@@ -322,7 +328,9 @@ async def freeze_checkout_intent(
     if legacy_expiry is not None and legacy_expiry > 0:
         data["new_expiry_time"] = normalize_expiry_ms(legacy_expiry)
     if not trusted_legacy and flow in {"tariff_purchase", "key_renewal"}:
-        terms = await preview_checkout_autopay_terms(session, user_id, data)
+        terms = await preview_checkout_autopay_terms(
+            session, user_id, data, provider_id=str(meta.get("autopay_provider") or "YOOKASSA_AUTOPAY")
+        )
         if terms:
             data["autopay_amount"] = terms["amount"]
             data["autopay_period_days"] = terms["period_days"]

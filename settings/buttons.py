@@ -160,12 +160,25 @@ YOOKASSA_AUTOPAY_DELETE_CARD = "🗑 {label}"
 # --- Управление автопродлением ---
 
 YOOKASSA_AUTOPAY_MANAGE_SUBSCRIPTION = "💳 Автопродление"
+AUTOPAY_MANAGE = "Автопродление"
+AUTOPAY_PROVIDER_YOOKASSA = "ЮKassa"
+AUTOPAY_PROVIDER_KASSAI = "KassaAI"
 YOOKASSA_AUTOPAY_ENABLE_KEY = "Включить для {label}"
 YOOKASSA_AUTOPAY_ENABLE_SUBSCRIPTION = "Включить автопродление"
 YOOKASSA_AUTOPAY_CANCEL_SUBSCRIPTION = "Отключить автопродление"
 YOOKASSA_AUTOPAY_CANCEL_SUBSCRIPTION_NUMBER = "Отключить автопродление #{subscription_id}"
 YOOKASSA_AUTOPAY_PREVIOUS_PAGE = "⬅️"
 YOOKASSA_AUTOPAY_NEXT_PAGE = "➡️"
+
+KASSAI_AUTOPAY = "🏦 KassaI · автоплатёж СБП"
+KASSAI_AUTOPAY_CONFIRM = "Согласен, перейти к оплате"
+KASSAI_AUTOPAY_RETRY = "Повторить"
+KASSAI_AUTOPAY_MANAGE = "🏦 Автопродление KassaI"
+KASSAI_AUTOPAY_ADD_METHOD = "Привязать счёт СБП"
+KASSAI_AUTOPAY_DELETE_METHOD = "Удалить счёт СБП"
+KASSAI_AUTOPAY_CANCEL_SUBSCRIPTION = "Отключить автопродление"
+KASSAI_AUTOPAY_ENABLE_KEY = "Включить для {label}"
+KASSAI_AUTOPAY_ENABLE = "Согласен, включить автопродление"
 
 # === Поддержка ===
 

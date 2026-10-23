@@ -16,6 +16,19 @@ TRAFFIC_SETTINGS_HINT = (
     "Первый включённый порог должен быть выше второго. "
     "Исчерпание лимита — отдельное уведомление при 0%."
 )
+KASSAI_AUTOPAY_SETTINGS_DESCRIPTION = (
+    "Сроки автопродления, повторные списания через СБП и кнопка управления. "
+    "Автоплатежи включаются в разделе «Кассы → KassaAI». "
+    "Новые списания прекращаются после выключения кассы; ранее созданные платежи продолжают проверяться."
+)
+KASSAI_AUTOPAY_SETTING_HINTS = {
+    "DAYS_BEFORE_EXPIRY": "Целое число от 0 до 3650. За сколько дней до окончания начинать автопродление.",
+    "MAX_RETRY_ATTEMPTS": "Целое число от 1 до 1000. Сколько попыток допускается в одном цикле автопродления.",
+    "RETRY_INTERVAL_HOURS": "Целое число от 1 до 8760. Пауза между повторными попытками списания.",
+    "MIN_PAYMENT_AMOUNT": "От 1 до 1 000 000 рублей, не более двух знаков после запятой.",
+    "MANAGE_BUTTON_LOCATION": "Где пользователь сможет управлять привязкой СБП и автопродлением.",
+    "API_TIMEOUT": "Целое число от 1 до 300. Сколько секунд ожидать ответ KassaAI.",
+}
 YOOKASSA_AUTOPAY_SETTINGS_DESCRIPTION = (
     "Сроки автопродления, повторные списания, скидка, уведомления и параметры чеков. "
     "Автоплатежи включаются в разделе «Кассы → ЮКасса». "
@@ -59,6 +72,8 @@ SECTION_DESCRIPTIONS: Final[dict[str, str]] = {
     "management": "Обслуживание и сервисные действия.",
     "yookassa": YOOKASSA_SETTINGS_HINT,
     "yookassa_autopay": YOOKASSA_AUTOPAY_SETTINGS_DESCRIPTION,
+    "kassai": KASSAI_AUTOPAY_SETTINGS_DESCRIPTION,
+    "kassai_autopay": KASSAI_AUTOPAY_SETTINGS_DESCRIPTION,
 }
 
 SETTING_HINTS: Final[dict[str, str]] = {
@@ -182,4 +197,5 @@ SETTING_HINTS: Final[dict[str, str]] = {
     "MARKUP_PERCENT": YOOKASSA_MARKUP_PERCENT_PROMPT,
     "YOOKASSA": YOOKASSA_METHODS_HINT,
     "YOOKASSA_SBP": YOOKASSA_METHODS_HINT,
+    "KASSAI_AUTOPAY": "Автопродление через привязанный счёт СБП. Требуется подключение рекуррентных платежей у KassaAI.",
 }

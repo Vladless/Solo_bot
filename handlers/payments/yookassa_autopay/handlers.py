@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.settings.yookassa_autopay_config import (
     YOOKASSA_AUTOPAY_CONFIG,
-    is_yookassa_autopay_enabled,
     is_yookassa_autopay_enabled_for_session,
 )
 from database.access.resolution import (
@@ -35,6 +34,7 @@ from database.yookassa_autopay import (
     delete_card,
     get_active_card,
     get_attempt,
+    get_legacy_pending,
     list_cards,
     list_subscriptions,
     list_unfinished_attempts,
@@ -42,6 +42,11 @@ from database.yookassa_autopay import (
 from filters.admin import IsAdminFilter
 from handlers.admin.users.keyboard import AdminUserEditorCallback
 from handlers.keys.view.payload import send_key_info
+from handlers.payments.autopay_management import (
+    AutopayManagementProvider,
+    management_back_button,
+    register_autopay_management,
+)
 from handlers.utils import edit_or_send_message
 from hooks.hooks import register_hook
 from logger import logger
@@ -568,7 +573,7 @@ async def _render_management(
             )
         )
     else:
-        kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        kb.row(await management_back_button(callback, session, user_id))
     await edit_or_send_message(callback.message, "\n\n".join(lines), reply_markup=kb.as_markup())
 
 
@@ -914,34 +919,15 @@ async def admin_resolve_attempt_input(message: Message, state: FSMContext, sessi
     )
 
 
-async def _manage_button(chat_id: int, session: AsyncSession):
-    user = await get_user_by_tg_id(session, TelegramId(chat_id))
-    if user is None:
-        return None
-    user_id = UserId(user.id)
-    if (
-        not is_yookassa_autopay_enabled()
-        and not await list_cards(session, user_id)
-        and not await list_subscriptions(session, user_id)
-    ):
-        return None
-    return InlineKeyboardButton(
-        text=buttons.YOOKASSA_AUTOPAY_MANAGE_SUBSCRIPTION, callback_data="yookassa_manage_subscriptions"
-    )
-
-
-async def profile_menu_hook(chat_id: int, session: AsyncSession, **kwargs: Any):
-    if YOOKASSA_AUTOPAY_CONFIG.get("MANAGE_BUTTON_LOCATION", "profile") not in {"profile", "both"}:
-        return []
-    button = await _manage_button(chat_id, session)
-    return [{"after": "gifts", "button": button}] if button is not None else []
-
-
-async def pay_menu_buttons_hook(chat_id: int, session: AsyncSession, **kwargs: Any):
-    if YOOKASSA_AUTOPAY_CONFIG.get("MANAGE_BUTTON_LOCATION", "profile") not in {"pay_menu", "both"}:
-        return []
-    button = await _manage_button(chat_id, session)
-    return [{"button": button}] if button is not None else []
+async def _has_management_data(session: AsyncSession, user_id: UserId) -> bool:
+    """Сохраняет доступ к способам оплаты и незавершённым операциям."""
+    if await list_cards(session, user_id):
+        return True
+    if any(item.is_active for item in await list_subscriptions(session, user_id)):
+        return True
+    if await list_unfinished_attempts(session, user_id):
+        return True
+    return bool(await get_legacy_pending(session, user_id=user_id))
 
 
 async def admin_user_edit_hook(user_id: int | None = None, **kwargs: Any):
@@ -954,6 +940,14 @@ async def admin_user_edit_hook(user_id: int | None = None, **kwargs: Any):
     }
 
 
-register_hook("profile_menu", profile_menu_hook)
-register_hook("pay_menu_buttons", pay_menu_buttons_hook)
+register_autopay_management(
+    AutopayManagementProvider(
+        provider_id="yookassa",
+        title=buttons.AUTOPAY_PROVIDER_YOOKASSA,
+        enabled=is_yookassa_autopay_enabled_for_session,
+        has_data=_has_management_data,
+        render=_render_management,
+        button_location=lambda: YOOKASSA_AUTOPAY_CONFIG.get("MANAGE_BUTTON_LOCATION", "profile"),
+    )
+)
 register_hook("admin_user_edit", admin_user_edit_hook)

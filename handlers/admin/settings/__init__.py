@@ -6,6 +6,7 @@ from filters.permissions import PERM_SETTINGS
 from .settings_buttons import router as settings_buttons_router
 from .settings_cashboxes import router as settings_cashboxes_router
 from .settings_email import router as settings_email_router
+from .settings_kassai import router as settings_kassai_router
 from .settings_legal import router as settings_legal_router
 from .settings_manage import router as settings_manage_router
 from .settings_menu_layout import router as settings_menu_layout_router
@@ -28,6 +29,7 @@ router.include_router(settings_manage_router)
 router.include_router(settings_buttons_router)
 router.include_router(settings_menu_layout_router)
 router.include_router(settings_cashboxes_router)
+router.include_router(settings_kassai_router)
 router.include_router(settings_yookassa_router)
 router.include_router(settings_yookassa_autopay_router)
 router.include_router(settings_yookassa_refunds_router)

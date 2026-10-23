@@ -71,7 +71,6 @@ async def create_key_on_cluster(
             raise ValueError(f"Нет доступных серверов в кластере {cluster_id}")
 
         tariff = None
-        subgroup_title = None
         need_vless_key = False
 
         traffic_limit_bytes_value = 0
@@ -98,7 +97,6 @@ async def create_key_on_cluster(
             else:
                 device_limit_value = int(hwid_limit)
 
-            subgroup_title = tariff.get("subgroup_title")
             need_vless_key = bool(tariff.get("vless"))
             external_squad_uuid = tariff.get("external_squad") or None
         else:
@@ -289,7 +287,6 @@ async def create_key_on_cluster(
             raise ValueError("Создание ключа не подтверждено ни на одном сервере")
 
         cluster_all = enabled_servers
-        subgroup_code = subgroup_title if subgroup_title else None
 
         link_ref = await subscription_owner_ref(session, tg_id)
 
@@ -300,7 +297,6 @@ async def create_key_on_cluster(
             email=email,
             client_id=final_client_id,
             tg_id=link_ref,
-            subgroup_code=subgroup_code,
             remna_link_override=remnawave_key or remnawave_link_value,
             plan=plan,
         )

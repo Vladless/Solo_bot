@@ -67,6 +67,7 @@ PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
     "ROBOKASSA": "Robokassa",
     "KASSAI_CARDS": "KassaAI карты",
     "KASSAI_SBP": "KassaAI СБП",
+    "KASSAI_AUTOPAY": "KassaAI · автоплатёж СБП",
     "WATA_RU": "WATA карты РФ / СБП",
     "WATA_INT": "WATA международные",
     "PARITYPAY_SBP": "ParityPay СБП",
@@ -111,7 +112,7 @@ PAYMENT_CASHBOX_GROUPS: Final[dict[str, tuple[str, ...]]] = {
     "YOOKASSA": ("YOOKASSA", "YOOKASSA_SBP", "YOOKASSA_AUTOPAY"),
     "YOOMONEY": ("YOOMONEY",),
     "ROBOKASSA": ("ROBOKASSA",),
-    "KASSAI": ("KASSAI_CARDS", "KASSAI_SBP"),
+    "KASSAI": ("KASSAI_CARDS", "KASSAI_SBP", "KASSAI_AUTOPAY"),
     "WATA": ("WATA_RU", "WATA_INT"),
     "PARITYPAY": ("PARITYPAY_SBP",),
     "PLATEGA": ("PLATEGA_SBP", "PLATEGA_CARDS", "PLATEGA_INT", "PLATEGA_CRYPTO"),
@@ -239,6 +240,22 @@ YOOKASSA_AUTOPAY_TITLES: Final[dict[str, str]] = {
     "PAYMENT_SUBJECT": "Код предмета расчёта ЮКассы",
 }
 YOOKASSA_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {
+    "MANAGE_BUTTON_LOCATION": [
+        {"value": "profile", "label": "В профиле"},
+        {"value": "pay_menu", "label": "В меню оплаты"},
+        {"value": "both", "label": "В профиле и меню оплаты"},
+    ]
+}
+
+KASSAI_AUTOPAY_TITLES: Final[dict[str, str]] = {
+    "DAYS_BEFORE_EXPIRY": "Начинать автопродление за (дни)",
+    "MAX_RETRY_ATTEMPTS": "Максимум попыток списания",
+    "RETRY_INTERVAL_HOURS": "Интервал повторных попыток (часы)",
+    "MIN_PAYMENT_AMOUNT": "Минимальная сумма списания (₽)",
+    "MANAGE_BUTTON_LOCATION": "Кнопка управления автоплатежами",
+    "API_TIMEOUT": "Ожидание ответа KassaAI (секунды)",
+}
+KASSAI_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {
     "MANAGE_BUTTON_LOCATION": [
         {"value": "profile", "label": "В профиле"},
         {"value": "pay_menu", "label": "В меню оплаты"},

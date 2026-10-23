@@ -106,6 +106,8 @@ class AccountKeyRenewResponse(AccountKeyActionResponse):
     base_price_rub: int = 0
     autopay_price_rub: float | None = None
     autopay_period_days: int | None = None
+    kassai_autopay_price_rub: float | None = None
+    kassai_autopay_period_days: int | None = None
     discount_rub: int = 0
     final_price_rub: int = 0
     applied_coupon_code: str | None = None
@@ -286,6 +288,8 @@ class TariffPurchaseResponse(BaseModel):
     base_price_rub: int = 0
     autopay_price_rub: float | None = None
     autopay_period_days: int | None = None
+    kassai_autopay_price_rub: float | None = None
+    kassai_autopay_period_days: int | None = None
     discount_rub: int = 0
     final_price_rub: int = 0
     applied_coupon_code: str | None = None

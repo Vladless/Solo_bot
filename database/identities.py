@@ -12,6 +12,7 @@ from database import identity_sessions as _idsess
 from database.access.identity_cache import invalidate_identity_cache
 from database.access.resolution import TelegramId, UserId, get_user_by_tg_id
 from database.access.tg_mirror import freeze_legacy_tg_owner, refresh_tg_mirrors_for_user, release_tg_mirrors
+from database.kassai_autopay import transfer_recurring_user_data as transfer_kassai_recurring_user_data
 from database.models import (
     Admin,
     AuditEvent,
@@ -571,6 +572,7 @@ async def _transfer_user_data(
     await session.execute(update(Key).where(Key.user_id == src_uid).values(user_id=dst_uid))
     await session.execute(update(Payment).where(Payment.user_id == src_uid).values(user_id=dst_uid))
     await transfer_recurring_user_data(session, src_uid, dst_uid)
+    await transfer_kassai_recurring_user_data(session, src_uid, dst_uid)
 
     for notification in (
         (await session.execute(select(Notification).where(Notification.user_id == src_uid))).scalars().all()

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from database import db
 from database.migrations.autogenerate import SchemaReport, apply_model_changes, log_report
+from database.migrations.kassai_autopay import migrate_kassai_autopay
 from database.migrations.partners import migrate_partner_owners
 from database.migrations.schema_upgrade import apply_all_migrations
 from database.migrations.yookassa_autopay import migrate_yookassa_autopay
@@ -24,6 +25,7 @@ async def run_schema_setup() -> None:
             await apply_model_changes(conn, Base.metadata, report)
             await migrate_partner_owners(conn)
             await migrate_yookassa_autopay(conn)
+            await migrate_kassai_autopay(conn)
     finally:
         await engine.dispose()
     log_report(report)

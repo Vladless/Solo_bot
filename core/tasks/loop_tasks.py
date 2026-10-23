@@ -15,6 +15,13 @@ async def yookassa_autopay_loop(bot, sessionmaker) -> None:
     await autopay_loop(bot, sessionmaker)
 
 
+async def kassai_autopay_loop(bot, sessionmaker) -> None:
+    """Сверяет платежи и выполняет автопродление через СБП KassaI."""
+    from services.payments.kassai_autopay.service import autopay_loop
+
+    await autopay_loop(bot, sessionmaker)
+
+
 async def yookassa_refunds_loop(bot, sessionmaker) -> None:
     """Продолжает сверку отправленных возвратов YooKassa."""
     from services.payments.yookassa.refunds import refunds_loop

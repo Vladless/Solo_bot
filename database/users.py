@@ -15,6 +15,7 @@ from database.access.resolution import (
     user_ref_cache_keys,
 )
 from database.cache_purge import defer_purge, is_purge_pending
+from database.kassai_autopay import delete_recurring_user_data as delete_kassai_recurring_user_data
 from database.models import (
     BlockedUser,
     CouponUsage,
@@ -451,6 +452,7 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
     await session.execute(delete(TemporaryData).where(TemporaryData.user_id == uid))
     await session.execute(delete(BlockedUser).where(BlockedUser.user_id == uid))
     await delete_recurring_user_data(session, uid)
+    await delete_kassai_recurring_user_data(session, uid)
     await delete_partner_user_data(session, uid)
 
     for model in (WebPushSubscription, WebNotification):

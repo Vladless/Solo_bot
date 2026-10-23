@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.access.resolution import UserId
 from database.models import (
     Identity,
+    KassaIAutopayAttempt,
+    KassaISubscription,
     Key,
     User,
     YooKassaAutopayAttempt,
@@ -19,6 +21,7 @@ from database.models import (
     YooKassaSubscription,
 )
 from database.payments import apply_yookassa_refund
+from settings import texts
 
 
 UNFINISHED_STATUSES = ("prepared", "unknown", "pending", "succeeded", "manual_review")
@@ -219,6 +222,25 @@ async def upsert_subscription(
     card = await get_owned_card(session, user.id, card_id)
     if key is None or card is None:
         raise ValueError("Key and saved payment method must belong to the billing user")
+    other_autopay = await session.scalar(
+        select(KassaISubscription.id)
+        .where(
+            KassaISubscription.user_id == user.id,
+            KassaISubscription.client_id == client_id,
+            or_(
+                KassaISubscription.is_active.is_(True),
+                select(KassaIAutopayAttempt.id)
+                .where(
+                    KassaIAutopayAttempt.subscription_id == KassaISubscription.id,
+                    KassaIAutopayAttempt.status.in_(UNFINISHED_STATUSES),
+                )
+                .exists(),
+            ),
+        )
+        .limit(1)
+    )
+    if other_autopay is not None:
+        raise ValueError(texts.AUTOPAY_OTHER_PROVIDER_ACTIVE)
     unfinished = await session.scalar(
         select(YooKassaAutopayAttempt.id)
         .join(YooKassaSubscription, YooKassaSubscription.id == YooKassaAutopayAttempt.subscription_id)

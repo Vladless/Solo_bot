@@ -1,6 +1,4 @@
-import hashlib
-import hmac
-import time
+from uuid import uuid4
 
 import aiohttp
 
@@ -14,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import register_pending_payment
 from database.access.resolution import TelegramId
 from database.payments import resolve_payment_creation_owner
-from services.payments.checkout_snapshot import capture_payment_checkout
 from database.users import get_user_language
 from handlers.payments.keyboards import (
     balance_fallback_kb,
@@ -25,11 +22,13 @@ from handlers.payments.keyboards import (
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
+from services.payments.checkout_snapshot import capture_payment_checkout
 from services.payments.currency_rates import (
     format_for_user,
     pick_currency,
     to_rub,
 )
+from services.payments.kassai.merchant import merchant_request_nonce, sign_merchant_request
 from services.payments.owner_refs import payment_owner_token
 from services.payments.payment_links import register_payment_creator
 from settings.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
@@ -367,8 +366,9 @@ async def generate_kassai_payment_link(
     """Создаёт заказ KassaI и возвращает ссылку на оплату."""
     tg_id = await resolve_payment_creation_owner(session, tg_id)
     metadata = await capture_payment_checkout(session, tg_id, metadata)
-    nonce = int(time.time())
-    unique_payment_id = payment_id or f"{nonce}_{payment_owner_token(tg_id)}"
+    if session is not None:
+        await session.commit()
+    unique_payment_id = payment_id or f"{uuid4().hex}_{payment_owner_token(tg_id)}"
     url = "https://api.fk.life/v1/orders/create"
 
     headers = {"Content-Type": "application/json"}
@@ -378,7 +378,6 @@ async def generate_kassai_payment_link(
 
     data_for_signature = {
         "shopId": KASSAI_SHOP_ID,
-        "nonce": nonce,
         "i": method["method"],
         "email": client_email,
         "ip": client_ip,
@@ -389,14 +388,11 @@ async def generate_kassai_payment_link(
         "paymentId": unique_payment_id,
     }
 
-    sign_string = "|".join(str(data_for_signature[k]) for k in sorted(data_for_signature.keys()))
-    signature = hmac.new(KASSAI_API_KEY.encode("utf-8"), sign_string.encode("utf-8"), hashlib.sha256).hexdigest()
-
-    data = {**data_for_signature, "signature": signature}
-
     timeout = aiohttp.ClientTimeout(total=60, connect=10)
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as http_session:
+        async with merchant_request_nonce(KASSAI_SHOP_ID) as nonce, aiohttp.ClientSession(timeout=timeout) as http_session:
+            data_for_signature["nonce"] = nonce
+            data = {**data_for_signature, "signature": sign_merchant_request(data_for_signature, KASSAI_API_KEY)}
             async with http_session.post(url, headers=headers, json=data, timeout=60) as resp:
                 if resp.status == 200:
                     try:
@@ -453,7 +449,7 @@ def create_link_factory(method_name: str):
         if not method or not method.get("enable"):
             raise ValueError("Способ оплаты KassaI недоступен")
         amount_int = int(amount)
-        payment_id = f"{int(time.time())}_{payment_owner_token(tg_id)}"
+        payment_id = f"{uuid4().hex}_{payment_owner_token(tg_id)}"
         if method_name == "cards" and amount_int < 50:
             raise ValueError("Минимальная сумма для карт — 50₽")
         if method_name == "sbp" and amount_int < 10:

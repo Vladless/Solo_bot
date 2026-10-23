@@ -155,6 +155,9 @@ async def user_key_renew(
         autopay_terms = autopay_terms_for_tariff(
             renew_tariff, quote.selected_device_limit, quote.selected_traffic_limit
         )
+        kassai_autopay_terms = autopay_terms_for_tariff(
+            renew_tariff, quote.selected_device_limit, quote.selected_traffic_limit, provider_id="KASSAI_AUTOPAY"
+        )
         return AccountKeyRenewResponse(
             ok=True,
             message="Расчет обновлен",
@@ -165,6 +168,8 @@ async def user_key_renew(
             base_price_rub=pricing.base_price_rub,
             autopay_price_rub=autopay_terms["amount"] if autopay_terms else None,
             autopay_period_days=autopay_terms["period_days"] if autopay_terms else None,
+            kassai_autopay_price_rub=kassai_autopay_terms["amount"] if kassai_autopay_terms else None,
+            kassai_autopay_period_days=kassai_autopay_terms["period_days"] if kassai_autopay_terms else None,
             discount_rub=pricing.discount_rub,
             final_price_rub=net_cost,
             applied_coupon_code=pricing.applied_coupon_code,

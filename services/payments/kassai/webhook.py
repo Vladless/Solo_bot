@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 
 from aiohttp import web
 
@@ -22,20 +23,32 @@ def verify_kassai_signature(data: dict, signature: str) -> bool:
         if not KASSAI_SECRET_KEY or not KASSAI_SHOP_ID:
             logger.error("KassaAI webhook: KASSAI_SECRET_KEY/KASSAI_SHOP_ID не настроены, webhook отклонён")
             return False
+        if str(data.get("MERCHANT_ID") or "") != str(KASSAI_SHOP_ID):
+            return False
 
         sign_string = (
             f"{KASSAI_SHOP_ID}:{data.get('AMOUNT', '')}:{KASSAI_SECRET_KEY}:{data.get('MERCHANT_ORDER_ID', '')}"
         )
-        expected_signature = hashlib.md5(sign_string.encode("utf-8")).hexdigest()
-        result = signature.upper() == expected_signature.upper()
-        if not result:
-            logger.error(f"KassaAI signature mismatch. Expected: {expected_signature}, Got: {signature}")
-        else:
-            logger.info("KassaAI webhook: подпись успешно проверена")
-        return result
+        expected_signature = hashlib.md5(sign_string.encode("utf-8"), usedforsecurity=False).hexdigest()
+        return hmac.compare_digest(str(signature).upper(), expected_signature.upper())
     except Exception as e:
         logger.error(f"Ошибка проверки подписи KassaAI: {e}")
         return False
+
+
+def verify_kassai_recurrent_signature(data: dict, signature: str) -> bool:
+    """Проверяет подпись отдельного уведомления привязки СБП."""
+    if not KASSAI_SECRET_KEY or not KASSAI_SHOP_ID:
+        return False
+    if not isinstance(signature, str) or len(signature) != 32 or not signature.isascii():
+        return False
+    if str(data.get("MERCHANT_ID") or "") != str(KASSAI_SHOP_ID):
+        return False
+    if any(not isinstance(value, str) for value in data.values()):
+        return False
+    values = ":".join(data[key] for key in sorted(data) if key != "SIGN")
+    expected = hashlib.md5((values + KASSAI_SECRET_KEY).encode("utf-8"), usedforsecurity=False).hexdigest()
+    return hmac.compare_digest(str(signature).lower(), expected)
 
 
 def _parse_kassai(data) -> ParsedPayment | None:
@@ -64,16 +77,32 @@ async def kassai_webhook(request: web.Request):
             return web.Response(status=429)
 
         data = await request.post()
-        logger.info(f"KassaAI webhook received: {dict(data)}")
+        if len(data) != len(set(data.keys())):
+            return web.Response(status=400)
+        data = dict(data)
 
         signature = data.get("SIGN", "")
         if not signature:
             await record_webhook_signature_failure(ip)
             return web.Response(status=400)
 
-        if not verify_kassai_signature(data, signature):
+        event_type = str(data.get("TYPE") or "")
+        if event_type and event_type != "KG_RECURRENT_INIT":
+            return web.Response(status=400)
+        verifier = verify_kassai_recurrent_signature if event_type == "KG_RECURRENT_INIT" else verify_kassai_signature
+        if not verifier(data, signature):
             await record_webhook_signature_failure(ip)
             return web.Response(status=400)
+
+        from services.payments.kassai_autopay.service import process_payment_webhook, process_recurrent_init
+
+        if event_type == "KG_RECURRENT_INIT":
+            result = await process_recurrent_init(data)
+            return web.Response(text=KASSAI_WEBHOOK_RESPONSE) if result.ok else web.Response(status=400)
+
+        result = await process_payment_webhook(data)
+        if result is not None:
+            return web.Response(text=KASSAI_WEBHOOK_RESPONSE) if result.ok else web.Response(status=500)
 
         parsed = _parse_kassai(data)
         if parsed is None:
@@ -84,6 +113,6 @@ async def kassai_webhook(request: web.Request):
             return web.Response(status=500)
 
         return web.Response(text=KASSAI_WEBHOOK_RESPONSE)
-    except Exception as e:
-        logger.error(f"Ошибка обработки KassaAI webhook: {e}")
+    except Exception:
+        logger.error("Ошибка обработки KassaAI webhook")
         return web.Response(status=500)

@@ -66,7 +66,12 @@ async def store_provider_checkout(
     session: AsyncSession, user_ref: int, state: str, data: dict, *, provider_id: str
 ) -> None:
     """Сохраняет оформление оплаты для обычных платёжных касс."""
-    if str(provider_id).strip().upper() not in {"YOOKASSA_AUTOPAY", "YOOKASSA_AUTOPAY_WEB", "KASSA2328"}:
+    if str(provider_id).strip().upper() not in {
+        "YOOKASSA_AUTOPAY",
+        "YOOKASSA_AUTOPAY_WEB",
+        "KASSAI_AUTOPAY",
+        "KASSA2328",
+    }:
         await create_temporary_data(session, user_ref, state, data)
     await session.commit()
 
@@ -104,6 +109,10 @@ async def create_payment_link(
     """Формирует платёжную ссылку через зарегистрированную кассу."""
     await merge_creators_from_hooks()
     provider_key = request.provider_id.strip().upper()
+    if provider_key == "KASSAI_AUTOPAY":
+        from services.payments.kassai_autopay.service import create_link
+
+        register_payment_creator("KASSAI_AUTOPAY", create_link)
     if provider_key in {"YOOKASSA_AUTOPAY", "YOOKASSA_AUTOPAY_WEB"}:
         from services.payments.yookassa_autopay.service import create_link
 
@@ -135,7 +144,7 @@ async def create_payment_link(
                 metadata["accepted_gross_amount"] = request.accepted_gross_amount
         metadata.pop(PAYMENT_CHECKOUT_SNAPSHOT, None)
         metadata.pop(PAYMENT_CHECKOUT_OPERATION, None)
-        if provider_key not in {"YOOKASSA_AUTOPAY", "YOOKASSA_AUTOPAY_WEB", "KASSA2328"}:
+        if provider_key not in {"YOOKASSA_AUTOPAY", "YOOKASSA_AUTOPAY_WEB", "KASSAI_AUTOPAY", "KASSA2328"}:
             metadata = await capture_payment_checkout(session, request.legacy_user_ref, metadata)
         url, payment_id = await creator(
             session,
