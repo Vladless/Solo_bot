@@ -4,6 +4,7 @@ import ipaddress
 import json
 import logging
 import re
+import unicodedata
 
 from html import escape
 from typing import Any
@@ -19,6 +20,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from core.telegram_sensitivity import register_sensitive_states
 from middlewares.session import release_session_early
 from services.remnawave_installer import jobs
+from services.remnawave_installer.naming import node_name_from_host, node_name_length
 from services.remnawave_installer.progress import job_actions, job_status_text
 from services.remnawave_installer.types import (
     ADDONS,
@@ -52,7 +54,7 @@ class InstallCallback(CallbackData, prefix="rwi"):
 
 
 FIELDS = {
-    "nm": ("name", "Название ноды", "3–30 символов: латиница, цифры, пробел, дефис и подчёркивание."),
+    "nm": ("name", "Название ноды", "3–30 символов, включая кириллицу; без управляющих символов."),
     "ip": ("address", "IP сервера", "Укажите IPv4 или IPv6 сервера."),
     "us": ("ssh_username", "SSH-логин", "Например: root."),
     "sp": ("ssh_port", "SSH-порт", "Целое число от 1 до 65535."),
@@ -77,7 +79,11 @@ FIELDS = {
         "Имя Config Profile",
         "2–29 символов: латиница, цифры, пробел, дефис и подчёркивание; «-» создаст имя автоматически.",
     ),
-    "hr": ("host_remark", "Название хоста", "До 100 символов; «-» использует название ноды."),
+    "hr": (
+        "host_remark",
+        "Название хоста",
+        "До 100 символов; «-» использует название ноды. Имя новой ноды создаётся из названия хоста без эмодзи и сокращается до 30 символов.",
+    ),
     "ei": ("exit_ip", "Выходной IP", "Дополнительный IP сервера; «-» использует основной адрес."),
     "ef": ("exit_interface", "Интерфейс выходного IP", "Например: eth0; «-» для автоматического определения."),
     "fd": ("folder_id", "Каталог Яндекс Cloud", "ID каталога; «-» выберет первый доступный каталог."),
@@ -554,6 +560,8 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
             lines.append("Для выхода каскада клиентский сквад и хост не создаются. Можно продолжить.")
         else:
             lines.append(f"Название хоста: {_copyable(params['host_remark'] or params['name'])}")
+            if job.get("status") == "draft" and params["name"]:
+                lines.append(f"Имя ноды: {_copyable(node_name_from_host(params['host_remark'], params['name']))}")
             _button(builder, "Название хоста", "f", job_id, "hr")
             lines.append(f"Сквад: {_copyable(job.get('squad_name') or params['squad_uuid'])}")
             _button(builder, "Выбрать сквад", "squads", job_id)
@@ -689,6 +697,13 @@ def _summary(job: dict) -> str:
         f"Транспорт: {TRANSPORTS[params['transport']]}",
         "Дополнения: " + (", ".join(addons) or "без дополнений"),
     ]
+    if params["name"]:
+        name = (
+            node_name_from_host(params["host_remark"], params["name"])
+            if job.get("status") == "draft"
+            else params["name"]
+        )
+        lines.insert(2, f"Имя ноды: {_copyable(name)}")
     if params["role"] != "normal":
         lines.append("Роль: " + ROLES[params["role"]])
     if params["client_port"] != 443 and not params["transport"].startswith("cdn_"):
@@ -916,7 +931,11 @@ def _parse_value(code: str, text: str):
         except ValueError as error:
             raise ValueError("Укажите IP/CIDR через пробел") from error
         return result
-    if code == "nm" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _-]{2,29}", value):
+    if code == "nm" and (
+        not value.strip()
+        or any(unicodedata.category(character).startswith("C") for character in value)
+        or not 3 <= node_name_length(value) <= 30
+    ):
         raise ValueError(FIELDS[code][2])
     if code == "us" and not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", value):
         raise ValueError("Некорректный SSH-логин")

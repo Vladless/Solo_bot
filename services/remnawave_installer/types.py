@@ -2,10 +2,13 @@ import hashlib
 import ipaddress
 import json
 import re
+import unicodedata
 
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 from uuid import UUID
+
+from .naming import node_name_length
 
 
 PANEL_VERSION = "3.2.1"
@@ -192,15 +195,20 @@ class InstallSpec:
             raise ValueError("В конфиге бота не настроен адрес панели Remnawave")
         if any(ipaddress.ip_network(item).prefixlen == 0 for item in spec.panel_sources + spec.trusted_ssh_sources):
             raise ValueError("Укажите конкретные доверенные адреса вместо доступа со всего интернета")
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _-]{2,29}", spec.name):
-            raise ValueError("Имя ноды: 3–30 символов, латиница, цифры, пробел, дефис и подчёркивание")
+        if (
+            not spec.name.strip()
+            or any(unicodedata.category(character).startswith("C") for character in spec.name)
+            or not 3 <= node_name_length(spec.name) <= 30
+        ):
+            raise ValueError("Имя ноды: 3–30 символов без управляющих символов")
         try:
             spec.address = str(ipaddress.ip_address(spec.address.strip()))
         except (ValueError, AttributeError) as error:
             raise ValueError("Укажите IP-адрес сервера") from error
         if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", spec.ssh_username):
             raise ValueError("Некорректный SSH-логин")
-        spec.profile_name = spec.profile_name or spec.name[:21].rstrip(" _-") + "-profile"
+        profile_basis = re.sub(r"[^A-Za-z0-9 _-]", "", spec.name).strip(" _-") or _default_node_name(spec.address)
+        spec.profile_name = spec.profile_name or profile_basis[:21].rstrip(" _-") + "-profile"
         if not re.fullmatch(r"[A-Za-z0-9 _-]{2,29}", spec.profile_name):
             raise ValueError("Имя профиля: 2–29 символов, латиница, цифры, пробел, дефис и подчёркивание")
         spec.host_remark = spec.host_remark.strip() or spec.name

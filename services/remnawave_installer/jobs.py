@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from database.db import async_session_maker
 from database.models import RemnawaveInstall
 
+from .naming import node_name_from_host
 from .progress import build_progress, job_actions, job_status_text
 from .types import DELETABLE_STATUSES, NODE_IMAGE, InstallError, InstallSpec, InstallWaitingError, needs_certificate
 from .vault import vault
@@ -562,6 +563,7 @@ async def start_job(job_id: str, owner_id: int, message_id: int | None = None) -
         _editable(row)
         snapshot = _ssh_setup_snapshot(row)
         spec = InstallSpec.from_dict(row.params)
+        spec.name = node_name_from_host(spec.host_remark, spec.name)
         _require_credentials(spec, snapshot["secrets"])
         if row.secrets_expire_at and row.secrets_expire_at <= datetime.utcnow():
             raise ValueError("Срок хранения ключей истёк. Введите их повторно")
