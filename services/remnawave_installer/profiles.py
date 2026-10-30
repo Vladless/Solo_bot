@@ -6,7 +6,7 @@ import secrets
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
 
-from .types import InstallError, InstallSpec
+from .types import InstallError, InstallSpec, certificate_paths
 
 
 _WARP_DOMAINS = [
@@ -61,7 +61,7 @@ def generate_keys(spec: InstallSpec) -> dict:
             + "/"
         )
         return {"xhttp_path": path, "xhttp_extra": _cdn_extra(spec.transport, path)}
-    if spec.transport == "vless_encryption":
+    if spec.transport in {"vless_encryption", "hysteria2"}:
         return {}
     private = X25519PrivateKey.generate()
     return {
@@ -129,7 +129,20 @@ def build_profile(spec: InstallSpec, artifacts: dict) -> dict:
         "settings": {"clients": [], "decryption": "none"},
         "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"]},
     }
-    if spec.transport.startswith("cdn_"):
+    if spec.transport == "hysteria2":
+        certificate, private_key = certificate_paths(spec)
+        inbound.update(protocol="hysteria", settings={"clients": [], "version": 2})
+        inbound["streamSettings"] = {
+            "network": "hysteria",
+            "security": "tls",
+            "tlsSettings": {
+                "serverName": spec.domain,
+                "alpn": ["h3"],
+                "certificates": [{"certificateFile": certificate, "keyFile": private_key}],
+            },
+            "hysteriaSettings": {"version": 2, "udpIdleTimeout": 60},
+        }
+    elif spec.transport.startswith("cdn_"):
         path = artifacts.get("xhttp_path")
         if not path:
             raise InstallError("profile", "Не сохранён путь XHTTP")

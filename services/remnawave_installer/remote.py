@@ -13,7 +13,7 @@ import sys
 
 from pathlib import PurePosixPath
 
-from .types import NODE_IMAGE, InstallError, InstallSpec
+from .types import NODE_IMAGE, InstallError, InstallSpec, certificate_paths, client_network, needs_certificate
 
 
 ROOT = "/opt/solobot-remnawave"
@@ -351,10 +351,12 @@ async def preflight(remote: RemoteServer, spec: InstallSpec) -> dict:
     from .addons import validate_addons
 
     validate_addons(spec, remote.secrets)
-    service_ports = transport_ports(spec)
-    if spec.transport == "vless_tcp_selfsteal" or spec.transport.startswith("cdn_"):
-        service_ports.append(4443 if spec.transport == "cdn_yandex" else 8443)
-    if len(service_ports) != len(set(service_ports)) or {spec.ssh_port, spec.node_port}.intersection(service_ports):
+    service_ports = transport_bindings(spec)
+    if _uses_tls(spec):
+        service_ports.append((4443 if spec.transport == "cdn_yandex" else 8443, "tcp"))
+    if len(service_ports) != len(set(service_ports)) or {(spec.ssh_port, "tcp"), (spec.node_port, "tcp")}.intersection(
+        service_ports
+    ):
         raise InstallError("preflight", "Порты SSH, управления, TLS и Xray должны различаться", retryable=False)
     release = await remote.run("cat /etc/os-release", step="preflight")
     values = {}
@@ -382,13 +384,22 @@ async def preflight(remote: RemoteServer, spec: InstallSpec) -> dict:
         if existing.strip() and existing.strip() != owner_id(spec):
             conflicts.append("контейнер " + container)
     listeners = await remote.run("ss -tlnpH", step="preflight")
-    reserved = transport_ports(spec) + [spec.node_port]
-    if spec.transport.startswith("cdn_") or spec.transport == "vless_tcp_selfsteal":
-        reserved += [8443 if spec.transport != "cdn_yandex" else 4443]
+    reserved = [port for port, protocol in service_ports if protocol == "tcp"] + [spec.node_port]
     if not marker:
         for port in set(reserved):
             if re.search(rf":{port}\s", listeners):
                 conflicts.append(f"занятый TCP-порт {port}")
+    udp_ports = {port for port, protocol in service_ports if protocol == "udp"}
+    if udp_ports:
+        listeners = await remote.run("ss -ulnpH", step="preflight")
+        owned_pids = await _node_listener_pids(remote, spec) if marker == owner_id(spec) else set()
+        for port in udp_ports:
+            if _listener_conflict(listeners, port, owned_pids):
+                raise InstallError(
+                    "preflight",
+                    f"UDP-порт {port} занят посторонним процессом; освободите порт или выберите другой",
+                    retryable=False,
+                )
     if conflicts and not spec.replace_existing:
         raise InstallError("preflight", "Требуется явное разрешение замены: " + ", ".join(conflicts), retryable=False)
     return {"os": values.get("VERSION_ID"), "architecture": architecture, "conflicts": conflicts}
@@ -400,7 +411,48 @@ def transport_ports(spec: InstallSpec) -> list[int]:
         return [80, 443]
     if spec.transport == "cdn_yandex":
         return [80, 7443]
-    return [spec.client_port, 80] if spec.transport == "vless_tcp_selfsteal" else [spec.client_port]
+    return [spec.client_port, 80] if spec.transport in {"vless_tcp_selfsteal", "hysteria2"} else [spec.client_port]
+
+
+def transport_bindings(spec: InstallSpec) -> list[tuple[int, str]]:
+    """Возвращает внешние порты с учётом сетевого протокола."""
+    if spec.transport == "hysteria2":
+        return [(spec.client_port, client_network(spec)), (80, "tcp")]
+    return [(port, "tcp") for port in transport_ports(spec)]
+
+
+def _listener_conflict(listeners: str, port: int, owned_pids: set[int]) -> bool:
+    """Отличает слушающий порт собственной ноды от чужого процесса."""
+    for line in listeners.splitlines():
+        fields = line.split()
+        if len(fields) < 4 or fields[3].rsplit(":", 1)[-1] != str(port):
+            continue
+        pids = {int(value) for value in re.findall(r"pid=(\d+)", line)}
+        if not pids or not pids.issubset(owned_pids):
+            return True
+    return False
+
+
+async def _node_listener_pids(remote: RemoteServer, spec: InstallSpec) -> set[int]:
+    """Получает PID процессов только собственного контейнера ноды."""
+    script = (
+        "import json,subprocess,sys\n"
+        "result=subprocess.run(['docker','inspect','remnanode'],capture_output=True)\n"
+        "if result.returncode: raise SystemExit(0)\n"
+        "data=json.loads(result.stdout)[0]\n"
+        "if (data.get('Config',{}).get('Labels') or {}).get('io.solobot.remnawave.owner')!=sys.argv[1]: raise SystemExit(0)\n"
+        "result=subprocess.run(['docker','top',data['Id'],'-eo','pid'],capture_output=True,text=True,check=True)\n"
+        "print(json.dumps([int(line.strip()) for line in result.stdout.splitlines() if line.strip().isdigit()]))\n"
+    )
+    value = await remote.run(
+        f"if command -v docker >/dev/null; then python3 -c {shlex.quote(script)} {owner_id(spec)}; fi",
+        step="preflight",
+    )
+    try:
+        pids = json.loads(value)
+    except (ValueError, TypeError):
+        return set()
+    return {pid for pid in pids if type(pid) is int and pid > 0} if isinstance(pids, list) else set()
 
 
 async def claim_paths(remote: RemoteServer, spec: InstallSpec) -> None:
@@ -496,8 +548,8 @@ async def _open_firewall(remote: RemoteServer, spec: InstallSpec) -> None:
     status = await remote.run("if command -v ufw >/dev/null; then LC_ALL=C ufw status; fi", step="firewall")
     if "Status: active" not in status:
         return
-    for port in transport_ports(spec):
-        await remote.run(f"ufw allow {port}/tcp comment solobot-remnawave", step="firewall")
+    for port, protocol in transport_bindings(spec):
+        await remote.run(f"ufw allow {port}/{protocol} comment solobot-remnawave", step="firewall")
     if not spec.panel_sources:
         await remote.run(f"ufw allow {spec.node_port}/tcp comment solobot-remnawave", step="firewall")
     for source in spec.panel_sources:
@@ -689,6 +741,10 @@ async def deploy_node(
     if not runtime_only:
         await _open_firewall(remote, spec)
         await _management_firewall(remote, spec)
+        if spec.transport == "hysteria2":
+            await _prepare_hysteria_tls(remote, spec, artifacts, log)
+    elif spec.transport == "hysteria2":
+        await _check_hysteria_certificate_files(remote, spec)
     compose = _node_compose(spec, artifacts)
     await remote.write(ROOT + "/node/compose.json", json.dumps(compose))
     await _replace_container(remote, spec, "remnanode")
@@ -707,7 +763,7 @@ def _node_compose(spec: InstallSpec, artifacts: dict) -> dict:
     secret = artifacts.get("node_secret")
     if not isinstance(secret, str) or not secret or "\n" in secret:
         raise InstallError("docker", "Не сохранён ключ связи с панелью")
-    return {
+    compose = {
         "services": {
             "remnanode": {
                 "container_name": "remnanode",
@@ -721,6 +777,9 @@ def _node_compose(spec: InstallSpec, artifacts: dict) -> dict:
             }
         },
     }
+    if spec.transport == "hysteria2":
+        compose["services"]["remnanode"]["volumes"] = [ROOT + "/certbot/certs:/etc/letsencrypt:ro"]
+    return compose
 
 
 def _uses_tls(spec: InstallSpec) -> bool:
@@ -744,15 +803,19 @@ async def prepare_remote_changes(
     if changed.intersection({"transport", "client_port", "node_port"}):
 
         def reserved(spec):
-            ports = set(transport_ports(spec)) | {spec.node_port}
+            ports = set(transport_bindings(spec)) | {(spec.node_port, "tcp")}
             if _uses_tls(spec):
-                ports.add(4443 if spec.transport == "cdn_yandex" else 8443)
+                ports.add((4443 if spec.transport == "cdn_yandex" else 8443, "tcp"))
             return ports
 
         new_ports = reserved(new_spec) - reserved(old_spec)
-        listeners = await remote.run("ss -tlnpH", step="preflight")
-        if any(re.search(rf":{port}\s", listeners) for port in new_ports):
-            raise InstallError("preflight", "Новый порт уже занят другим процессом", retryable=False)
+        for protocol, command in (("tcp", "ss -tlnpH"), ("udp", "ss -ulnpH")):
+            ports = {port for port, network in new_ports if network == protocol}
+            if not ports and protocol != "tcp":
+                continue
+            listeners = await remote.run(command, step="preflight")
+            if any(_listener_conflict(listeners, port, set()) for port in ports):
+                raise InstallError("preflight", "Новый порт уже занят другим процессом", retryable=False)
         if old_spec.transport != new_spec.transport and _uses_tls(old_spec):
             await _stop_tls(remote, old_spec)
     if "transport" in changed:
@@ -767,6 +830,21 @@ async def prepare_remote_changes(
         if checkpoint:
             await checkpoint(artifacts)
         await prepare_encryption(remote, new_spec, artifacts, checkpoint)
+    if new_spec.transport == "hysteria2" and changed.intersection({"transport", "domain", "client_port"}):
+        await claim_paths(remote, new_spec)
+        await ensure_docker(remote)
+        await _open_firewall(remote, new_spec)
+        await _prepare_hysteria_tls(remote, new_spec, artifacts)
+        if artifacts.get("remote_deployed") and old_spec.transport != "hysteria2":
+            await _check_container_owner(remote, new_spec, "remnanode")
+            compose = _node_compose(old_spec, artifacts)
+            compose["services"]["remnanode"]["volumes"] = [ROOT + "/certbot/certs:/etc/letsencrypt:ro"]
+            await remote.write(ROOT + "/node/compose.json", json.dumps(compose))
+            await remote.run(
+                f"cd {ROOT}/node && docker compose -f compose.json up -d --no-build --pull never",
+                step="docker",
+                timeout=180,
+            )
     if changed.intersection({"exit_ip", "exit_interface"}):
         change_key = hashlib.sha256(
             f"{old_spec.exit_ip}\n{old_spec.exit_interface}\n{new_spec.exit_ip}\n{new_spec.exit_interface}".encode()
@@ -821,7 +899,7 @@ async def _cleanup_exit_alias(remote: RemoteServer, spec: InstallSpec, artifacts
 
 def _ufw_rules(spec: InstallSpec) -> set[tuple[str, ...]]:
     """Собирает правила, относящиеся к параметрам установки."""
-    rules = {("allow", f"{port}/tcp") for port in transport_ports(spec)}
+    rules = {("allow", f"{port}/{protocol}") for port, protocol in transport_bindings(spec)}
     if not spec.panel_sources:
         rules.add(("allow", f"{spec.node_port}/tcp"))
     for source in spec.panel_sources:
@@ -859,6 +937,7 @@ async def _stop_tls(remote: RemoteServer, spec: InstallSpec) -> None:
         "if result.returncode: raise SystemExit(0)\n"
         "labels=json.loads(result.stdout)[0].get('Config',{}).get('Labels') or {}\n"
         "if labels.get('io.solobot.remnawave.owner')!=sys.argv[1]: raise SystemExit(33)\n"
+        "subprocess.run(['docker','update','--restart=no','cdn-nginx'],check=True,stdout=subprocess.DEVNULL)\n"
         "subprocess.run(['docker','stop','cdn-nginx'],check=True,stdout=subprocess.DEVNULL)\nprint('STOPPED')\n"
     )
     result = await remote.run(f"python3 -c {shlex.quote(script)} {owner_id(spec)}", step="nginx")
@@ -891,7 +970,10 @@ async def apply_remote_changes(
     new_spec._owner_id = artifacts["remote_owner_id"]
     remote.spec = new_spec
     await claim_paths(remote, new_spec)
-    if "node_port" in changed:
+    compose_changed = "node_port" in changed or (
+        "transport" in changed and "hysteria2" in {old_spec.transport, new_spec.transport}
+    )
+    if compose_changed:
         await _check_container_owner(remote, new_spec, "remnanode")
     if _uses_tls(new_spec) and changed.intersection({"transport", "domain", "site_template", "email"}):
         await _check_container_owner(remote, new_spec, "cdn-nginx")
@@ -899,15 +981,16 @@ async def apply_remote_changes(
         await _management_firewall(remote, new_spec, additional_ports=(old_spec.node_port,))
     elif "panel_sources" in changed:
         await _management_firewall(remote, new_spec)
-    if "node_port" in changed:
-        await log("Обновление порта управления нодой")
+    if compose_changed:
+        await log("Обновление настроек контейнера ноды")
         await remote.write(ROOT + "/node/compose.json", json.dumps(_node_compose(new_spec, artifacts)))
         await remote.run(
             f"cd {ROOT}/node && docker compose -f compose.json up -d --no-build --pull never",
             step="docker",
             timeout=180,
         )
-        await _management_firewall(remote, new_spec)
+        if "node_port" in changed:
+            await _management_firewall(remote, new_spec)
     firewall_fields = {"transport", "client_port", "node_port", "ssh_port", "panel_sources", "trusted_ssh_sources"}
     if changed.intersection(firewall_fields):
         await _change_firewall(remote, old_spec, new_spec, artifacts)
@@ -915,12 +998,14 @@ async def apply_remote_changes(
     if new_tls and changed.intersection({"transport", "domain"}):
         await log("Обновление TLS-прокси и сертификата")
         await _deploy_tls(remote, new_spec, artifacts, log)
-    elif old_tls and not new_tls:
+    elif old_tls and not new_tls and new_spec.transport != "hysteria2":
         await _stop_tls(remote, new_spec)
     elif new_tls and "site_template" in changed:
         await remote.write(ROOT + "/nginx/html/index.html", _site_html(new_spec.site_template), mode=0o644)
         await remote.run("docker exec cdn-nginx nginx -t && docker exec cdn-nginx nginx -s reload", step="nginx")
-    if new_tls and "email" in changed:
+    if old_spec.transport == "hysteria2" and not needs_certificate(new_spec):
+        await _stop_hysteria_tls(remote, new_spec)
+    if needs_certificate(new_spec) and "email" in changed:
         cert_dir = ROOT + "/certbot"
         await remote.run(
             f"docker run --rm -v {cert_dir}/certs:/etc/letsencrypt -v {cert_dir}/var-lib:/var/lib/letsencrypt "
@@ -954,6 +1039,138 @@ async def apply_remote_changes(
         await _cleanup_exit_alias(remote, new_spec, artifacts)
     if checkpoint:
         await checkpoint(artifacts)
+
+
+def _hysteria_certificate_command(spec: InstallSpec) -> str:
+    """Проверяет срок, домен и соответствие ключа TLS-сертификату."""
+    fullchain, private_key = [
+        ROOT + "/certbot/certs" + value.removeprefix("/etc/letsencrypt") for value in certificate_paths(spec)
+    ]
+    certificate, key = shlex.quote(fullchain), shlex.quote(private_key)
+    return (
+        f"openssl x509 -in {certificate} -checkend 86400 -checkhost {shlex.quote(spec.domain)} -noout && "
+        f"openssl verify -purpose sslserver -verify_hostname {shlex.quote(spec.domain)} "
+        f"-untrusted {certificate} {certificate} && "
+        f'test "$(openssl x509 -pubkey -noout -in {certificate})" = "$(openssl pkey -pubout -in {key})"'
+    )
+
+
+async def _check_hysteria_certificate_files(remote: RemoteServer, spec: InstallSpec) -> None:
+    """Не допускает запуск ноды без файлов смонтированного сертификата."""
+    paths = [ROOT + "/certbot/certs" + value.removeprefix("/etc/letsencrypt") for value in certificate_paths(spec)]
+    await remote.run(" && ".join("test -s " + shlex.quote(path) for path in paths), step="certificate")
+
+
+async def _prepare_hysteria_tls(remote: RemoteServer, spec: InstallSpec, artifacts: dict, log=None) -> None:
+    """Готовит сертификат Hysteria2 до первого запуска профиля."""
+    await ensure_http_tools(remote)
+    await remote.run(
+        f"command -v openssl >/dev/null || ( {APT} update && {APT} install -y openssl )",
+        step="certificate",
+        timeout=900,
+    )
+    cert_dir = ROOT + "/certbot"
+    validation = _hysteria_certificate_command(spec)
+    existing = await remote.run(f"( {validation} ) >/dev/null 2>&1 && echo YES || true", step="certificate")
+    if "YES" not in existing:
+        if log:
+            await log("Выпуск TLS-сертификата Hysteria2 через порт 80/TCP")
+        await remote.run("test -z \"$(ss -tlnH 'sport = :80')\"", step="certificate")
+        await remote.run(
+            f"mkdir -p {cert_dir}/certs {cert_dir}/var-lib && docker run --rm --network host "
+            f"-v {cert_dir}/certs:/etc/letsencrypt -v {cert_dir}/var-lib:/var/lib/letsencrypt "
+            "certbot/certbot:v3.2.0 certonly --standalone --non-interactive --agree-tos --keep-until-expiring "
+            f"--cert-name {shlex.quote(spec.domain)} --email {shlex.quote(spec.email)} -d {shlex.quote(spec.domain)}",
+            step="certificate",
+            timeout=300,
+        )
+    await remote.run(validation, step="certificate")
+    renewal = (
+        "import hashlib,json,pathlib,re,subprocess,sys,time\n"
+        f"root=pathlib.Path({ROOT!r}); owner={owner_id(spec)!r}; domain={spec.domain!r}\n"
+        "if (root/'.owner').read_text().strip()!=owner: raise SystemExit(33)\n"
+        "def node():\n"
+        " result=subprocess.run(['docker','inspect','remnanode'],capture_output=True)\n"
+        " if result.returncode: return None\n"
+        " data=json.loads(result.stdout)[0]\n"
+        " if (data.get('Config',{}).get('Labels') or {}).get('io.solobot.remnawave.owner')!=owner: raise SystemExit(33)\n"
+        " if not any(m.get('Source')==str(root/'certbot'/'certs') and m.get('Destination')=='/etc/letsencrypt' "
+        "and m.get('RW') is False for m in data.get('Mounts',[])): raise SystemExit(34)\n"
+        " return data\n"
+        "data=node()\n"
+        "if data is None: raise SystemExit(0)\n"
+        "certificate=root/'certbot'/'certs'/'live'/domain/'fullchain.pem'\n"
+        "before=hashlib.sha256(certificate.read_bytes()).hexdigest()\n"
+        "pending=root/'certbot'/('renew-pending-'+domain+'.json')\n"
+        "if pending.is_symlink(): raise SystemExit(34)\n"
+        "state=json.loads(pending.read_text()) if pending.is_file() else "
+        "{'owner':owner,'domain':domain,'hash':before,'container_id':data['Id'],'was_running':bool(data.get('State',{}).get('Running'))}\n"
+        "if state.get('owner')!=owner or state.get('domain')!=domain: raise SystemExit(33)\n"
+        "if not pending.is_file():\n"
+        " temporary=pending.with_suffix('.tmp')\n"
+        " if temporary.is_symlink(): raise SystemExit(34)\n"
+        " temporary.write_text(json.dumps(state)); temporary.chmod(0o600); temporary.replace(pending)\n"
+        "subprocess.run(['docker','run','--rm','--network','host','-v',str(root/'certbot'/'certs')+':/etc/letsencrypt',"
+        "'-v',str(root/'certbot'/'var-lib')+':/var/lib/letsencrypt','certbot/certbot:v3.2.0','renew','--standalone',"
+        "'--cert-name',domain,'--non-interactive','--quiet'],check=True)\n"
+        "after=hashlib.sha256(certificate.read_bytes()).hexdigest()\n"
+        "if state.get('hash')==after:\n"
+        " pending.unlink(); raise SystemExit(0)\n"
+        f"subprocess.run(['bash','-c',{validation!r}],check=True,stdout=subprocess.DEVNULL)\n"
+        "current=node()\n"
+        "if current is None or current['Id']!=data['Id']: raise SystemExit(35)\n"
+        "restart=current.get('State',{}).get('Running') or "
+        "(state.get('container_id')==current['Id'] and state.get('was_running') is True)\n"
+        "if restart:\n"
+        " subprocess.run(['docker','restart',data['Id']],check=True,stdout=subprocess.DEVNULL)\n"
+        " for attempt in range(45):\n"
+        "  current=node()\n"
+        "  if current is None or current['Id']!=data['Id']: raise SystemExit(35)\n"
+        "  top=subprocess.run(['docker','top',data['Id'],'-eo','pid'],capture_output=True,text=True,check=True)\n"
+        "  pids={int(line.strip()) for line in top.stdout.splitlines() if line.strip().isdigit()}\n"
+        f"  result=subprocess.run(['ss','-ulnpH','sport = :{spec.client_port}'],capture_output=True,text=True,check=True)\n"
+        "  if any((found:={int(value) for value in re.findall(r'pid=(\\d+)',line)}) and found.issubset(pids) for line in result.stdout.splitlines()): break\n"
+        "  time.sleep(2)\n"
+        " else: raise SystemExit(36)\n"
+        "pending.unlink()\n"
+    )
+    await remote.write(ROOT + "/certbot/renew-hysteria.py", renewal, mode=0o700)
+    await remote.write(
+        ROOT + "/certbot/renew.sh",
+        f"set -eu\nflock -w 120 {_LOCK} python3 {ROOT}/certbot/renew-hysteria.py\n",
+        mode=0o700,
+    )
+    await remote.write(
+        "/etc/systemd/system/solobot-remnawave-cert.service",
+        "[Unit]\nDescription=Renew node TLS certificate\nAfter=docker.service\n"
+        f"[Service]\nType=oneshot\nTimeoutStartSec=600\nExecStart=/bin/bash {ROOT}/certbot/renew.sh\n",
+        mode=0o644,
+    )
+    await remote.write(
+        "/etc/systemd/system/solobot-remnawave-cert.timer",
+        "[Unit]\nDescription=Node certificate renewal\n[Timer]\nOnCalendar=*-*-* 03,15:00:00\n"
+        "RandomizedDelaySec=600\nPersistent=true\n[Install]\nWantedBy=timers.target\n",
+        mode=0o644,
+    )
+    await remote.run(
+        "systemctl daemon-reload && systemctl enable --now solobot-remnawave-cert.timer", step="certificate"
+    )
+    artifacts["certificate_domain"] = spec.domain
+
+
+async def _stop_hysteria_tls(remote: RemoteServer, spec: InstallSpec) -> None:
+    """Отключает только собственное продление сертификата Hysteria2."""
+    script = (
+        "import hashlib,json,pathlib,subprocess,sys\n"
+        "root=pathlib.Path(sys.argv[1]); owner=sys.argv[2]\n"
+        "if (root/'.owner').read_text().strip()!=owner: raise SystemExit(33)\n"
+        "managed=json.loads((root/'.managed-files.json').read_text())\n"
+        "paths=[root/'certbot'/'renew.sh',pathlib.Path('/etc/systemd/system/solobot-remnawave-cert.timer')]\n"
+        "for path in paths:\n"
+        " if not path.is_file() or path.is_symlink() or managed.get(str(path))!=hashlib.sha256(path.read_bytes()).hexdigest(): raise SystemExit(34)\n"
+        "subprocess.run(['systemctl','disable','--now','solobot-remnawave-cert.timer'],check=True)\n"
+    )
+    await remote.run(f"python3 -c {shlex.quote(script)} {ROOT} {owner_id(spec)}", step="certificate")
 
 
 async def _deploy_tls(remote: RemoteServer, spec: InstallSpec, artifacts: dict, log) -> None:

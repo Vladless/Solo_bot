@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MODES_CONFIG
-from database import filter_cluster_by_subgroup, update_key_client_id
+from database import update_key_client_id
 from database.access.resolution import UserId, panel_identity_fields
 from logger import (
     CLOGGER as logger,
@@ -264,8 +264,8 @@ async def ensure_on_3xui(
 
 async def migrate_between_subgroups(
     session: AsyncSession,
-    cluster_all: list,
-    cluster_id: str,
+    target_servers: list,
+    old_servers: list,
     email: str,
     client_id: str,
     tg_id: int,
@@ -273,35 +273,25 @@ async def migrate_between_subgroups(
     total_gb: int,
     hwid_device_limit: int,
     reset_traffic: bool,
-    old_subgroup: str,
-    target_subgroup: str,
     external_squad_uuid: str | None = None,
-    tariff_id: int | None = None,
     billing_user_id: int | None = None,
     subscription_url: str | None = None,
 ) -> tuple[str, str | None]:
     from services.operations.deletion import delete_on_3xui, delete_on_remnawave
     from services.operations.utils import norm_name, split_by_panel
 
-    target = await filter_cluster_by_subgroup(session, cluster_all, target_subgroup, cluster_id, tariff_id=tariff_id)
-    xui_tgt, remna_tgt = split_by_panel(target)
-
-    old_set = await filter_cluster_by_subgroup(session, cluster_all, old_subgroup, cluster_id)
-    was_on_remna_before = any(
-        s.get("enabled", True) and (s.get("panel_type", "").lower() == "remnawave") for s in old_set
-    )
-    was_on_xui_before = any(s.get("enabled", True) and (s.get("panel_type", "").lower() == "3x-ui") for s in old_set)
+    xui_tgt, remna_tgt = split_by_panel(target_servers)
+    xui_old, remna_old = split_by_panel(old_servers)
+    was_on_remna_before = bool(remna_old)
+    was_on_xui_before = bool(xui_old)
 
     xui_target_names = {norm_name(s.get("server_name")) for s in xui_tgt}
     remna_target_urls = {(s.get("api_url") or "").rstrip("/") for s in remna_tgt}
 
-    xui_old = [s for s in old_set if s.get("enabled", True) and (s.get("panel_type", "").lower() == "3x-ui")]
-    remna_old = [s for s in old_set if s.get("enabled", True) and (s.get("panel_type", "").lower() == "remnawave")]
-
     xui_old_non = [s for s in xui_old if norm_name(s.get("server_name")) not in xui_target_names]
     remna_old_non = [s for s in remna_old if (s.get("api_url") or "").rstrip("/") not in remna_target_urls]
 
-    if not target:
+    if not target_servers:
         raise ValueError("Нет серверов в целевой подгруппе")
 
     if xui_tgt and not remna_tgt:

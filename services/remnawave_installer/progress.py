@@ -27,6 +27,11 @@ _EDIT_LABELS = {
     "host": "Обновление хоста",
 }
 _DELETE_LABELS = {
+    "server_cleanup": "Удаление ноды с VPS",
+    "cloud_cleanup": "Удаление ресурсов CDN",
+    "cloud_resource": "Удаление CDN-ресурса",
+    "cloud_origin_group": "Удаление origin-группы CDN",
+    "cloud_certificate": "Удаление сертификата CDN",
     "panel_cleanup": "Удаление объектов Remnawave",
     "panel_host": "Удаление хоста",
     "panel_node": "Удаление ноды из панели",
@@ -106,9 +111,11 @@ def build_progress(
         done = set(_steps(deletion.get("done")))
         cleanup = artifacts.get("panel_cleanup")
         if isinstance(cleanup, dict) and isinstance(cleanup.get("steps"), list):
+            panel_steps = _steps([step.get("key") for step in cleanup["steps"] if isinstance(step, dict)])
             operations = _steps([
-                *[step.get("key") for step in cleanup["steps"] if isinstance(step, dict)],
-                "record",
+                step
+                for operation in operations
+                for step in (panel_steps if operation == "panel_cleanup" else [operation])
             ])
             done.update(_steps(cleanup.get("done")))
         completed = sum(operation in done for operation in operations)
@@ -185,6 +192,7 @@ def job_status_text(view: dict) -> str:
         label = {
             "queued": "В очереди на удаление",
             "running": "Удаление",
+            "waiting_dns": "Ожидание подтверждения удаления",
             "failed": "Ошибка удаления",
             "paused": "Удаление приостановлено",
             "canceled": "Удаление остановлено",
@@ -231,7 +239,9 @@ def job_actions(view: dict) -> list[tuple[str, str, str]]:
     if view.get("deletion"):
         if status in {"failed", "paused", "canceled", "interrupted"}:
             actions.append(("Повторить удаление", "retry", ""))
-        if status in {"queued", "running"}:
+            if view.get("deletion_requires_credentials") and can_delete:
+                actions.append(("Обновить доступы для удаления", "auth", ""))
+        if status in {"queued", "running", "waiting_dns"}:
             actions.append(("Остановить удаление", "stopask", ""))
         if can_delete:
             actions.append(("Удалить запись", "delask", ""))
@@ -261,6 +271,14 @@ def job_actions(view: dict) -> list[tuple[str, str, str]]:
     if status in {"queued", "running", "waiting_dns"}:
         actions.append(("Остановить установку", "stopask", ""))
     if can_delete:
-        actions.append(("Удалить черновик" if status == "draft" else "Удалить запись", "delask", ""))
+        actions.append((
+            "Удалить черновик"
+            if status == "draft"
+            else "Удалить ноду"
+            if status in {"succeeded", "warning"}
+            else "Удалить запись",
+            "delask",
+            "",
+        ))
     actions.extend([("Обновить", "show", ""), ("Все установки", "list", "")])
     return actions

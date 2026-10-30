@@ -21,7 +21,7 @@ from database.db import async_session_maker
 from database.models import RemnawaveInstall
 
 from .progress import build_progress, job_actions, job_status_text
-from .types import DELETABLE_STATUSES, NODE_IMAGE, InstallError, InstallSpec, InstallWaitingError
+from .types import DELETABLE_STATUSES, NODE_IMAGE, InstallError, InstallSpec, InstallWaitingError, needs_certificate
 from .vault import vault
 
 
@@ -101,8 +101,27 @@ def _view(row, *, include_credentials: bool = True) -> dict:
         "params": copy.deepcopy(row.params or {}),
         "pending_params": copy.deepcopy(pending),
         "deletion": _deleting(row, artifacts),
+        "deletion_requires_credentials": _deletion_requires_credentials(artifacts),
         "can_delete": _idle_deletable(row),
         "has_panel_changes": _has_panel_changes(row, artifacts, unknown=not artifacts_known),
+        "has_cloud_resources": bool(
+            artifacts.get("cloud")
+            or artifacts.get("cloud_pending")
+            or any(
+                item.get("kind") == "cloud"
+                for item in artifacts.get("retained_resources", [])
+                if isinstance(item, dict)
+            )
+        ),
+        "cloud_providers": sorted({
+            item.get("provider")
+            for item in [
+                artifacts.get("cloud"),
+                (artifacts.get("cloud_pending") or {}).get("state"),
+                *artifacts.get("retained_resources", []),
+            ]
+            if isinstance(item, dict) and item.get("provider") in {"vk", "yandex"}
+        }),
         "resources": {
             **{key: artifacts[key] for key in ("profile_uuid", "node_uuid", "host_uuid") if artifacts.get(key)},
             "cdn": {
@@ -596,7 +615,9 @@ def _require_credentials(spec: InstallSpec, secrets: dict) -> None:
 
 def _require_change_credentials(spec: InstallSpec, secrets: dict, operations: list[str]) -> bool:
     """Требует доступы только к затрагиваемым системам."""
-    remote = bool(set(operations) & {"connection", "prepare", "remote"})
+    remote = bool(set(operations) & {"connection", "prepare", "remote"}) or (
+        spec.transport == "hysteria2" and "verify" in operations
+    )
     cloud = "cloud" in operations and spec.transport.startswith("cdn_")
     if remote and not (secrets.get("ssh_password") or secrets.get("ssh_private_key")):
         raise ValueError("Для этих изменений введите SSH-пароль или ключ")
@@ -621,10 +642,24 @@ async def retry_job(job_id: str, owner_id: int) -> dict:
                 raise InstallError(
                     "panel_cleanup", "План удаления недоступен; можно удалить только запись из бота", retryable=False
                 )
+            if _full_deletion(artifacts):
+                await _guard_remote_owner(session, row, artifacts)
+                secrets = {}
+                if not row.secrets_expire_at or row.secrets_expire_at > datetime.utcnow():
+                    secrets = (
+                        vault.open(row.id, row.encrypted_secrets) if _deletion_requires_credentials(artifacts) else {}
+                    )
+                _require_deletion_credentials(InstallSpec.from_dict(row.params), secrets, artifacts)
             row.status, row.error, row.next_retry_at = "queued", None, datetime.utcnow()
-            row.stage, row.retryable, row.pause_requested = "delete:panel_cleanup", True, False
+            operations = artifacts["deletion"].get("operations", [])
+            pending = next((step for step in operations if step not in artifacts["deletion"].get("done", [])), "record")
+            row.stage, row.retryable, row.pause_requested = "delete:" + pending, True, False
             row.lease_token, row.lease_until = None, None
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError as error:
+                await session.rollback()
+                raise ValueError("На этом сервере уже выполняется другая операция") from error
             return _view(row, include_credentials=False)
         if row.status not in {"failed", "waiting_dns", "warning", "paused"}:
             return _view(row)
@@ -973,6 +1008,32 @@ async def _guard_dependents(session, row) -> None:
             raise ValueError("Выходная нода используется техническим каскадом без полного идентификатора")
 
 
+async def _guard_remote_owner(session, row, artifacts: dict) -> None:
+    """Не позволяет старой записи удалить ресурсы другой установки на том же VPS."""
+    addresses = {str(item.get("address") or "").strip() for item in _approved_specs(row, artifacts)} - {""}
+    remote_owner = artifacts.get("remote_owner_id")
+    others = (await session.execute(select(RemnawaveInstall).where(RemnawaveInstall.id != row.id))).scalars()
+    for other in others:
+        known = True
+        try:
+            saved = vault.open(other.id, other.encrypted_artifacts)
+        except InstallError:
+            saved, known = {}, False
+        same_address = any(
+            str(item.get("address") or "").strip() in addresses for item in _approved_specs(other, saved)
+        )
+        same_owner = remote_owner and saved.get("remote_owner_id") == remote_owner
+        if not same_address and not same_owner:
+            continue
+        remote_changes = any(
+            saved.get(key) for key in ("remote_owner_id", "remote_deployed", "installed", "node_uuid", "exit_ip_owned")
+        ) or bool(set(saved.get("done", [])) & {"docker", "addons", "verify"})
+        if not known or remote_changes or other.status in _ACTIVE or other.lease_token:
+            raise ValueError(
+                "На этом VPS есть другая запись установки. Сначала проверьте её и удалите ненужную запись только из бота"
+            )
+
+
 def _deletion_digest(row) -> str:
     """Привязывает подтверждение к состоянию записи, исключая привязку меню."""
     value = {
@@ -1019,6 +1080,68 @@ def _check_deletion_token(row, token: str) -> None:
         raise ValueError("Подтверждение удаления устарело. Откройте его заново")
 
 
+def _full_deletion(artifacts: dict) -> bool:
+    """Отличает очистку сервера от удаления объектов панели."""
+    return "server_cleanup" in (artifacts.get("deletion") or {}).get("operations", [])
+
+
+def _deletion_requires_credentials(artifacts: dict) -> bool:
+    """Определяет необходимость сохранённых SSH- и облачных доступов."""
+    if not _full_deletion(artifacts):
+        return False
+    if not (artifacts.get("remote_cleanup") or {}).get("completed"):
+        return True
+    cloud = bool(
+        artifacts.get("cloud")
+        or artifacts.get("cloud_pending")
+        or any(
+            item.get("kind") == "cloud" for item in artifacts.get("retained_resources", []) if isinstance(item, dict)
+        )
+    )
+    return cloud and not (artifacts.get("cloud_cleanup") or {}).get("completed")
+
+
+def _require_deletion_credentials(spec: InstallSpec, secrets: dict, artifacts: dict) -> None:
+    """Проверяет доступы только к незавершённым этапам удаления."""
+    if not _full_deletion(artifacts):
+        return
+    if not (artifacts.get("remote_cleanup") or {}).get("completed"):
+        if not (secrets.get("ssh_password") or secrets.get("ssh_private_key")):
+            raise ValueError("Для полного удаления обновите SSH-пароль или приватный ключ")
+        if not spec.host_fingerprint:
+            raise ValueError("Для полного удаления необходим подтверждённый ключ SSH-сервера")
+    if not (artifacts.get("cloud_cleanup") or {}).get("completed"):
+        from .cloud_cleanup import required_cloud_secrets
+
+        missing = required_cloud_secrets(spec, artifacts, secrets) - {name for name, value in secrets.items() if value}
+        if missing:
+            raise ValueError("Для удаления CDN обновите облачные доступы: " + ", ".join(sorted(missing)))
+
+
+async def update_deletion_credentials(job_id: str, owner_id: int, *, secrets_patch: dict) -> dict:
+    """Обновляет доступы для подготовки и продолжения полного удаления."""
+    await _authorize(owner_id)
+    allowed = _SECRET_FIELDS - {"psiphon_config"}
+    if not isinstance(secrets_patch, dict) or not secrets_patch or set(secrets_patch) - allowed:
+        raise ValueError("Для удаления можно обновить только SSH- и облачные доступы")
+    async with async_session_maker() as session:
+        row = await _row(session, job_id, owner_id, lock=True)
+        artifacts = vault.open(row.id, row.encrypted_artifacts)
+        if not _idle_deletable(row) or (_deleting(row, artifacts) and not _full_deletion(artifacts)):
+            raise ValueError("Сначала остановите полное удаление и дождитесь освобождения текущего этапа")
+        if not _deleting(row, artifacts):
+            InstallSpec.from_dict(row.params)
+        previous = {}
+        if row.encrypted_secrets and (not row.secrets_expire_at or row.secrets_expire_at > datetime.utcnow()):
+            previous = vault.open(row.id, row.encrypted_secrets)
+        previous.update(_secrets(secrets_patch))
+        row.encrypted_secrets = vault.seal(row.id, previous)
+        row.secrets_expire_at = datetime.utcnow() + timedelta(days=1)
+        row.updated_at = datetime.utcnow()
+        await session.commit()
+        return _view(row)
+
+
 async def prepare_deletion(job_id: str, owner_id: int) -> dict:
     """Проверяет локальное удаление без SSH, панели и расшифровки доступов."""
     await _authorize(owner_id)
@@ -1031,9 +1154,23 @@ async def prepare_deletion(job_id: str, owner_id: int) -> dict:
         with suppress(InstallError):
             artifacts = vault.open(row.id, row.encrypted_artifacts)
             known = True
+        can_remove_server, server_cleanup_error = False, None
+        if known:
+            try:
+                spec = InstallSpec.from_dict(row.params)
+                if not spec.host_fingerprint or artifacts.get("install_id") not in {None, row.id}:
+                    raise ValueError("Не подтверждены сервер или принадлежность снимка установки")
+                await _guard_remote_owner(session, row, artifacts)
+                can_remove_server = True
+            except (ValueError, InstallError) as error:
+                server_cleanup_error = str(error)
+        else:
+            server_cleanup_error = "Снимок установки недоступен. Можно удалить только запись из бота"
         return {
             "token": _deletion_token(row),
             "has_panel_changes": _has_panel_changes(row, artifacts, unknown=not known),
+            "can_remove_server": can_remove_server,
+            "server_cleanup_error": server_cleanup_error,
             "resources": {
                 key: artifacts[key] for key in ("profile_uuid", "node_uuid", "host_uuid") if artifacts.get(key)
             },
@@ -1041,11 +1178,22 @@ async def prepare_deletion(job_id: str, owner_id: int) -> dict:
 
 
 async def delete_job(
-    job_id: str, owner_id: int, *, remove_panel: bool = False, token: str, message_id: int | None = None
+    job_id: str,
+    owner_id: int,
+    *,
+    remove_panel: bool = False,
+    remove_server: bool = False,
+    token: str,
+    message_id: int | None = None,
 ) -> dict | None:
-    """Удаляет запись либо ставит подтверждённую очистку панели в очередь."""
+    """Удаляет запись либо ставит подтверждённую очистку ресурсов в очередь."""
     await _authorize(owner_id)
-    if type(remove_panel) is not bool or (message_id is not None and (type(message_id) is not int or message_id <= 0)):
+    if (
+        type(remove_panel) is not bool
+        or type(remove_server) is not bool
+        or (remove_server and not remove_panel)
+        or (message_id is not None and (type(message_id) is not int or message_id <= 0))
+    ):
         raise ValueError("Некорректные параметры удаления")
     async with async_session_maker() as session:
         row = await _row(session, job_id, owner_id, lock=True)
@@ -1058,10 +1206,25 @@ async def delete_job(
             await session.commit()
             return None
         artifacts = vault.open(row.id, row.encrypted_artifacts)
-        InstallSpec.from_dict(row.params, complete=False)
-        artifacts.setdefault("deletion", {"operations": ["panel_cleanup", "record"], "done": []})
+        spec = InstallSpec.from_dict(row.params, complete=remove_server)
+        operations = (
+            ["server_cleanup", "cloud_cleanup", "panel_cleanup", "record"]
+            if remove_server
+            else ["panel_cleanup", "record"]
+        )
+        deletion = artifacts.setdefault("deletion", {"operations": operations, "done": []})
+        if deletion.get("operations") != operations:
+            raise ValueError("Для этой записи уже выбран другой вариант удаления. Продолжите его из карточки")
+        if remove_server:
+            if artifacts.get("install_id") not in {None, row.id}:
+                raise ValueError("Снимок относится к другой установке")
+            secrets = {}
+            if not row.secrets_expire_at or row.secrets_expire_at > datetime.utcnow():
+                secrets = vault.open(row.id, row.encrypted_secrets)
+            _require_deletion_credentials(spec, secrets, artifacts)
+            await _guard_remote_owner(session, row, artifacts)
         row.encrypted_artifacts = vault.seal(row.id, artifacts)
-        row.status, row.stage, row.error, row.retryable = "queued", "delete:panel_cleanup", None, True
+        row.status, row.stage, row.error, row.retryable = "queued", "delete:" + operations[0], None, True
         row.lease_token, row.lease_until = None, None
         row.next_retry_at = datetime.utcnow()
         if message_id is not None:
@@ -1239,7 +1402,9 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
     changed = set(edit["changed"])
     operations = edit["operations"]
     panel_needed = bool(set(operations) & {"cascade", "profile", "node", "cloud", "verify", "squad", "host"})
-    remote_needed = bool(set(operations) & {"connection", "prepare", "remote"})
+    remote_needed = bool(set(operations) & {"connection", "prepare", "remote"}) or (
+        new.transport == "hysteria2" and "verify" in operations
+    )
     async with AsyncExitStack() as stack:
         panel = await stack.enter_async_context(InstallerPanel(old, checkpoint=checkpoint)) if panel_needed else None
         if panel:
@@ -1259,7 +1424,7 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
             if step == "connection":
                 await log("Изменённый SSH-доступ подтверждён")
             elif step == "prepare":
-                if new.transport in {"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex"} and changed & {
+                if needs_certificate(new) and changed & {
                     "domain",
                     "transport",
                 }:
@@ -1300,6 +1465,10 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
                     if time.time() - started < 180:
                         raise InstallWaitingError("Ожидание подключения ноды после изменения настроек", retry_after=30)
                     raise InstallError("verify", "Изменения применены, но панель ещё не подтвердила подключение ноды")
+                if new.transport == "hysteria2":
+                    from .checks import check_hysteria
+
+                    await check_hysteria(remote, new)
             elif step == "squad":
                 await panel.move_to_squad(previous, new, artifacts)
             elif step == "host":
@@ -1440,6 +1609,10 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                             "verify",
                             "Панель ещё не подтвердила подключение ноды. Проверьте порт управления, адрес панели и журнал контейнера",
                         )
+                    if spec.transport == "hysteria2":
+                        from .checks import check_hysteria
+
+                        await check_hysteria(remote, spec)
                     verified_now = True
                 artifacts["done"].append(stage)
                 await checkpoint(artifacts)
@@ -1540,21 +1713,37 @@ async def _finish_deletion(job_id: str, token: str) -> tuple[int, int | None]:
         artifacts = vault.open(row.id, row.encrypted_artifacts)
         if not (artifacts.get("panel_cleanup") or {}).get("completed"):
             raise InstallError("panel_cleanup", "Очистка панели не подтверждена; запись сохранена", retryable=False)
+        if _full_deletion(artifacts):
+            await _guard_remote_owner(session, row, artifacts)
+            for key, label in (("remote_cleanup", "Сервера"), ("cloud_cleanup", "CDN")):
+                if not (artifacts.get(key) or {}).get("completed"):
+                    raise InstallError(key, f"Очистка {label} не подтверждена; запись сохранена", retryable=False)
         anchor = row.chat_id, row.progress_message_id
         await session.delete(row)
         await session.commit()
         return anchor
 
 
-async def _notify_deleted(bot, anchor: tuple[int, int | None]) -> None:
+async def _notify_deleted(
+    bot, anchor: tuple[int, int | None], *, full: bool = False, warnings: list[str] | None = None
+) -> None:
     """Показывает успех только после фиксации удаления записи."""
     if bot is None or anchor[1] is None:
         return
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
     with suppress(Exception):
+        text = (
+            "Нода удалена с VPS, из Remnawave и бота; ресурсы CDN очищены"
+            if full
+            else "Запись и объекты панели удалены"
+        )
+        if full:
+            text += ". Виртуальная машина и DNS-записи у регистратора сохраняются"
+        if warnings:
+            text += "\n" + "\n".join(warnings)
         await bot.edit_message_text(
-            "Запись и объекты панели удалены",
+            text,
             chat_id=anchor[0],
             message_id=anchor[1],
             reply_markup=InlineKeyboardMarkup(
@@ -1565,7 +1754,7 @@ async def _notify_deleted(bot, anchor: tuple[int, int | None]) -> None:
 
 
 async def _execute_deletion(snapshot: dict, checkpoint, log) -> None:
-    """Очищает панель без обращения к SSH и сохранённым паролям."""
+    """Очищает выбранные ресурсы с сохранением каждого этапа."""
     from .panel_cleanup import cleanup_panel
 
     artifacts = snapshot["artifacts"]
@@ -1594,12 +1783,44 @@ async def _execute_deletion(snapshot: dict, checkpoint, log) -> None:
         label = build_progress("running", stage, artifacts, _STAGES, snapshot["params"])["current"]
         await log(label, stage=stage)
 
-    await cleanup_panel(InstallSpec.from_dict(snapshot["params"], complete=False), artifacts, checkpoint, panel_log)
+    full = _full_deletion(artifacts)
+    spec = InstallSpec.from_dict(snapshot["params"], complete=full)
+    if full:
+        from .cloud_cleanup import cleanup_cloud
+        from .remote import RemoteServer, owner_id
+        from .remote_cleanup import cleanup_remote
+
+        _require_deletion_credentials(spec, snapshot["secrets"], artifacts)
+        spec._owner_id = artifacts.get("remote_owner_id") or owner_id(spec)
+        await cleanup_panel(spec, artifacts, checkpoint, panel_log, preflight_only=True)
+        await log("Проверка ресурсов CDN", stage="delete:cloud_cleanup")
+        await cleanup_cloud(spec, snapshot["secrets"], artifacts, checkpoint, panel_log, preflight_only=True)
+        if not (artifacts.get("remote_cleanup") or {}).get("completed"):
+            await log("Удаление ноды с VPS", stage="delete:server_cleanup")
+            async with RemoteServer(spec, snapshot["secrets"]) as remote:
+                await cleanup_remote(remote, spec, artifacts, checkpoint, panel_log)
+            if not (artifacts.get("remote_cleanup") or {}).get("completed"):
+                raise InstallError("server_cleanup", "Очистка VPS не подтверждена; запись сохранена", retryable=False)
+        done = artifacts["deletion"].setdefault("done", [])
+        if "server_cleanup" not in done:
+            done.append("server_cleanup")
+        await checkpoint(artifacts)
+        await log("Удаление ресурсов CDN", stage="delete:cloud_cleanup")
+        await cleanup_cloud(spec, snapshot["secrets"], artifacts, checkpoint, panel_log)
+        if not (artifacts.get("cloud_cleanup") or {}).get("completed"):
+            raise InstallError("cloud_cleanup", "Очистка CDN не подтверждена; запись сохранена", retryable=False)
+        if "cloud_cleanup" not in done:
+            done.append("cloud_cleanup")
+        await checkpoint(artifacts)
+
+    await cleanup_panel(spec, artifacts, checkpoint, panel_log)
     if not (artifacts.get("panel_cleanup") or {}).get("completed"):
         raise InstallError(
             "panel_cleanup", "Панель не подтвердила завершение очистки; запись сохранена", retryable=False
         )
-    artifacts["deletion"]["done"] = ["panel_cleanup"]
+    done = artifacts["deletion"].setdefault("done", [])
+    if "panel_cleanup" not in done:
+        done.append("panel_cleanup")
     await checkpoint(artifacts)
     await log("Удаление записи из бота", stage="delete:record")
 
@@ -1629,6 +1850,8 @@ async def process_job(job_id: str, bot=None) -> None:
     snapshot, heartbeat = None, None
     try:
         snapshot = await _snapshot(job_id, include_secrets=False) if deletion else await _snapshot(job_id)
+        if deletion and _deletion_requires_credentials(snapshot["artifacts"]):
+            snapshot = await _snapshot(job_id)
         await _authorize(snapshot["owner_id"])
         artifacts, secrets = snapshot["artifacts"], snapshot["secrets"]
 
@@ -1648,6 +1871,8 @@ async def process_job(job_id: str, bot=None) -> None:
                 if current.lease_token != token or current.pause_requested or current.status != "running":
                     raise asyncio.CancelledError
                 await _guard_dependents(session, current)
+                if _full_deletion(artifacts):
+                    await _guard_remote_owner(session, current, artifacts)
             await _execute_deletion(snapshot, checkpoint, log)
             heartbeat.cancel()
             with suppress(asyncio.CancelledError):
@@ -1655,7 +1880,12 @@ async def process_job(job_id: str, bot=None) -> None:
             heartbeat = None
             anchor = await _finish_deletion(job_id, token)
             removed = True
-            await _notify_deleted(bot, anchor)
+            await _notify_deleted(
+                bot,
+                anchor,
+                full=_full_deletion(artifacts),
+                warnings=list((artifacts.get("remote_cleanup") or {}).get("warnings", [])),
+            )
             return
         result = await _execute(snapshot, checkpoint, log)
         warnings = snapshot["artifacts"].get("warnings", [])

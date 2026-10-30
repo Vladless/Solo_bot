@@ -540,7 +540,9 @@ async def _delete(panel: InstallerPanel, path: str) -> None:
         raise InstallError("panel_cleanup", "Панель не подтвердила удаление объекта")
 
 
-async def cleanup_panel(spec: InstallSpec, artifacts: dict, checkpoint: Checkpoint, log) -> None:
+async def cleanup_panel(
+    spec: InstallSpec, artifacts: dict, checkpoint: Checkpoint, log, *, preflight_only: bool = False
+) -> None:
     """Удаляет только доказанно собственные объекты панели."""
     cascades = [item for item in [artifacts.get("cascade"), *artifacts.get("retained_cascades", [])] if item]
     if any(not isinstance(item, dict) for item in cascades):
@@ -599,6 +601,8 @@ async def cleanup_panel(spec: InstallSpec, artifacts: dict, checkpoint: Checkpoi
         for key in locks:
             await stack.enter_async_context(_SQUAD_LOCKS.setdefault(key, asyncio.Lock()))
         await _validate(saved, panels)
+        if preflight_only:
+            return
         paths = {
             "host": "hosts",
             "node": "nodes",

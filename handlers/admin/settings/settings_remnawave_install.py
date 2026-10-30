@@ -20,7 +20,15 @@ from core.telegram_sensitivity import register_sensitive_states
 from middlewares.session import release_session_early
 from services.remnawave_installer import jobs
 from services.remnawave_installer.progress import job_actions, job_status_text
-from services.remnawave_installer.types import ADDONS, DELETABLE_STATUSES, ROLES, TRANSPORTS, InstallError, InstallSpec
+from services.remnawave_installer.types import (
+    ADDONS,
+    CERTIFICATE_TRANSPORTS,
+    DELETABLE_STATUSES,
+    ROLES,
+    TRANSPORTS,
+    InstallError,
+    InstallSpec,
+)
 
 from ..panel.keyboard import AdminPanelCallback
 
@@ -48,7 +56,7 @@ FIELDS = {
     "ip": ("address", "IP сервера", "Укажите IPv4 или IPv6 сервера."),
     "us": ("ssh_username", "SSH-логин", "Например: root."),
     "sp": ("ssh_port", "SSH-порт", "Целое число от 1 до 65535."),
-    "np": ("node_port", "Порт управления нодой", "Обычно 2222; должен отличаться от SSH и клиентского порта."),
+    "np": ("node_port", "Порт управления нодой", "Обычно 2222/TCP; должен отличаться от SSH-порта."),
     "ps": (
         "panel_sources",
         "Адреса панели",
@@ -59,7 +67,7 @@ FIELDS = {
         "Доверенные адреса SSH",
         "IP/CIDR через пробел; «-» разрешает SSH без ограничения по источнику.",
     ),
-    "cp": ("client_port", "Порт клиентов", "Обычно 443; должен отличаться от SSH и порта управления."),
+    "cp": ("client_port", "Порт клиентов", "Обычно 443; Hysteria2 использует UDP, остальные транспорты — TCP."),
     "rd": ("reality_domain", "Домен Reality", "Домен сайта-донора без протокола и пути."),
     "dm": ("domain", "Домен сайта / origin", "Домен без протокола и пути; его DNS должен указывать на IP сервера."),
     "cd": ("cdn_domain", "Домен CDN", "Отдельный домен для CDN, отличный от origin."),
@@ -337,14 +345,19 @@ async def _save(job: dict, owner: int, values: dict, state: FSMContext) -> dict:
     params = {**_params(job), **values}
     if any(key in values and values[key] != _params(job).get(key) for key in ("address", "ssh_port")):
         params["host_fingerprint"] = ""
-    if params["transport"].startswith("cdn_") or params["role"] == "exit":
+    if params["transport"].startswith("cdn_") or params["transport"] == "hysteria2" or params["role"] == "exit":
         params["shaping"] = {}
     data = await state.get_data()
     if job["status"] == "draft" and not data.get("edit_mode") and {"ssh_port", "transport"}.intersection(values):
         reserved = {params["ssh_port"], params["client_port"], 80, 443, 4443, 7443, 8443}
         if params["node_port"] == 2222 and params["ssh_port"] == 2222:
             params["node_port"] = next(port for port in range(2223, 2232) if port not in reserved)
-        if params["client_port"] == 443 and params["ssh_port"] == 443 and not params["transport"].startswith("cdn_"):
+        if (
+            params["client_port"] == 443
+            and params["ssh_port"] == 443
+            and not params["transport"].startswith("cdn_")
+            and params["transport"] != "hysteria2"
+        ):
             params["client_port"] = next(port for port in (9443, 10443, 11443) if port != params["node_port"])
     if data.get("edit_mode") and data.get("edit_job") == job["id"]:
         params = InstallSpec.from_dict(params, complete=False).to_dict()
@@ -371,6 +384,53 @@ def _secret_status(job: dict, field: str) -> str:
 def _vk_auth_fields(params: dict) -> tuple[str, ...]:
     """Выбирает поля доступа VK Cloud для текущего режима."""
     return ("vd", "vu", "vw") if params["cloud"].get("auth_mode", "token") == "service_account" else ("vk",)
+
+
+def _deletion_secret_codes(job: dict) -> tuple[str, ...]:
+    """Разрешает обновить только доступы для сохранённых целей удаления."""
+    params = _params(job)
+    resources = [(job.get("resources") or {}).get("cdn"), *(job.get("retained_resources") or [])]
+    providers = {
+        resource["provider"]
+        for resource in resources
+        if isinstance(resource, dict) and resource.get("provider") in ("vk", "yandex")
+    }
+    providers.update(provider for provider in job.get("cloud_providers") or [] if provider in ("vk", "yandex"))
+    if params["transport"] == "cdn_vk":
+        providers.add("vk")
+    if params["transport"] == "cdn_yandex":
+        providers.add("yandex")
+    if job.get("has_cloud_resources") and not providers:
+        providers.update({"vk", "yandex"})
+    return (
+        "pw",
+        "pk",
+        "pp",
+        *(("vk", "vd", "vu", "vw") if "vk" in providers else ()),
+        *(("ya",) if "yandex" in providers else ()),
+    )
+
+
+async def _deletion_credentials_screen(event, state: FSMContext, job: dict) -> None:
+    """Показывает доступы для очистки без изменения целевых ресурсов."""
+    await _clear_input(state)
+    await state.update_data(
+        job_id=job["id"],
+        deletion_credentials=bool(job.get("deletion")),
+        deletion_prep_job=None if job.get("deletion") else job["id"],
+    )
+    builder = InlineKeyboardBuilder()
+    for code in _deletion_secret_codes(job):
+        _button(builder, SECRET_FIELDS[code][1], "s", job["id"], code)
+    _button(builder, "← Карточка установки", "show", job["id"])
+    await _send(
+        event,
+        "<b>Доступы для удаления</b>\n"
+        f"Сервер: {_copyable(_params(job)['address'])}\n"
+        "Обновите SSH-доступ или учётные данные облака. Целевой сервер и список ресурсов сохранятся. Затем откройте удаление из карточки.",
+        builder,
+        state=state,
+    )
 
 
 def _vk_missing_auth(job: dict) -> tuple[str, bool]:
@@ -409,6 +469,8 @@ async def _vk_auth_setup(event, state: FSMContext, job: dict) -> None:
 def _field_button(builder, lines: list[str], params: dict, job_id: str, code: str) -> None:
     """Добавляет текущее значение и кнопку изменения поля."""
     field, title, _ = FIELDS[code]
+    if code == "dm" and params["transport"] == "hysteria2":
+        title = "Домен Hysteria2"
     value = params["cloud"].get(field) if code in {"fd", "vp"} else params[field]
     lines.append(f"{title}: {_copyable(value)}")
     _button(builder, title, "f", job_id, code)
@@ -453,7 +515,7 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
             ],
             job_id,
         )
-        if params["transport"] in {"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex"}:
+        if params["transport"] in CERTIFICATE_TRANSPORTS:
             for code in ("dm", "em"):
                 _field_button(builder, lines, params, job_id, code)
         if params["transport"].startswith("cdn_"):
@@ -473,6 +535,10 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
                 _button(builder, SECRET_FIELDS[code][1], "s", job_id, code)
             lines.append(
                 "Укажите два домена: origin с A/AAAA на IP сервера и домен CDN. После создания CDN бот покажет нужную запись CNAME и дождётся DNS."
+            )
+        elif params["transport"] == "hysteria2":
+            lines.append(
+                "Hysteria2 работает через UDP. Укажите домен с A/AAAA на IP сервера и email для сертификата. Порт 80/TCP нужен для выпуска и продления сертификата."
             )
         elif params["transport"] == "vless_tcp_selfsteal":
             _button(
@@ -500,12 +566,16 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
         choices = [
             (("✅ " if name in params["addons"] else "⬜ ") + title, "add", name) for name, title in ADDONS.items()
         ]
-        shaping_available = not params["transport"].startswith("cdn_") and params["role"] != "exit"
+        shaping_available = (
+            not params["transport"].startswith("cdn_")
+            and params["transport"] != "hysteria2"
+            and params["role"] != "exit"
+        )
         shaping_enabled = bool(params["shaping"].get("enabled", bool(params["shaping"])))
         if shaping_available:
             choices.append((("✅ " if shaping_enabled else "⬜ ") + "Шейпинг скорости", "add", "shape"))
         else:
-            lines.append("Шейпинг скорости недоступен для CDN и выхода каскада.")
+            lines.append("Шейпинг скорости недоступен для Hysteria2, CDN и выхода каскада.")
         _choices(
             builder,
             choices,
@@ -586,7 +656,10 @@ async def _advanced(event, state: FSMContext, job: dict, section: str) -> None:
             lines.append("Профиль создаётся автоматически. Здесь можно задать собственное имя.")
         elif section == "cascade":
             lines.append(f"Роль: {ROLES[params['role']]}")
-            _button(builder, "Роль ноды", "roles", job_id)
+            if params["transport"] == "hysteria2":
+                lines.append("Hysteria2 устанавливается как обычная нода.")
+            else:
+                _button(builder, "Роль ноды", "roles", job_id)
             if params["role"] == "entry":
                 lines.append(f"Выходная нода: {_copyable(params['exit_install_id'])}")
                 _button(builder, "Выходная нода каскада", "exits", job_id)
@@ -620,7 +693,7 @@ def _summary(job: dict) -> str:
         lines.append("Роль: " + ROLES[params["role"]])
     if params["client_port"] != 443 and not params["transport"].startswith("cdn_"):
         lines.append(f"Порт клиентов: {_copyable(params['client_port'])}")
-    if params["transport"] in {"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex"}:
+    if params["transport"] in CERTIFICATE_TRANSPORTS:
         lines.extend([
             f"Домен / origin: {_copyable(params['domain'])}",
             f"Email сертификата: {_copyable(params['email'])}",
@@ -794,7 +867,7 @@ async def _shaping(event, state: FSMContext, job: dict, *, manage: bool = False)
     """Показывает настройки ограничения скорости."""
     data = await state.get_data()
     params = _params(job)
-    if params["transport"].startswith("cdn_") or params["role"] == "exit":
+    if params["transport"].startswith("cdn_") or params["transport"] == "hysteria2" or params["role"] == "exit":
         raise ValueError("Шейпинг недоступен для этого транспорта или роли")
     values = data.get("shaping") if manage else params["shaping"]
     values = values if isinstance(values, dict) else {}
@@ -874,6 +947,8 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
         hint = "Введите целое число."
     else:
         _, title, hint = (SECRET_FIELDS if secret else FIELDS)[code]
+    if code == "dm" and _params(job)["transport"] == "hysteria2":
+        title = "Домен Hysteria2"
     await state.set_state(RemnaInstallState.secret if secret else RemnaInstallState.value)
     await state.update_data(job_id=job["id"], field=code, step=data.get("step", "1"))
     builder = InlineKeyboardBuilder()
@@ -900,9 +975,17 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
     _button(
         builder,
         "← Назад",
-        "shape" if data.get("step") == "shape" else "step",
+        "auth"
+        if job.get("deletion")
+        else "show"
+        if data.get("deletion_prep_job") == job["id"]
+        else "shape"
+        if data.get("step") == "shape"
+        else "step",
         job["id"],
-        data.get("step", "1") if data.get("step") != "shape" else "",
+        data.get("step", "1")
+        if not job.get("deletion") and not data.get("deletion_prep_job") and data.get("step") != "shape"
+        else "",
     )
     text = f"<b>{escape(title)}</b>\n{escape(hint)}"
     if secret:
@@ -930,7 +1013,7 @@ async def _missing_input(event, state: FSMContext, job: dict, step: str) -> bool
         elif not credentials.intersection({"ssh_password", "ssh_private_key"}):
             code, secret = "pw", True
     elif step == "2":
-        if params["transport"] in {"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex"}:
+        if params["transport"] in CERTIFICATE_TRANSPORTS:
             for field, candidate in (("domain", "dm"), ("email", "em")):
                 if not params[field]:
                     code = candidate
@@ -996,12 +1079,24 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             return await _step(callback, state, job)
         job = await jobs.get_job(job_id, owner)
         stored_params = _params(job)
+        deletion_params = {**InstallSpec().to_dict(), **(job.get("params") or {})}
         await state.set_state(None)
         job = await _effective_job(job, state)
         context = await state.get_data()
         editing = context.get("edit_mode") and context.get("edit_job") == job_id
         params = _params(job)
-        if job.get("deletion") and action not in {"show", "res", "delask", "delete", "retry", "stopask", "stop"}:
+        if job.get("deletion") and action not in {
+            "show",
+            "res",
+            "delask",
+            "delconfirm",
+            "delete",
+            "retry",
+            "auth",
+            "s",
+            "stopask",
+            "stop",
+        }:
             raise ValueError("Для этой записи уже выбрано удаление. Откройте её карточку и продолжите удаление")
         if action == "show":
             return await _job_screen(callback, state, job)
@@ -1076,7 +1171,28 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 job_id, owner, params=params, token=token, message_id=callback.message.message_id
             )
             return await _job_screen(callback, state, job)
+        if action == "delauth":
+            if (
+                context.get("delete_job") != job_id
+                or not context.get("delete_token")
+                or context.get("delete_can_remove_server") is not True
+                or job.get("can_delete") is not True
+            ):
+                raise ValueError("Сначала откройте удаление ноды из её карточки")
+            return await _deletion_credentials_screen(
+                callback, state, {**job, "params": deletion_params, "pending_params": None}
+            )
         if action in {"auth", "authkeys"}:
+            if job.get("deletion"):
+                if (
+                    action != "auth"
+                    or not job.get("deletion_requires_credentials")
+                    or job.get("can_delete") is not True
+                ):
+                    raise ValueError("Сейчас доступы для удаления обновлять нельзя")
+                return await _deletion_credentials_screen(
+                    callback, state, {**job, "params": deletion_params, "pending_params": None}
+                )
             if job["status"] not in SECRET_EDIT_STATUSES:
                 raise ValueError("Сейчас учётные данные обновлять нельзя")
             if action == "authkeys":
@@ -1125,6 +1241,18 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             job = await _save(job, owner, {"cloud": {**params["cloud"], "auth_mode": value}}, state)
             return await _vk_auth_setup(callback, state, job)
         if action in {"f", "s", "sf"}:
+            if job.get("deletion") or context.get("deletion_prep_job") == job_id:
+                if (
+                    action != "s"
+                    or (
+                        job.get("deletion")
+                        and (not context.get("deletion_credentials") or not job.get("deletion_requires_credentials"))
+                    )
+                    or job.get("can_delete") is not True
+                    or value not in _deletion_secret_codes(job)
+                ):
+                    raise ValueError("Откройте обновление доступов в карточке удаления")
+                return await _prompt(callback, state, job, value, secret=True)
             if (
                 job["status"] not in EDITABLE_STATUSES
                 and not (editing and job["status"] in SETTINGS_EDIT_STATUSES)
@@ -1145,6 +1273,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             if action == "roles":
                 builder = InlineKeyboardBuilder()
                 for role, title in ROLES.items():
+                    if params["transport"] == "hysteria2" and role != "normal":
+                        continue
                     _button(builder, title, "role", job_id, role)
                 return await _send(
                     callback,
@@ -1160,6 +1290,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
         if action == "role":
             if value not in ROLES:
                 raise ValueError("Неизвестная роль")
+            if params["transport"] == "hysteria2" and value != "normal":
+                raise ValueError("Hysteria2 устанавливается только как обычная нода")
             job = await _save(job, owner, {"role": value}, state)
             return await _step(callback, state, job, "cascade")
         if action == "probe":
@@ -1318,7 +1450,11 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             return await _step(callback, state, job, "3" if data["option_kind"] == "squads" else "cascade")
         if action == "add":
             if value == "shape":
-                if params["transport"].startswith("cdn_") or params["role"] == "exit":
+                if (
+                    params["transport"].startswith("cdn_")
+                    or params["transport"] == "hysteria2"
+                    or params["role"] == "exit"
+                ):
                     raise ValueError("Шейпинг недоступен для этого транспорта или роли")
                 shaping = params["shaping"]
                 enabled = bool(shaping.get("enabled", bool(shaping)))
@@ -1420,39 +1556,90 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             if not result.get("token"):
                 raise ValueError("Не удалось подготовить удаление. Обновите карточку и повторите попытку")
             has_panel_changes = bool(result.get("has_panel_changes"))
+            can_remove_server = result.get("can_remove_server") is True and not job.get("deletion")
+            allow_panel = (
+                has_panel_changes and job["status"] not in {"succeeded", "warning"} and not job.get("deletion")
+            )
             await _reset_input(
                 state,
                 job_id=job_id,
                 delete_job=job_id,
                 delete_token=result["token"],
                 delete_has_panel_changes=has_panel_changes,
+                delete_can_remove_server=can_remove_server,
+                delete_allowed_modes=[
+                    "record",
+                    *(["panel"] if allow_panel else []),
+                    *(["full"] if can_remove_server else []),
+                ],
             )
             builder = InlineKeyboardBuilder()
             lines = [
                 "<b>Удаление установки</b>",
-                f"Нода: {_copyable(stored_params['name'])}",
-                f"Сервер: {_copyable(stored_params['address'])}",
+                f"Нода: {_copyable(deletion_params['name'])}",
+                f"Сервер: {_copyable(deletion_params['address'])}",
                 "",
             ]
-            if has_panel_changes:
-                lines.extend([
-                    "В Remnawave могли остаться объекты этой установки. Выберите, что удалить:",
-                    "• Только из бота — запись и сохранённые доступы. Объекты панели останутся.",
-                    "• Из бота и панели — также собственные хост, ноду, профиль и технический доступ каскада; инбаунд установки будет убран из сквада. Общие сквады сохранятся.",
-                ])
-                _button(builder, "Только из бота", "delete", job_id, "record")
-                _button(builder, "Из бота и панели", "delete", job_id, "panel")
-            else:
+            lines.append(
+                "Только из бота — удалить запись и сохранённые доступы. Настройки VPS, объекты панели и облачные ресурсы останутся в текущем состоянии."
+            )
+            _button(builder, "Только из бота", "delete", job_id, "record")
+            if job.get("deletion"):
                 lines.append(
-                    "В панели нет сохранённых изменений этой установки. Будут удалены запись и сохранённые доступы."
+                    "Для продолжения уже выбранного удаления вернитесь в карточку и нажмите «Повторить удаление»."
                 )
-                _button(builder, "Удалить запись", "delete", job_id, "record")
+            if can_remove_server:
+                lines.append(
+                    "Полное удаление — также удалить созданные установщиком файлы, контейнеры и настройки на VPS, собственные объекты Remnawave, технический доступ каскада и ресурсы CDN. Подключения через эту ноду перестанут работать."
+                )
+                _button(builder, "Полное удаление", "delconfirm", job_id, "full")
+                _button(builder, "Обновить доступы для полного удаления", "delauth", job_id)
+            elif result.get("server_cleanup_error"):
+                lines.append("Полное удаление недоступно: " + escape(str(result["server_cleanup_error"])[:600]))
+            if allow_panel:
+                lines.extend([
+                    "Из бота и панели — удалить запись и собственные хост, ноду, профиль и технический доступ каскада; инбаунд установки будет убран из сквада. VPS и общие сквады сохранятся.",
+                ])
+                _button(builder, "Из бота и панели", "delete", job_id, "panel")
             cloud = (job.get("resources") or {}).get("cdn")
-            if cloud or job.get("retained_resources"):
-                lines.append("CDN остаётся в облаке и может оплачиваться. Сохраните его данные перед удалением записи.")
+            if cloud or job.get("retained_resources") or job.get("has_cloud_resources"):
+                lines.append(
+                    "При полном удалении бот удалит созданные им ресурсы CDN, включая сохранённые прежние ресурсы. В остальных вариантах CDN остаётся в облаке и может оплачиваться."
+                )
                 _button(builder, "Посмотреть ресурсы CDN", "res", job_id)
-            lines.append("Файлы и контейнеры на VPS сохранятся. Восстановить удалённую запись из этого меню нельзя.")
+            lines.append("Восстановить удалённую запись из этого меню нельзя.")
             _button(builder, "← Не удалять", "show", job_id)
+            return await _send(callback, "\n".join(lines), builder, state=state)
+        if action == "delconfirm":
+            if (
+                context.get("delete_job") != job_id
+                or not context.get("delete_token")
+                or value != "full"
+                or context.get("delete_can_remove_server") is not True
+            ):
+                raise ValueError("Подтверждение устарело. Нажмите «Удалить ноду» в карточке заново")
+            await state.update_data(delete_mode="full")
+            builder = InlineKeyboardBuilder()
+            _button(builder, "Подтвердить полное удаление", "delete", job_id, "full")
+            _button(builder, "← Выбрать другой вариант", "delask", job_id)
+            _button(builder, "← Не удалять", "show", job_id)
+            lines = [
+                "<b>Подтверждение полного удаления</b>",
+                f"Нода: {_copyable(deletion_params['name'])}",
+                f"Сервер: {_copyable(deletion_params['address'])}",
+                "",
+                "Будут удалены созданные установщиком файлы, контейнеры и настройки ноды на VPS, её собственные объекты Remnawave, ресурсы CDN, запись и сохранённые доступы из бота. Подключения через ноду перестанут работать.",
+                "Сам VPS, общесистемные пакеты, аккаунт облачного провайдера и общие объекты панели сохранятся.",
+            ]
+            if (
+                (job.get("resources") or {}).get("cdn")
+                or job.get("retained_resources")
+                or job.get("has_cloud_resources")
+            ):
+                lines.append(
+                    "Будут удалены и текущие, и сохранённые прежние ресурсы CDN этой установки. DNS-записи у регистратора домена нужно удалить вручную."
+                )
+            lines.append("Отменить уже выполненные этапы и восстановить запись из этого меню нельзя.")
             return await _send(callback, "\n".join(lines), builder, state=state)
         if action == "stopask":
             builder = InlineKeyboardBuilder()
@@ -1465,7 +1652,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             _button(builder, "← Назад", "show", job_id)
             return await _send(
                 callback,
-                "Остановить удаление? Уже выполненные изменения в панели сохранятся. Запись останется в боте; удаление можно будет повторить."
+                "Остановить удаление? Уже выполненные изменения на VPS, в панели и облаке сохранятся. Запись останется в боте; удаление можно будет повторить."
                 if job.get("deletion")
                 else "Остановить задачу? Уже созданные ресурсы сохранятся, секреты будут удалены.",
                 builder,
@@ -1477,14 +1664,19 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             if (
                 context.get("delete_job") != job_id
                 or not context.get("delete_token")
-                or value not in {"record", "panel"}
+                or value not in context.get("delete_allowed_modes", [])
                 or (value == "panel" and not context.get("delete_has_panel_changes"))
+                or (
+                    value == "full"
+                    and (context.get("delete_can_remove_server") is not True or context.get("delete_mode") != "full")
+                )
             ):
                 raise ValueError("Подтверждение устарело. Нажмите «Удалить запись» в карточке заново")
             result = await jobs.delete_job(
                 job_id,
                 owner,
-                remove_panel=value == "panel",
+                remove_panel=value in {"panel", "full"},
+                remove_server=value == "full",
                 token=context["delete_token"],
                 message_id=callback.message.message_id,
             )
@@ -1549,7 +1741,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             str(error),
             job_id,
             host_key_changed=getattr(error, "step", "") == "ssh_host_key",
-            deleting=action in {"delask", "delete"},
+            deleting=action in {"delask", "delconfirm", "delete"},
         )
     except Exception as error:
         _log_unexpected(error, action, job_id)
@@ -1558,7 +1750,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             state,
             "Не удалось выполнить действие. Обновите список установок и повторите попытку.",
             job_id,
-            deleting=action in {"delask", "delete"},
+            deleting=action in {"delask", "delconfirm", "delete"},
         )
 
 
@@ -1572,8 +1764,25 @@ async def installer_input(message: Message, state: FSMContext, session=None):
     secret = await state.get_state() == RemnaInstallState.secret.state
     try:
         job = await _effective_job(await jobs.get_job(job_id, message.from_user.id), state)
-        if job.get("deletion"):
+        deletion_credentials = (
+            job.get("deletion")
+            and data.get("deletion_credentials")
+            and job.get("deletion_requires_credentials")
+            and job.get("can_delete") is True
+            and secret
+            and code in _deletion_secret_codes(job)
+        )
+        deletion_prep_credentials = (
+            not job.get("deletion")
+            and data.get("deletion_prep_job") == job_id
+            and job.get("can_delete") is True
+            and secret
+            and code in _deletion_secret_codes(job)
+        )
+        if job.get("deletion") and not deletion_credentials:
             raise ValueError("Для этой записи уже выбрано удаление. Откройте карточку установки")
+        if data.get("deletion_prep_job") and not deletion_prep_credentials:
+            raise ValueError("Подготовка доступов устарела. Откройте карточку установки")
         if message.text in {"/cancel", "/отмена"}:
             await _clear_input(state)
             return await _job_screen(message, state, job)
@@ -1616,6 +1825,9 @@ async def installer_input(message: Message, state: FSMContext, session=None):
                 secrets.update(ssh_private_key="", ssh_key_passphrase="")
             elif code == "pk":
                 secrets["ssh_password"] = ""
+            if deletion_credentials or deletion_prep_credentials:
+                job = await jobs.update_deletion_credentials(job_id, message.from_user.id, secrets_patch=secrets)
+                return await _job_screen(message, state, job)
             await jobs.update_draft(job_id, message.from_user.id, secrets=secrets)
             await state.update_data(preview_token=None)
             job = await jobs.get_job(job_id, message.from_user.id)

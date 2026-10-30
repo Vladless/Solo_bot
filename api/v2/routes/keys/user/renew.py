@@ -1,14 +1,14 @@
 from datetime import UTC
 
-from sqlalchemy import or_
-
 from api.shared.billing_actor import resolve_billing_user_id
 from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
+from services.errors import ValidationError
 from services.keys import normalize_expiry_ms, renewal_key_snapshot
 from services.payments.checkout_intent import autopay_terms_for_tariff
+from services.renewal_access import resolve_key_renewal_scope, resolve_key_server_scope
 from services.tariffs import ConfigOptionRejected, ensure_allowed_config
 from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS, resolve_renewal_tariff_group
-from settings.texts import RENEWAL_AVAILABLE_FROM
+from settings.texts import RENEWAL_AVAILABLE_FROM, RENEWAL_FROZEN_UNAVAILABLE, RENEWAL_TARIFF_UNAVAILABLE
 
 from .._common import *
 from .._common import (
@@ -50,7 +50,7 @@ async def user_key_renew(
     if db_key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     if bool(getattr(db_key, "is_frozen", False)):
-        raise HTTPException(status_code=400, detail="Продление для замороженной подписки недоступно")
+        raise HTTPException(status_code=400, detail=RENEWAL_FROZEN_UNAVAILABLE)
     tariff_id = getattr(db_key, "tariff_id", None)
     key_expiry_ms = _svc_normalize_expiry(getattr(db_key, "expiry_time", None))
     if not tariff_id:
@@ -59,16 +59,18 @@ async def user_key_renew(
     key_server_id = str(getattr(db_key, "server_id", "") or "").strip()
     quoted_key_snapshot = renewal_key_snapshot(db_key)
 
-    server_conditions = [Server.server_name == key_server_id, Server.cluster_name == key_server_id]
-    try:
-        server_conditions.insert(0, Server.id == int(key_server_id))
-    except ValueError:
-        pass
-    server_tariff_group_row = await session.execute(select(Server.tariff_group).where(or_(*server_conditions)).limit(1))
-    server_tariff_group = (server_tariff_group_row.scalar() or "").strip()
-
     key_tariff = await get_tariff_by_id(session, int(tariff_id))
     key_tariff_group = (key_tariff.get("group_code") or "").strip() if key_tariff else ""
+    server_tariff_group = ""
+    if not key_tariff_group or key_tariff_group in DEFAULT_RENEWAL_FORBIDDEN_GROUPS:
+        try:
+            scope = await resolve_key_server_scope(session, db_key)
+        except ValidationError as e:
+            raise HTTPException(status_code=400, detail=e.message) from None
+        groups = {str(server.get("tariff_group") or "").strip() for server in scope.cluster_servers}
+        groups.difference_update(DEFAULT_RENEWAL_FORBIDDEN_GROUPS | {""})
+        if len(groups) == 1:
+            server_tariff_group = groups.pop()
     subscription_group = resolve_renewal_tariff_group(
         key_tariff_group,
         server_tariff_group,
@@ -86,7 +88,7 @@ async def user_key_renew(
             or not subscription_group
             or chosen_group_code != subscription_group
         ):
-            raise HTTPException(status_code=400, detail="Тариф недоступен для этой подписки")
+            raise HTTPException(status_code=400, detail=RENEWAL_TARIFF_UNAVAILABLE)
         effective_tariff_id = int(body.tariff_id)
     else:
         if not key_tariff_group or key_tariff_group in DEFAULT_RENEWAL_FORBIDDEN_GROUPS:
@@ -102,6 +104,10 @@ async def user_key_renew(
         effective_tariff_id = int(tariff_id)
 
     renew_tariff = await get_tariff_by_id(session, effective_tariff_id)
+    try:
+        await resolve_key_renewal_scope(session, db_key, renew_tariff)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=e.message) from None
     if renew_tariff:
         try:
             ensure_allowed_config(renew_tariff, body.selected_device_limit, body.selected_traffic_limit)

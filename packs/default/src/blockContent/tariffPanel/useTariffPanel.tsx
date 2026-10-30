@@ -199,9 +199,11 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
   const resolvedPrimaryLabel = substituteTariff(normalizedRawPrimary) || "Продлить";
   const resolvedSecondaryLabel = substituteTariff(rawSecondaryLabel) || "Докупить";
 
+  const isTrialTariff = !isPreview && tariff?.group_code === "trial";
   const tariffIdForUrl = activeKey?.tariff_id ?? null;
   const tariffParam = tariffIdForUrl ? `&tariffId=${tariffIdForUrl}` : "";
-  const renewHref = adminPrimaryHref || (activeKey ? `/${(checkoutSlug || "checkout").trim()}?subKey=${encodeURIComponent(activeKey.client_id)}&flow=renew${tariffParam}` : "/tariffs");
+  const renewTariffParam = isTrialTariff ? "" : tariffParam;
+  const renewHref = adminPrimaryHref || (activeKey ? `/${(checkoutSlug || "checkout").trim()}?subKey=${encodeURIComponent(activeKey.client_id)}&flow=renew${renewTariffParam}` : "/tariffs");
 
   const tariffDeviceOptions: number[] = Array.isArray(tariff?.device_options) ? tariff.device_options : [];
   const tariffTrafficOptions: number[] = Array.isArray(tariff?.traffic_options_gb) ? tariff.traffic_options_gb : [];
@@ -210,9 +212,8 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
   const hasAnyAddonOption = hasDeviceOptions || hasTrafficOptions;
   const addonsHref = adminSecondaryHref || (activeKey ? `/${(checkoutSlug || "checkout").trim()}?subKey=${encodeURIComponent(activeKey.client_id)}&flow=addons${tariffParam}` : "#");
 
-  const isTrialTariff = !isPreview && tariff?.group_code === "trial";
-  const renewAvailable = isPreview || details?.can_renew !== false;
-  const showPrimaryButton = (hasKeys || isPreview) && resolvedPrimaryLabel && !isTrialTariff && renewAvailable;
+  const renewAvailable = isPreview || isTrialTariff || details?.can_renew !== false;
+  const showPrimaryButton = (hasKeys || isPreview) && resolvedPrimaryLabel && renewAvailable;
 
   const refreshApi = useBlockApiMutate();
   const [renewBusy, setRenewBusy] = useState(false);
@@ -226,7 +227,7 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
     if (adminPrimaryHref || !activeKey?.client_id) return;
     e.preventDefault();
     if (renewBusy) return;
-    if (!tariff || (tariff.configurable && hasDeviceOptions)) {
+    if (isTrialTariff || !tariff || (tariff.configurable && hasDeviceOptions)) {
       navigate(renewHref);
       return;
     }
@@ -261,6 +262,8 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
   };
 
   const [panelMode, setPanelMode] = useState<"main" | "addons" | "switch" | "pickOptions">("main");
+  const [tariffSelectionIntent, setTariffSelectionIntent] = useState<"buy" | "switch">("switch");
+  const isBuying = tariffSelectionIntent === "buy";
   const screenFlip = useScreenFlip(panelMode, PANEL_SCREENS);
   const { revealRef, fadeClass: introFade } = useLoadedReveal(isLoadingKeys);
   const panelModeFadeClass = introFade ? " d-mode-fade" : "";
@@ -303,7 +306,11 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
   const panelCommand = sectionScreen?.activeScreenByGroup?.["tariffPanel"];
   useEffect(() => {
     if (isPreview || !panelCommand || panelCommand === "main") return;
-    if (panelCommand === "switch") {
+    if (panelCommand === "buy" || panelCommand === "switch") {
+      setTariffSelectionIntent(panelCommand);
+      setPickedTariff(null);
+      setPickDeviceDraft("");
+      setPickTrafficDraft("");
       setPanelMode("switch");
     } else if (panelCommand === "addons") {
       openAddons();
@@ -317,8 +324,9 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
 
   const closeAddons = () => setPanelMode("main");
 
-  const switchListUrl = !isPreview && switchTariffMode === "inside"
-    ? (effectiveSwitchGroupCode ? `/api/tariffs/public?group_code=${encodeURIComponent(effectiveSwitchGroupCode)}` : "/api/tariffs/public")
+  const switchGroupCode = isBuying ? "" : effectiveSwitchGroupCode;
+  const switchListUrl = !isPreview && (isBuying || switchTariffMode === "inside")
+    ? (switchGroupCode ? `/api/tariffs/public?group_code=${encodeURIComponent(switchGroupCode)}` : "/api/tariffs/public")
     : null;
   const { data: switchTariffsList, isLoading: switchListLoading } = useSWR<WebTariffPublic[]>(
     switchListUrl,
@@ -361,6 +369,7 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
   const onSwitchClick = (e: React.MouseEvent) => {
     if (isPreview) return;
     e.preventDefault();
+    setTariffSelectionIntent(activeKey ? "switch" : "buy");
     if (switchTariffMode === "screen" && switchTariffScreenGroup && switchTariffScreenId && sectionScreen) {
       sectionScreen.openScreen(switchTariffScreenGroup, switchTariffScreenId);
       return;
@@ -385,7 +394,7 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
     if (isPreview) return;
     const params = new URLSearchParams();
     params.set("tariff_id", String(newTariffId));
-    if (activeKey) {
+    if (activeKey && !isBuying) {
       params.set("subKey", activeKey.client_id);
       params.set("flow", "upgrade");
     } else {
@@ -494,6 +503,7 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
     primaryLabelDisplay,
     onRenewClick,
     panelMode,
+    isBuying,
     screenFlip,
     revealRef,
     panelModeFadeClass,

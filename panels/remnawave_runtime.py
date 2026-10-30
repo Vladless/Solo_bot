@@ -196,31 +196,37 @@ async def resolve_remnawave_api_url(
     *,
     fallback_any: bool = False,
 ) -> str | None:
-    ckey = cache_key("remna_server", str(server_ref), int(bool(fallback_any)))
+    ckey = cache_key("remna_server", str(server_ref), int(bool(fallback_any)), "v2")
     cached_api_url = await cache_get(ckey)
     if isinstance(cached_api_url, str) or cached_api_url is None:
         if cached_api_url is not None:
             return cached_api_url
 
-    servers = await get_servers(session)
-    ref = str(server_ref)
+    servers = await get_servers(session, include_enabled=True)
+    ref = str(server_ref).strip()
     remna_server = None
-
-    cluster_servers = servers.get(ref) or servers.get(str(ref)) or []
-    remna_server = next((srv for srv in cluster_servers if srv.get("panel_type") == "remnawave"), None)
-
-    if remna_server is None:
-        for cluster_name, cluster in servers.items():
-            for srv in cluster:
-                if (srv.get("server_name") == ref or str(cluster_name) == ref) and srv.get("panel_type") == "remnawave":
-                    remna_server = srv
-                    break
-            if remna_server:
-                break
-
-    if remna_server is None and fallback_any:
+    cluster_servers = servers.get(ref)
+    all_servers = [srv for cluster in servers.values() for srv in cluster]
+    selected = None
+    if cluster_servers is not None:
         remna_server = next(
-            (srv for cluster in servers.values() for srv in cluster if srv.get("panel_type") == "remnawave"), None
+            (srv for srv in cluster_servers if str(srv.get("panel_type") or "").lower() == "remnawave"), None
+        )
+    else:
+        selected = next((srv for srv in all_servers if srv.get("server_name") == ref), None)
+        if selected is None and ref.isascii() and ref.isdecimal():
+            selected = next((srv for srv in all_servers if str(srv.get("server_id")) == ref), None)
+        if selected and str(selected.get("panel_type") or "").lower() == "remnawave":
+            remna_server = selected
+
+    if remna_server is None and cluster_servers is None and selected is None and fallback_any:
+        remna_server = next(
+            (
+                srv
+                for srv in all_servers
+                if srv.get("enabled") is True and str(srv.get("panel_type") or "").lower() == "remnawave"
+            ),
+            None,
         )
 
     api_url = remna_server.get("api_url") if remna_server else None
@@ -351,8 +357,10 @@ async def with_remnawave_api(
     client_id: str | None = None,
     username: str | None = None,
     subscription_url: str | None = None,
+    api_url: str | None = None,
 ) -> Any | None:
-    api_url = await resolve_remnawave_api_url(session, server_ref, fallback_any=fallback_any)
+    if api_url is None:
+        api_url = await resolve_remnawave_api_url(session, server_ref, fallback_any=fallback_any)
     if not api_url:
         return None
 

@@ -482,6 +482,8 @@ class InstallerPanel:
                 securityLayer="TLS",
                 xhttpExtraParams=artifacts.get("xhttp_extra", {}),
             )
+        elif spec.transport == "hysteria2":
+            body.update(sni=spec.domain, alpn="h3", securityLayer="TLS")
         return body
 
     async def update_host(self, previous_spec: InstallSpec, spec: InstallSpec, artifacts: dict) -> dict:
@@ -511,16 +513,19 @@ class InstallerPanel:
             cloud = artifacts.get("cloud") or {}
             if not cloud.get("ready") or cloud.get("domain") != spec.cdn_domain:
                 raise InstallError("panel_host", "Новый CDN ещё не готов к публикации")
-        if previous_spec.transport.startswith("cdn_") and not spec.transport.startswith("cdn_"):
-            desired.update(
-                path=None,
-                sni=None,
-                host=None,
-                alpn=None,
-                fingerprint=None,
-                securityLayer="DEFAULT",
-                xhttpExtraParams=None,
-            )
+        if previous_spec.transport != spec.transport and (
+            previous_spec.transport.startswith("cdn_") or previous_spec.transport == "hysteria2"
+        ):
+            desired = {
+                "path": None,
+                "sni": None,
+                "host": None,
+                "alpn": None,
+                "fingerprint": None,
+                "securityLayer": "DEFAULT",
+                "xhttpExtraParams": None,
+                **desired,
+            }
         if any(host.get(key) != value for key, value in desired.items()):
             await self._record_update(artifacts, "host", host_uuid, {key: host.get(key) for key in desired}, desired)
             host = await self._call("PATCH", "/hosts", {"uuid": host_uuid, **desired})

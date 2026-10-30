@@ -27,13 +27,14 @@ from services.errors import InsufficientFundsError, ValidationError
 from services.gifts import create_gift
 from services.keys import compute_renewal_quote, create_vpn_key_headless, execute_renewal, normalize_expiry_ms
 from services.operations import renew_key_in_cluster
+from services.renewal_access import resolve_key_renewal_scope
 from services.tariffs import calculate_config_price
 from services.tariffs.cooldown import get_tariff_cooldown_remaining
 from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS
 from services.tariffs.renewal_window import is_renewal_available
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key, resolve_key_traffic_limit_gb
 from services.tariffs.visibility import is_tariff_visible_for
-from settings.texts import RENEWAL_NOT_YET_AVAILABLE
+from settings.texts import RENEWAL_NOT_YET_AVAILABLE, RENEWAL_PAID_TARIFF_UNAVAILABLE
 
 
 _FLOW_STATES = {
@@ -98,6 +99,11 @@ async def prepare_checkout_completion(session: AsyncSession, user_id: UserId, in
             raise ValidationError("Подписка изменилась после создания счёта; оплата оставлена на балансе")
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
         if state == "waiting_for_renewal_payment":
+            tariff_id = _optional_int(data.get("tariff_id"))
+            tariff = await get_tariff_by_id(session, tariff_id) if tariff_id else None
+            if not tariff or not tariff.get("is_active", True):
+                raise ValidationError(RENEWAL_PAID_TARIFF_UNAVAILABLE)
+            await resolve_key_renewal_scope(session, key, tariff)
             if data.get("renewal_is_switch") is False:
                 duration = int(data.get("renewal_duration_days") or 0)
                 if duration <= 0:
@@ -259,6 +265,7 @@ async def freeze_checkout_intent(
         key = await get_key_for_checkout(session, user_id, client_id=data.get("client_id"), email=data.get("email"))
         if not key or key.is_frozen:
             raise ValidationError("Подписка не найдена")
+        await resolve_key_renewal_scope(session, key, tariff)
         quote = await compute_renewal_quote(
             session,
             billing_user_id=user_id,

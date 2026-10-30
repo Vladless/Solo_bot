@@ -68,6 +68,7 @@ export function DefaultTariffPanelBlockView({ block, context, editMode }: TypedB
     primaryLabelDisplay,
     onRenewClick,
     panelMode,
+    isBuying,
     screenFlip,
     revealRef,
     panelModeFadeClass,
@@ -108,6 +109,7 @@ export function DefaultTariffPanelBlockView({ block, context, editMode }: TypedB
     switchTariffCurrentBadge, switchTariffSelectLabel, switchTariffUpgradeLabel, switchTariffPerDayLabel,
     switchTariffPageLabel,
   } = cfg;
+  const showPurchaseHeader = isBuying && (panelMode === "switch" || panelMode === "pickOptions");
 
   const tabsBar = !isPreview && list.length > 1 ? (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
@@ -156,7 +158,7 @@ export function DefaultTariffPanelBlockView({ block, context, editMode }: TypedB
   const renderSwitchView = () => (
     <SwitchView
       t={t}
-      activeKey={activeKey}
+      activeKey={isBuying ? null : activeKey}
       isPreview={isPreview}
       switchSortedTariffs={switchSortedTariffs}
       switchTariffsList={switchTariffsList}
@@ -650,8 +652,8 @@ export function DefaultTariffPanelBlockView({ block, context, editMode }: TypedB
   return wrap(
     <div ref={mergeRefs(revealRef, screenFlip)} className={ELEMENT_FILL_CLASS} style={{ ...panelStyle(t), ...decor }}>
       <div style={panelHeaderStyle(t)}>
-        <b style={{ color: t.ink, fontWeight: t.weight.bold }}>{panelHeader}</b>
-        <span style={{ color: t.accent }}>{headerHint}</span>
+        <b style={{ color: t.ink, fontWeight: t.weight.bold }}>{showPurchaseHeader ? buyTariffLabel : panelHeader}</b>
+        {!showPurchaseHeader ? <span style={{ color: t.accent }}>{headerHint}</span> : null}
       </div>
       <div className={panelModeFadeClass.trim() || undefined} style={{ ...panelBodyStyle(t), display: "flex", flexDirection: "column", gap: t.space.mdPlus }}>{body}</div>
     </div>,

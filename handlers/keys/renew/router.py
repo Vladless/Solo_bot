@@ -9,20 +9,18 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from core.settings.tariffs_config import normalize_tariff_config
 from database import (
-    check_tariff_exists,
     get_balance,
     get_key_by_server,
     get_key_details,
+    get_servers,
     get_tariff_by_id,
 )
 from database.access.resolution import TelegramId
-from database.models import Server
 from database.notifications import check_cold_lead_discount, check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_subgroup_description, get_tariffs
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
@@ -34,7 +32,10 @@ from hooks.processors import (
     process_renewal_forbidden_groups,
 )
 from logger import logger
+from services.errors import ValidationError
 from services.payments.currency_rates import format_for_user
+from services.renewal_access import resolve_key_renewal_scope, resolve_key_server_scope
+from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS, resolve_renewal_tariff_group
 from settings.buttons import BACK, MAIN_MENU, PAYMENT
 from settings.config import DISCOUNT_ACTIVE_HOURS, USE_NEW_PAYMENT_FLOW
 from settings.texts import (
@@ -65,6 +66,41 @@ from .switch import _maybe_show_renewal_unavailable, _maybe_show_switch_confirm
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
+
+
+async def _renewal_tariff_group(session: AsyncSession, record, tg_id: TelegramId) -> str:
+    """Определяет обычную группу продления текущей подписки."""
+    current_tariff = await get_tariff_by_id(session, record["tariff_id"]) if record.get("tariff_id") else None
+    forbidden = set(DEFAULT_RENEWAL_FORBIDDEN_GROUPS)
+    forbidden.update(await process_renewal_forbidden_groups(chat_id=tg_id, admin=False, session=session))
+    key_group = str(current_tariff.get("group_code") or "").strip() if current_tariff else ""
+    server_group = ""
+    if not key_group or key_group in forbidden:
+        scope = await resolve_key_server_scope(session, record)
+        groups = {str(server.get("tariff_group") or "").strip() for server in scope.cluster_servers}
+        groups.difference_update(forbidden | {""})
+        if len(groups) == 1:
+            server_group = groups.pop()
+    return resolve_renewal_tariff_group(
+        key_group,
+        server_group,
+        forbidden_groups=forbidden,
+    )
+
+
+async def _filter_renewal_tariffs(session: AsyncSession, record, tariffs: list[dict]) -> list[dict]:
+    """Оставляет тарифы, доступные в текущем кластере подписки."""
+    if not tariffs:
+        return []
+    servers_map = await get_servers(session, include_enabled=True)
+    available = []
+    for tariff in tariffs:
+        try:
+            await resolve_key_renewal_scope(session, record, tariff, servers_map=servers_map)
+        except ValidationError:
+            continue
+        available.append(tariff)
+    return available
 
 
 @router.callback_query(F.data.startswith("renew_key|"), flags={"popup": True})
@@ -104,53 +140,15 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         expiry_time_raw = record["expiry_time"]
         expiry_time = normalize_expiry_ms(expiry_time_raw)
         server_id = record["server_id"]
-        tariff_id = record.get("tariff_id")
-
         await state.update_data(renew_key_name=key_name, renew_client_id=client_id, renew_key_ref=key_ref)
 
         logger.info(f"[RENEW] Получение тарифов для server_id={server_id}")
-
-        try:
-            server_id_int = int(server_id)
-            filter_condition = or_(
-                Server.id == server_id_int,
-                Server.server_name == server_id,
-                Server.cluster_name == server_id,
-            )
-        except ValueError:
-            filter_condition = or_(
-                Server.server_name == server_id,
-                Server.cluster_name == server_id,
-            )
-
-        row = await session.execute(select(Server.tariff_group).where(filter_condition).limit(1))
-        row = row.first()
-        if not row or not row[0]:
+        group_code = await _renewal_tariff_group(session, record, tg_id)
+        if not group_code:
             logger.warning(f"[RENEW] Тарифная группа не найдена для server_id={server_id}")
             await callback_query.message.answer("❌ Не удалось определить тарифную группу.")
             return
-
-        group_code = row[0]
         original_group_code = group_code
-
-        if tariff_id:
-            if await check_tariff_exists(session, tariff_id):
-                current_tariff = await get_tariff_by_id(session, tariff_id)
-
-                forbidden_groups = [
-                    "discounts",
-                    "discounts_max",
-                    "cold_discounts",
-                    "cold_discounts_max",
-                    "gifts",
-                    "trial",
-                ]
-                additional_groups = await process_renewal_forbidden_groups(chat_id=tg_id, admin=False, session=session)
-                forbidden_groups.extend(additional_groups)
-
-                if current_tariff["group_code"] not in forbidden_groups:
-                    group_code = current_tariff["group_code"]
-                    original_group_code = group_code
 
         discount_info = await check_hot_lead_discount(session, tg_id)
         if not discount_info.get("available"):
@@ -169,14 +167,18 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             logger.info(f"[RENEW] Тарифная группа переопределена хуком для продления: {group_code}")
 
         tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
-        tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+        tariffs = await _filter_renewal_tariffs(
+            session, record, [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+        )
         tariffs_data["subgroup_weights"]
 
         if not tariffs and discount_info.get("available"):
             logger.warning(f"[RENEW] Нет тарифов со скидкой {group_code}, fallback на {original_group_code}")
             group_code = original_group_code
             tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
-            tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+            tariffs = await _filter_renewal_tariffs(
+                session, record, [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+            )
             tariffs_data["subgroup_weights"]
             discount_info = {"available": False}
 
@@ -306,53 +308,18 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
             )
             return
 
-        server_id = record["server_id"]
-        try:
-            server_id_int = int(server_id)
-            filter_condition = or_(
-                Server.id == server_id_int,
-                Server.server_name == server_id,
-                Server.cluster_name == server_id,
-            )
-        except ValueError:
-            filter_condition = or_(
-                Server.server_name == server_id,
-                Server.cluster_name == server_id,
-            )
-
-        row = await session.execute(select(Server.tariff_group).where(filter_condition).limit(1))
-        row = row.first()
-        if not row or not row[0]:
-            logger.warning(f"[RENEW_SUBGROUP] Тарифная группа не найдена для server_id={server_id}")
-            await callback.message.answer("❌ Не удалось определить тарифную группу.")
+        if not key_owned_by_user(record, callback.from_user.id) or record.get("client_id") != client_id:
+            await callback.answer("Доступ запрещён.", show_alert=True)
             return
 
-        group_code = row[0]
+        tg_id = TelegramId(callback.from_user.id)
+        group_code = await _renewal_tariff_group(session, record, tg_id)
+        if not group_code:
+            logger.warning(f"[RENEW_SUBGROUP] Тарифная группа не найдена для server_id={record.get('server_id')}")
+            await callback.message.answer("❌ Не удалось определить тарифную группу.")
+            return
         original_group_code = group_code
 
-        tariff_id = record.get("tariff_id")
-        if tariff_id:
-            if await check_tariff_exists(session, tariff_id):
-                current_tariff = await get_tariff_by_id(session, tariff_id)
-
-                forbidden_groups = [
-                    "discounts",
-                    "discounts_max",
-                    "cold_discounts",
-                    "cold_discounts_max",
-                    "gifts",
-                    "trial",
-                ]
-                additional_groups = await process_renewal_forbidden_groups(
-                    chat_id=callback.from_user.id, admin=False, session=session
-                )
-                forbidden_groups.extend(additional_groups)
-
-                if current_tariff and current_tariff["group_code"] not in forbidden_groups:
-                    group_code = current_tariff["group_code"]
-                    original_group_code = group_code
-
-        tg_id = TelegramId(callback.from_user.id)
         language_code = callback.from_user.language_code
         discount_info = await check_hot_lead_discount(session, tg_id)
         if not discount_info.get("available"):
@@ -376,7 +343,9 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
             return
 
         tariffs = await get_tariffs(session, group_code=group_code)
-        filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
+        filtered = await _filter_renewal_tariffs(
+            session, record, [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
+        )
 
         if not filtered and discount_info.get("available"):
             logger.warning(
@@ -386,7 +355,9 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
             subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
             if subgroup:
                 tariffs = await get_tariffs(session, group_code=group_code)
-                filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
+                filtered = await _filter_renewal_tariffs(
+                    session, record, [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
+                )
             discount_info = {"available": False}
 
         if not filtered:
@@ -517,6 +488,8 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
                 message_or_query=callback_query,
             )
             return
+
+        await resolve_key_renewal_scope(session, record, tariff)
 
         email = record["email"]
         expiry_time_raw = record["expiry_time"]
@@ -696,6 +669,8 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             expected_key_snapshot=renewal_key_snapshot(record),
         )
 
+    except ValidationError as e:
+        await callback_query.answer(e.message, show_alert=True)
     except Exception as e:
         logger.error(f"[RENEW] Ошибка при продлении ключа для пользователя {tg_id}: {e}")
 
@@ -730,6 +705,7 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
         if not record or await resolve_key(session, tg_id, email) is None:
             await callback_query.message.answer("❌ Подписка не найдена.")
             return
+        await resolve_key_renewal_scope(session, record, tariff)
         expiry_time = normalize_expiry_ms(record.get("expiry_time"))
         current_time = int(datetime.now(timezone.utc).timestamp() * 1000)
         from services.keys import compute_renewal_expiry
@@ -848,6 +824,8 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
             expected_key_snapshot=renewal_key_snapshot(record),
         )
 
+    except ValidationError as e:
+        await callback_query.answer(e.message, show_alert=True)
     except Exception as e:
         logger.error(f"[RENEW_CONFIG] Ошибка при продлении по конфигурации для пользователя {tg_id}: {e}")
         await callback_query.message.answer("❌ Произошла ошибка при продлении. Попробуйте позже.")
@@ -874,6 +852,9 @@ async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMC
         if not record or await resolve_key(session, tg_id, email) is None:
             await callback_query.message.answer(KEY_NOT_FOUND_MSG)
             return
+
+        tariff = await get_tariff_by_id(session, int(tariff_id))
+        await resolve_key_renewal_scope(session, record, tariff)
 
         from services.keys import compute_renewal_quote
 
@@ -915,6 +896,8 @@ async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMC
             selected_traffic=selected_traffic,
             expected_key_snapshot=renewal_key_snapshot(record),
         )
+    except ValidationError as e:
+        await callback_query.answer(e.message, show_alert=True)
     except Exception as e:
         logger.error(f"[RENEW_SWITCH] Ошибка подтверждения смены для {tg_id}: {e}")
         await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")

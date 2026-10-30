@@ -58,7 +58,9 @@ async def _try_build_remna_vless(
 
         return best_vless, sub_url, happ_link
 
-    result = await with_remnawave_api(session, str(server_ref), _build, fallback_any=True, timeout_sec=8.0)
+    result = await with_remnawave_api(
+        session, str(server_ref), _build, timeout_sec=8.0, api_url=si.get("api_url") or ""
+    )
     if result is None:
         logger.warning("[Remnawave] login failed")
         return None, None, None

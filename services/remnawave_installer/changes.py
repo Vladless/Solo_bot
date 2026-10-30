@@ -17,7 +17,7 @@ LABELS = {
     "client_port": "Порт клиентов",
     "node_port": "Порт управления",
     "reality_domain": "Домен Reality",
-    "domain": "Домен сайта / origin",
+    "domain": "Домен TLS / сайта / origin",
     "cdn_domain": "Домен CDN",
     "email": "Email сертификата",
     "site_template": "Шаблон сайта",

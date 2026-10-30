@@ -132,7 +132,7 @@ function normalizeQuickActions(value: unknown): QuickAction[] {
 
 const ACTION_SEARCH: QuickAction[] = [
   { label: "Продлить подписку", sublabel: "Тариф и кнопка продления", keywords: "продлить продление оплатить подписку renew истекает срок", tabId: "keys" },
-  { label: "Купить подписку", sublabel: "Выбор и покупка тарифа", keywords: "купить покупка тариф подключить оформить buy новая подписка", tabId: "keys", screenGroup: "tariffPanel", screenId: "switch" },
+  { label: "Купить подписку", sublabel: "Выбор и покупка тарифа", keywords: "купить покупка тариф подключить оформить buy новая подписка", tabId: "keys", screenGroup: "tariffPanel", screenId: "buy" },
   { label: "Сменить тариф", sublabel: "Каталог тарифов", keywords: "сменить тариф смена апгрейд другой тариф upgrade", tabId: "keys", screenGroup: "tariffPanel", screenId: "switch" },
   { label: "Докупить опции", sublabel: "Трафик и устройства", keywords: "докупить трафик устройства гб опции расширить", tabId: "keys", screenGroup: "tariffPanel", screenId: "addons" },
   { label: "Мои устройства", sublabel: "Подключённые устройства", keywords: "устройства девайсы подключения device отвязать", tabId: "keys" },

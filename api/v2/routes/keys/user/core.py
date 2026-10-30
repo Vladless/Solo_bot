@@ -9,6 +9,15 @@ from .._common import (
 )
 
 
+async def _is_key_renew_available(session: AsyncSession, key) -> bool:
+    """Разрешает переход с триала без ожидания окна продления."""
+    if _is_renew_available(int(getattr(key, "expiry_time", 0) or 0)):
+        return True
+    tariff_id = getattr(key, "tariff_id", None)
+    tariff = await get_tariff_by_id(session, int(tariff_id)) if tariff_id else None
+    return bool(tariff) and str(tariff.get("group_code") or "").strip() == "trial"
+
+
 @user_router.get("", response_model=list[AccountKeyResponse])
 async def user_keys(
     request: Request,
@@ -38,7 +47,7 @@ async def user_keys(
                 await cache_set(actions_key, key_actions.model_dump(), 600)
             except Exception:
                 key_actions = AccountKeyActionsAvailability()
-        if key_actions.can_renew and not _is_renew_available(int(getattr(key, "expiry_time", 0) or 0)):
+        if key_actions.can_renew and not await _is_key_renew_available(session, key):
             key_actions.can_renew = False
         result.append(
             AccountKeyResponse(
@@ -260,7 +269,7 @@ async def user_key_details(
         is_tariff_configurable=bool(is_tariff_configurable),
         addons_devices_enabled=bool(addons_devices_enabled),
         addons_traffic_enabled=bool(addons_traffic_enabled),
-        can_renew=_is_renew_available(int(getattr(db_key, "expiry_time", 0) or 0)),
+        can_renew=await _is_key_renew_available(session, db_key),
     )
 
 

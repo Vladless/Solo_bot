@@ -5,7 +5,7 @@ import re
 import shlex
 
 from .psiphon import public_psiphon_config
-from .remote import APT, ROOT, RemoteServer, claim_paths, transport_ports
+from .remote import APT, ROOT, RemoteServer, claim_paths, transport_bindings, transport_ports
 from .types import InstallError, InstallSpec
 
 
@@ -153,6 +153,8 @@ async def _warp(remote: RemoteServer, spec: InstallSpec, artifacts: dict, checkp
     existing = await remote.run("command -v warp-cli >/dev/null && echo YES || true", step="warp")
     if "YES" in existing and not artifacts.get("warp_owned") and not spec.replace_existing:
         raise InstallError("warp", "WARP уже установлен. Подтвердите изменение его режима", retryable=False)
+    if "warp_preexisting" not in artifacts and not artifacts.get("warp_owned"):
+        artifacts["warp_preexisting"] = "YES" in existing
     artifacts["warp_owned"] = True
     if checkpoint:
         await checkpoint(artifacts)
@@ -368,14 +370,17 @@ async def _antitorrent(remote: RemoteServer, spec: InstallSpec, artifacts: dict,
 def _antitorrent_rules(spec: InstallSpec) -> str:
     """Исключает управляющие соединения из очереди фильтра."""
     protected = ", ".join(map(str, sorted({spec.ssh_port, spec.node_port, *transport_ports(spec)})))
+    udp_ports = [port for port, protocol in transport_bindings(spec) if protocol == "udp"]
+    udp_inbound = "udp dport != { " + ", ".join(map(str, udp_ports)) + " }" if udp_ports else "meta l4proto udp"
+    udp_outbound = "udp sport != { " + ", ".join(map(str, udp_ports)) + " }" if udp_ports else "meta l4proto udp"
     return (
         "table inet solobot_antitorrent {\n"
         "chain inbound { type filter hook input priority -10; policy accept;\n"
         f"iifname != lo tcp dport != {{ {protected} }} queue num 2093 bypass\n"
-        "iifname != lo meta l4proto udp queue num 2093 bypass\n}\n"
+        f"iifname != lo {udp_inbound} queue num 2093 bypass\n}}\n"
         "chain outbound { type filter hook output priority -10; policy accept;\n"
         f"oifname != lo tcp sport != {{ {protected} }} queue num 2093 bypass\n"
-        "oifname != lo meta l4proto udp queue num 2093 bypass\n}\n}\n"
+        f"oifname != lo {udp_outbound} queue num 2093 bypass\n}}\n}}\n"
     )
 
 
@@ -435,8 +440,8 @@ async def _ufw(remote: RemoteServer, spec: InstallSpec, artifacts: dict, checkpo
             f"ufw allow from {shlex.quote(source)} to any port {spec.node_port} proto tcp comment solobot-remnawave",
             step="ufw",
         )
-    for port in transport_ports(spec):
-        await remote.run(f"ufw allow {port}/tcp comment solobot-remnawave", step="ufw")
+    for port, protocol in transport_bindings(spec):
+        await remote.run(f"ufw allow {port}/{protocol} comment solobot-remnawave", step="ufw")
     listeners = await remote.run("ss -tlnpH", step="ufw")
     for line in listeners.splitlines():
         if not any(
@@ -576,8 +581,8 @@ async def _shaping(remote: RemoteServer, spec: InstallSpec, artifacts: dict, val
     if not config["enabled"]:
         await _disable_shaping(remote, artifacts)
         return
-    if spec.transport.startswith("cdn_") or spec.role == "exit":
-        raise InstallError("shaping", "Для CDN и выхода каскада шейпинг недоступен", retryable=False)
+    if spec.transport.startswith("cdn_") or spec.transport == "hysteria2" or spec.role == "exit":
+        raise InstallError("shaping", "Для Hysteria2, CDN и выхода каскада шейпинг недоступен", retryable=False)
     await _packages(remote, "nftables conntrack python3")
     if "conntrack_accounting_previous" not in artifacts:
         artifacts["conntrack_accounting_previous"] = (

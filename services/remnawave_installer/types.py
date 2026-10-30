@@ -18,7 +18,9 @@ TRANSPORTS = {
     "vless_tcp_selfsteal": "VLESS Selfsteal",
     "cdn_vk": "CDN VK",
     "cdn_yandex": "CDN Яндекс",
+    "hysteria2": "Hysteria2",
 }
+CERTIFICATE_TRANSPORTS = frozenset({"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex", "hysteria2"})
 ROLES = {"normal": "Обычная", "entry": "Вход каскада", "exit": "Выход каскада"}
 ADDONS = {
     "bbr": "BBR",
@@ -29,7 +31,7 @@ ADDONS = {
     "ufw": "UFW",
 }
 FINAL_STATUSES = frozenset({"succeeded", "warning", "canceled"})
-DELETABLE_STATUSES = frozenset({"draft", "failed", "paused", "canceled", "interrupted"})
+DELETABLE_STATUSES = frozenset({"draft", "failed", "paused", "canceled", "interrupted", "succeeded", "warning"})
 
 
 class InstallError(ValueError):
@@ -118,6 +120,8 @@ class InstallSpec:
                 raise ValueError("Логический параметр имеет неверный тип: " + name)
         if spec.transport not in TRANSPORTS or spec.role not in ROLES:
             raise ValueError("Неизвестный транспорт или роль ноды")
+        if spec.transport == "hysteria2" and spec.role != "normal":
+            raise ValueError("Hysteria2 доступна только для обычной ноды")
         if spec.site_template not in {"standard", "streaming"}:
             raise ValueError("Неизвестный шаблон сайта")
         if spec.role == "exit":
@@ -159,6 +163,8 @@ class InstallSpec:
                 and not (0 if name == "volume_gb" else 1) <= spec.shaping[name] <= 1_000_000
             ):
                 raise ValueError("Параметр шейпинга вне допустимого диапазона: " + name)
+        if spec.shaping and spec.transport == "hysteria2":
+            raise ValueError("Шейпинг Hysteria2 не поддерживается: текущий шейпер работает только с TCP")
         if spec.shaping and (spec.transport.startswith("cdn_") or spec.role == "exit"):
             raise ValueError("Шейпинг доступен только для прямых транспортов и входа каскада")
         for name in ("panel_sources", "trusted_ssh_sources"):
@@ -200,8 +206,9 @@ class InstallSpec:
         spec.host_remark = spec.host_remark.strip() or spec.name
         if len(spec.host_remark) > 100:
             raise ValueError("Название хоста не должно превышать 100 символов")
-        spec.reality_domain = _domain(spec.reality_domain)
-        if spec.transport in {"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex"}:
+        if spec.transport != "hysteria2":
+            spec.reality_domain = _domain(spec.reality_domain)
+        if needs_certificate(spec):
             spec.domain = _domain(spec.domain)
             if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", spec.email) or len(spec.email) > 254:
                 raise ValueError("Для сертификата укажите email")
@@ -229,13 +236,14 @@ class InstallSpec:
                 raise ValueError("Некорректный выходной IP") from error
             if spec.exit_interface and not re.fullmatch(r"[A-Za-z0-9_.:-]{1,32}", spec.exit_interface):
                 raise ValueError("Некорректное имя сетевого интерфейса")
-        if len({spec.ssh_port, spec.client_port, spec.node_port}) != 3:
+        if spec.ssh_port == spec.node_port or (
+            client_network(spec) == "tcp" and spec.client_port in {spec.ssh_port, spec.node_port}
+        ):
             raise ValueError("Порты SSH, клиентов и управления нодой должны различаться")
-        if spec.transport in {"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex"} and 80 in {
-            spec.ssh_port,
-            spec.node_port,
-            spec.client_port,
-        }:
+        tcp_ports = {spec.ssh_port, spec.node_port}
+        if client_network(spec) == "tcp":
+            tcp_ports.add(spec.client_port)
+        if needs_certificate(spec) and 80 in tcp_ports:
             raise ValueError("Порт 80 необходим для выпуска сертификата")
         return spec
 
@@ -247,3 +255,19 @@ class InstallSpec:
         """Привязывает снимок установки к неизменным параметрам."""
         payload = json.dumps(self.to_dict(), sort_keys=True, ensure_ascii=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def client_network(spec: InstallSpec) -> str:
+    """Определяет протокол клиентского порта."""
+    return "udp" if spec.transport == "hysteria2" else "tcp"
+
+
+def needs_certificate(spec: InstallSpec) -> bool:
+    """Определяет необходимость публичного TLS-сертификата."""
+    return spec.transport in CERTIFICATE_TRANSPORTS
+
+
+def certificate_paths(spec: InstallSpec) -> tuple[str, str]:
+    """Возвращает пути сертификата внутри ноды."""
+    root = "/etc/letsencrypt/live/" + spec.domain
+    return root + "/fullchain.pem", root + "/privkey.pem"

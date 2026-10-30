@@ -10,9 +10,12 @@ from database.payments import (
     capture_payment_checkout as capture_checkout_snapshot,
     resolve_payment_creation_owner,
 )
+from database.tariffs import get_tariff_by_id
 from services.clusters import select_cluster
 from services.errors import ValidationError
-from services.payments.checkout_intent import checkout_key_snapshot
+from services.payments.checkout_intent import _optional_int, checkout_key_snapshot
+from services.renewal_access import resolve_key_renewal_scope
+from settings.texts import RENEWAL_TARIFF_UNAVAILABLE
 
 
 async def capture_payment_checkout(session: AsyncSession | None, owner: int, metadata: dict | None = None) -> dict:
@@ -35,6 +38,12 @@ async def capture_payment_checkout(session: AsyncSession | None, owner: int, met
         )
         if key is None or key.is_frozen:
             raise ValidationError("Подписка для оплаты недоступна")
+        if snapshot.get("state") == "waiting_for_renewal_payment":
+            tariff_id = _optional_int(data.get("tariff_id"))
+            tariff = await get_tariff_by_id(session, tariff_id) if tariff_id else None
+            if not tariff or not tariff.get("is_active", True):
+                raise ValidationError(RENEWAL_TARIFF_UNAVAILABLE)
+            await resolve_key_renewal_scope(session, key, tariff)
         captured[PAYMENT_CHECKOUT_OPERATION] = {"key_snapshot": checkout_key_snapshot(key)}
         return captured
     if snapshot.get("state") != "waiting_for_payment" or data.get("payment_flow") == "gift_create":

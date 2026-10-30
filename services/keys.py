@@ -31,6 +31,8 @@ from database.keys import (
 from database.servers import cluster_name_exists, get_cluster_name_for_server_name
 from database.users import get_trial
 from logger import logger
+from services.renewal_access import resolve_key_renewal_scope
+from settings.texts import RENEWAL_FROZEN_UNAVAILABLE
 
 from .errors import InsufficientFundsError, NotFoundError, ServiceError, ValidationError
 
@@ -634,7 +636,7 @@ async def execute_renewal(
     billing_user_id = UserId(owner.id)
 
     tariff = await get_tariff_by_id(session, tariff_id)
-    if not tariff:
+    if not tariff or not tariff.get("is_active", True):
         raise NotFoundError(f"Тариф с id={tariff_id} не найден")
 
     key_info = await get_key_details(session, key_email)
@@ -651,11 +653,14 @@ async def execute_renewal(
         or key_info.get("client_id") != client_id
     ):
         raise NotFoundError(f"Ключ {client_id} не найден в БД")
+    if current_key.is_frozen:
+        raise ValidationError(RENEWAL_FROZEN_UNAVAILABLE)
     if renewal_key_snapshot(current_key) != quoted_snapshot or (
         expected_expiry_time is not None
         and normalize_expiry_ms(current_key.expiry_time) != normalize_expiry_ms(expected_expiry_time)
     ):
         raise ServiceError("Подписка изменилась после расчёта. Откройте продление заново.")
+    renewal_scope = await resolve_key_renewal_scope(session, current_key, tariff)
 
     final_device, final_traffic = _resolve_effective_limits(
         tariff,
@@ -704,9 +709,7 @@ async def execute_renewal(
     current_subgroup = current_tariff.get("subgroup_title") if current_tariff else None
     target_subgroup = tariff.get("subgroup_title")
 
-    cluster_id = await resolve_cluster_name(session, key_server_id)
-    if not cluster_id:
-        raise NotFoundError(f"Кластер для {key_server_id} не найден")
+    cluster_id = renewal_scope.cluster_name
 
     renewed_ok = await renew_key_in_cluster(
         cluster_id=cluster_id,
