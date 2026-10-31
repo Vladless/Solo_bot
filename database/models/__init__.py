@@ -11,6 +11,7 @@ from .kassai_autopay import KassaIAutopayAttempt, KassaISavedMethod, KassaISubsc
 from .keys import Key, KeyTrafficHistory, KeyTrafficHourly
 from .notifications import Notification, ScheduledBroadcast
 from .overpay_autopay import OverPayAutopayAttempt, OverPayAutopayLog, OverPaySavedMethod, OverPaySubscription
+from .payhot_autopay import PayHotAutopayAttempt, PayHotAutopayLog, PayHotSavedMethod, PayHotSubscription
 from .payments import Payment
 from .polls import Poll, PollMessage, PollVote
 from .rate_limit import RateLimitCounter
@@ -111,6 +112,10 @@ __all__ = [
     "OverPaySubscription",
     "OverPayAutopayAttempt",
     "OverPayAutopayLog",
+    "PayHotSavedMethod",
+    "PayHotSubscription",
+    "PayHotAutopayAttempt",
+    "PayHotAutopayLog",
     "RefundOperation",
     "RemnawaveInstall",
 ]

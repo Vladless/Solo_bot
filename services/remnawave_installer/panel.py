@@ -427,7 +427,7 @@ class InstallerPanel:
     async def ensure_host(self, spec: InstallSpec, artifacts: dict) -> dict:
         """Публикует хост после готовности транспорта."""
         await self._ready()
-        if not spec.publish_host or spec.role == "exit":
+        if not spec.publish_host or spec.role in {"exit", "haproxy_exit"}:
             return {}
         cdn = spec.transport.startswith("cdn_")
         if cdn and not artifacts.get("cloud", {}).get("ready"):
@@ -460,19 +460,36 @@ class InstallerPanel:
     @staticmethod
     def _host_body(spec: InstallSpec, artifacts: dict) -> dict:
         """Собирает управляемые поля хоста панели."""
+        target = artifacts
+        if spec.role == "haproxy_entry":
+            targets = [artifacts.get("haproxy"), *(artifacts.get("haproxy_targets") or [])]
+            target = next(
+                (
+                    item
+                    for item in targets
+                    if isinstance(item, dict) and item.get("exit_install_id") == spec.exit_install_id
+                ),
+                None,
+            )
+            if target is None or target.get("panel_ref") != spec.panel_ref:
+                raise InstallError(
+                    "panel_host", "Не подтверждена выходная нода HAProxy на выбранной панели", retryable=False
+                )
         cdn = spec.transport.startswith("cdn_")
         address = spec.cdn_domain if cdn else spec.domain if spec.transport == "vless_tcp_selfsteal" else spec.address
         body = {
             "remark": spec.host_remark,
             "address": address,
             "port": 443 if cdn else spec.client_port,
-            "isDisabled": not spec.publish_host or spec.role == "exit",
+            "isDisabled": not spec.publish_host or spec.role in {"exit", "haproxy_exit"},
             "inbound": {
-                "configProfileUuid": _uuid(artifacts.get("profile_uuid"), "профиль"),
-                "configProfileInboundUuid": _uuid(artifacts.get("inbound_uuid"), "инбаунд"),
+                "configProfileUuid": _uuid(target.get("profile_uuid"), "профиль"),
+                "configProfileInboundUuid": _uuid(target.get("inbound_uuid"), "инбаунд"),
             },
         }
-        if cdn:
+        if spec.role == "haproxy_entry":
+            body.update(sni=target.get("reality_domain") or spec.reality_domain, fingerprint="firefox")
+        elif cdn:
             body.update(
                 path=artifacts.get("xhttp_path"),
                 sni=address,
@@ -503,7 +520,7 @@ class InstallerPanel:
         if (
             not isinstance(host, dict)
             or host.get("uuid") != host_uuid
-            or host.get("inbound") != desired["inbound"]
+            or (spec.role != "haproxy_entry" and host.get("inbound") != desired["inbound"])
             or not any(
                 all(host.get(key) == value for key, value in body.items()) for body in (previous, desired, *approved)
             )
@@ -536,6 +553,9 @@ class InstallerPanel:
 
     async def move_to_squad(self, previous_spec: InstallSpec, spec: InstallSpec, artifacts: dict) -> None:
         """Переносит свой инбаунд между сквадами, сохраняя остальные."""
+        if spec.role == "haproxy_entry":
+            await self.add_to_squad(spec, artifacts)
+            return
         await self._ready()
         if previous_spec.panel_ref != spec.panel_ref:
             raise InstallError("panel_squad", "Перенос между панелями требует отдельной миграции", retryable=False)
@@ -586,6 +606,27 @@ class InstallerPanel:
     async def add_to_squad(self, spec: InstallSpec, artifacts: dict) -> None:
         """Дополняет выбранный сквад, сохраняя его инбаунды."""
         await self._ready()
+        if spec.role == "haproxy_entry":
+            target = artifacts.get("haproxy") or {}
+            if target.get("exit_install_id") != spec.exit_install_id or target.get("panel_ref") != spec.panel_ref:
+                raise InstallError("panel_squad", "Выход HAProxy изменился; проверьте связь каскада", retryable=False)
+            if not spec.squad_uuid or spec.squad_uuid != target.get("squad_uuid"):
+                raise InstallError("panel_squad", "Выберите клиентский сквад выходной ноды HAProxy", retryable=False)
+            if target.get("squad_uuid"):
+                squad = await self._call("GET", f"/internal-squads/{_uuid(target['squad_uuid'], 'сквад')}")
+                inbounds = squad.get("inbounds") if isinstance(squad, dict) else None
+                if (
+                    not isinstance(squad, dict)
+                    or squad.get("uuid") != target.get("squad_uuid")
+                    or not isinstance(inbounds, list)
+                    or not any(
+                        isinstance(item, dict) and item.get("uuid") == target.get("inbound_uuid") for item in inbounds
+                    )
+                ):
+                    raise InstallError(
+                        "panel_squad", "Инбаунд выхода HAProxy отсутствует в его клиентском скваде", retryable=False
+                    )
+            return
         if not spec.squad_uuid or spec.role == "exit":
             return
         squad_uuid = _uuid(spec.squad_uuid, "сквад")
@@ -615,8 +656,59 @@ class InstallerPanel:
     async def check_online(self, spec: InstallSpec, artifacts: dict) -> bool:
         """Подтверждает подключение ноды с нужным профилем."""
         await self._ready()
-        node = await self._call("GET", f"/nodes/{_uuid(artifacts.get('node_uuid'), 'нода')}")
-        self._validate_node(spec, artifacts, node)
+        target = artifacts.get("haproxy") if spec.role == "haproxy_entry" else artifacts
+        target = target or {}
+        node = await self._call("GET", f"/nodes/{_uuid(target.get('node_uuid'), 'нода')}")
+        if spec.role == "haproxy_entry":
+            profile = node.get("configProfile") if isinstance(node, dict) else None
+            inbounds = profile.get("activeInbounds") if isinstance(profile, dict) else None
+            if (
+                target.get("exit_install_id") != spec.exit_install_id
+                or target.get("panel_ref") != spec.panel_ref
+                or not isinstance(node, dict)
+                or node.get("uuid") != target.get("node_uuid")
+                or node.get("address") != target.get("address")
+                or not isinstance(profile, dict)
+                or profile.get("activeConfigProfileUuid") != target.get("profile_uuid")
+                or not isinstance(inbounds, list)
+                or any(not isinstance(item, dict) for item in inbounds)
+                or [item.get("uuid") for item in inbounds] != [target.get("inbound_uuid")]
+            ):
+                raise InstallError("verify", "Выходная нода HAProxy изменилась вне установщика", retryable=False)
+            saved = await self._call("GET", f"/config-profiles/{_uuid(target.get('profile_uuid'), 'профиль')}")
+            config = saved.get("config") if isinstance(saved, dict) else None
+            configured = config.get("inbounds") if isinstance(config, dict) else None
+            metadata = saved.get("inbounds") if isinstance(saved, dict) else None
+            inbound = configured[0] if isinstance(configured, list) and len(configured) == 1 else None
+            stream = inbound.get("streamSettings") if isinstance(inbound, dict) else None
+            tcp = stream.get("rawSettings", stream.get("tcpSettings")) if isinstance(stream, dict) else None
+            reality = stream.get("realitySettings") if isinstance(stream, dict) else None
+            names = reality.get("serverNames") if isinstance(reality, dict) else None
+            if (
+                not isinstance(saved, dict)
+                or saved.get("uuid") != target.get("profile_uuid")
+                or not isinstance(metadata, list)
+                or len(metadata) != 1
+                or not isinstance(metadata[0], dict)
+                or metadata[0].get("uuid") != target.get("inbound_uuid")
+                or metadata[0].get("profileUuid") != target.get("profile_uuid")
+                or not isinstance(inbound, dict)
+                or metadata[0].get("tag") != inbound.get("tag")
+                or inbound.get("protocol") != "vless"
+                or inbound.get("port") != target.get("port")
+                or not isinstance(stream, dict)
+                or stream.get("network") not in {"tcp", "raw"}
+                or stream.get("security") != "reality"
+                or not isinstance(tcp, dict)
+                or tcp.get("acceptProxyProtocol") is not True
+                or not isinstance(names, list)
+                or target.get("reality_domain") not in names
+            ):
+                raise InstallError(
+                    "verify", "Профиль выхода HAProxy не подтвердил TCP Reality и PROXY protocol", retryable=False
+                )
+        else:
+            self._validate_node(spec, artifacts, node)
         versions = node.get("versions") or {}
         return bool(
             node.get("isConnected") is True

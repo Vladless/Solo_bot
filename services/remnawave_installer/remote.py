@@ -354,9 +354,10 @@ async def preflight(remote: RemoteServer, spec: InstallSpec) -> dict:
     service_ports = transport_bindings(spec)
     if _uses_tls(spec):
         service_ports.append((4443 if spec.transport == "cdn_yandex" else 8443, "tcp"))
-    if len(service_ports) != len(set(service_ports)) or {(spec.ssh_port, "tcp"), (spec.node_port, "tcp")}.intersection(
-        service_ports
-    ):
+    management_ports = {(spec.ssh_port, "tcp")}
+    if spec.role != "haproxy_entry":
+        management_ports.add((spec.node_port, "tcp"))
+    if len(service_ports) != len(set(service_ports)) or management_ports.intersection(service_ports):
         raise InstallError("preflight", "Порты SSH, управления, TLS и Xray должны различаться", retryable=False)
     release = await remote.run("cat /etc/os-release", step="preflight")
     values = {}
@@ -374,7 +375,8 @@ async def preflight(remote: RemoteServer, spec: InstallSpec) -> dict:
     conflicts = []
     if marker and marker != owner_id(spec):
         conflicts.append("каталог другой установки")
-    for container in ("remnanode", "cdn-nginx"):
+    containers = ("solobot-haproxy",) if spec.role == "haproxy_entry" else ("remnanode", "cdn-nginx")
+    for container in containers:
         existing = await remote.run(
             "if command -v docker >/dev/null; then docker inspect --format "
             + shlex.quote('{{index .Config.Labels "io.solobot.remnawave.owner"}}')
@@ -382,10 +384,18 @@ async def preflight(remote: RemoteServer, spec: InstallSpec) -> dict:
             step="preflight",
         )
         if existing.strip() and existing.strip() != owner_id(spec):
+            if spec.role == "haproxy_entry":
+                raise InstallError("preflight", "Контейнер HAProxy принадлежит другой установке", retryable=False)
             conflicts.append("контейнер " + container)
     listeners = await remote.run("ss -tlnpH", step="preflight")
-    reserved = [port for port, protocol in service_ports if protocol == "tcp"] + [spec.node_port]
-    if not marker:
+    reserved = [port for port, protocol in service_ports if protocol == "tcp"]
+    if spec.role != "haproxy_entry":
+        reserved.append(spec.node_port)
+    if spec.role == "haproxy_entry":
+        owned_pids = await _node_listener_pids(remote, spec, name="solobot-haproxy")
+        if any(_listener_conflict(listeners, port, owned_pids) for port in reserved):
+            raise InstallError("preflight", "Клиентский TCP-порт HAProxy занят посторонним процессом", retryable=False)
+    elif not marker:
         for port in set(reserved):
             if re.search(rf":{port}\s", listeners):
                 conflicts.append(f"занятый TCP-порт {port}")
@@ -433,11 +443,13 @@ def _listener_conflict(listeners: str, port: int, owned_pids: set[int]) -> bool:
     return False
 
 
-async def _node_listener_pids(remote: RemoteServer, spec: InstallSpec) -> set[int]:
-    """Получает PID процессов только собственного контейнера ноды."""
+async def _node_listener_pids(remote: RemoteServer, spec: InstallSpec, *, name: str = "remnanode") -> set[int]:
+    """Получает PID процессов только собственного контейнера."""
+    if name not in {"remnanode", "solobot-haproxy"}:
+        raise InstallError("preflight", "Неизвестный контейнер установщика", retryable=False)
     script = (
         "import json,subprocess,sys\n"
-        "result=subprocess.run(['docker','inspect','remnanode'],capture_output=True)\n"
+        f"result=subprocess.run(['docker','inspect',{name!r}],capture_output=True)\n"
         "if result.returncode: raise SystemExit(0)\n"
         "data=json.loads(result.stdout)[0]\n"
         "if (data.get('Config',{}).get('Labels') or {}).get('io.solobot.remnawave.owner')!=sys.argv[1]: raise SystemExit(0)\n"
@@ -549,7 +561,16 @@ async def _open_firewall(remote: RemoteServer, spec: InstallSpec) -> None:
     if "Status: active" not in status:
         return
     for port, protocol in transport_bindings(spec):
-        await remote.run(f"ufw allow {port}/{protocol} comment solobot-remnawave", step="firewall")
+        if spec.role == "haproxy_exit":
+            for source in spec.haproxy_sources:
+                await remote.run(
+                    f"ufw allow from {shlex.quote(source)} to any port {port} proto {protocol} comment solobot-remnawave",
+                    step="firewall",
+                )
+        else:
+            await remote.run(f"ufw allow {port}/{protocol} comment solobot-remnawave", step="firewall")
+    if spec.role == "haproxy_entry":
+        return
     if not spec.panel_sources:
         await remote.run(f"ufw allow {spec.node_port}/tcp comment solobot-remnawave", step="firewall")
     for source in spec.panel_sources:
@@ -729,6 +750,8 @@ async def deploy_node(
     remote: RemoteServer, spec: InstallSpec, artifacts: dict, log, checkpoint=None, *, runtime_only: bool = False
 ) -> None:
     """Развёртывает ноду либо обновляет только её образ."""
+    if spec.role == "haproxy_entry":
+        raise InstallError("docker", "Вход HAProxy развёртывается отдельно от Remnawave-ноды", retryable=False)
     if runtime_only:
         spec = copy.copy(spec)
         spec.replace_existing = False
@@ -739,6 +762,9 @@ async def deploy_node(
     await claim_paths(remote, spec)
     await ensure_docker(remote)
     if not runtime_only:
+        from .haproxy import protect_haproxy_exit
+
+        await protect_haproxy_exit(remote, spec)
         await _open_firewall(remote, spec)
         await _management_firewall(remote, spec)
         if spec.transport == "hysteria2":
@@ -803,7 +829,9 @@ async def prepare_remote_changes(
     if changed.intersection({"transport", "client_port", "node_port"}):
 
         def reserved(spec):
-            ports = set(transport_bindings(spec)) | {(spec.node_port, "tcp")}
+            ports = set(transport_bindings(spec))
+            if spec.role != "haproxy_entry":
+                ports.add((spec.node_port, "tcp"))
             if _uses_tls(spec):
                 ports.add((4443 if spec.transport == "cdn_yandex" else 8443, "tcp"))
             return ports
@@ -818,6 +846,13 @@ async def prepare_remote_changes(
                 raise InstallError("preflight", "Новый порт уже занят другим процессом", retryable=False)
         if old_spec.transport != new_spec.transport and _uses_tls(old_spec):
             await _stop_tls(remote, old_spec)
+    if new_spec.role == "haproxy_exit" and "client_port" in changed:
+        from .haproxy import protect_haproxy_exit
+
+        await claim_paths(remote, new_spec)
+        await protect_haproxy_exit(remote, new_spec, additional_ports=(old_spec.client_port,))
+    if new_spec.role == "haproxy_entry":
+        return
     if "transport" in changed:
         if new_spec.transport.startswith("cdn_"):
             if not artifacts.get("xhttp_path"):
@@ -899,10 +934,17 @@ async def _cleanup_exit_alias(remote: RemoteServer, spec: InstallSpec, artifacts
 
 def _ufw_rules(spec: InstallSpec) -> set[tuple[str, ...]]:
     """Собирает правила, относящиеся к параметрам установки."""
-    rules = {("allow", f"{port}/{protocol}") for port, protocol in transport_bindings(spec)}
-    if not spec.panel_sources:
+    if spec.role == "haproxy_exit":
+        rules = {
+            ("allow", "from", source, "to", "any", "port", str(port), "proto", protocol)
+            for port, protocol in transport_bindings(spec)
+            for source in spec.haproxy_sources
+        }
+    else:
+        rules = {("allow", f"{port}/{protocol}") for port, protocol in transport_bindings(spec)}
+    if spec.role != "haproxy_entry" and not spec.panel_sources:
         rules.add(("allow", f"{spec.node_port}/tcp"))
-    for source in spec.panel_sources:
+    for source in spec.panel_sources if spec.role != "haproxy_entry" else []:
         rules.add(("allow", "from", source, "to", "any", "port", str(spec.node_port), "proto", "tcp"))
     if spec.trusted_ssh_sources:
         for source in spec.trusted_ssh_sources:
@@ -970,16 +1012,28 @@ async def apply_remote_changes(
     new_spec._owner_id = artifacts["remote_owner_id"]
     remote.spec = new_spec
     await claim_paths(remote, new_spec)
-    compose_changed = "node_port" in changed or (
-        "transport" in changed and "hysteria2" in {old_spec.transport, new_spec.transport}
+    if new_spec.role == "haproxy_entry":
+        from .haproxy import deploy_haproxy
+
+        if changed.intersection({"client_port", "exit_install_id"}):
+            await deploy_haproxy(remote, new_spec, artifacts, log, checkpoint)
+    elif new_spec.role == "haproxy_exit" and changed.intersection({"haproxy_sources", "client_port"}):
+        from .haproxy import protect_haproxy_exit
+
+        if "client_port" in changed:
+            await protect_haproxy_exit(remote, new_spec, additional_ports=(old_spec.client_port,))
+        else:
+            await protect_haproxy_exit(remote, new_spec)
+    compose_changed = new_spec.role != "haproxy_entry" and (
+        "node_port" in changed or ("transport" in changed and "hysteria2" in {old_spec.transport, new_spec.transport})
     )
     if compose_changed:
         await _check_container_owner(remote, new_spec, "remnanode")
     if _uses_tls(new_spec) and changed.intersection({"transport", "domain", "site_template", "email"}):
         await _check_container_owner(remote, new_spec, "cdn-nginx")
-    if "node_port" in changed:
+    if new_spec.role != "haproxy_entry" and "node_port" in changed:
         await _management_firewall(remote, new_spec, additional_ports=(old_spec.node_port,))
-    elif "panel_sources" in changed:
+    elif new_spec.role != "haproxy_entry" and "panel_sources" in changed:
         await _management_firewall(remote, new_spec)
     if compose_changed:
         await log("Обновление настроек контейнера ноды")
@@ -991,7 +1045,15 @@ async def apply_remote_changes(
         )
         if "node_port" in changed:
             await _management_firewall(remote, new_spec)
-    firewall_fields = {"transport", "client_port", "node_port", "ssh_port", "panel_sources", "trusted_ssh_sources"}
+    firewall_fields = {
+        "transport",
+        "client_port",
+        "node_port",
+        "ssh_port",
+        "panel_sources",
+        "trusted_ssh_sources",
+        "haproxy_sources",
+    }
     if changed.intersection(firewall_fields):
         await _change_firewall(remote, old_spec, new_spec, artifacts)
     old_tls, new_tls = _uses_tls(old_spec), _uses_tls(new_spec)
@@ -1037,6 +1099,48 @@ async def apply_remote_changes(
         await _shaping(remote, new_spec, artifacts, new_spec.shaping or {"enabled": False})
     if changed.intersection({"exit_ip", "exit_interface"}):
         await _cleanup_exit_alias(remote, new_spec, artifacts)
+    if new_spec.role == "haproxy_exit" and "client_port" in changed and old_spec.client_port != new_spec.client_port:
+        await log("Ожидание применения нового порта выхода HAProxy; оба порта защищены")
+        script = (
+            "import json,re,subprocess,sys,time\n"
+            "owner,old_port,new_port=sys.argv[1:]; deadline=time.monotonic()+40\n"
+            "def command(args):\n"
+            " return subprocess.run(args,capture_output=True,text=True,timeout=3)\n"
+            "while time.monotonic()<deadline:\n"
+            " try:\n"
+            "  inspected=command(['docker','inspect','remnanode'])\n"
+            "  if inspected.returncode==0:\n"
+            "   data=json.loads(inspected.stdout)[0]\n"
+            "   if (data.get('Config',{}).get('Labels') or {}).get('io.solobot.remnawave.owner')!=owner: raise SystemExit(33)\n"
+            "   top=command(['docker','top',data['Id'],'-eo','pid']); listeners=command(['ss','-tlnpH'])\n"
+            "   if data.get('State',{}).get('Running') and top.returncode==listeners.returncode==0:\n"
+            "    pids={int(line.strip()) for line in top.stdout.splitlines() if line.strip().isdigit()}\n"
+            "    old=[]; new=[]\n"
+            "    for line in listeners.stdout.splitlines():\n"
+            "     fields=line.split()\n"
+            "     if len(fields)<4: continue\n"
+            "     port=fields[3].rsplit(':',1)[-1]\n"
+            "     if port==old_port: old.append(line)\n"
+            "     if port==new_port: new.append({int(value) for value in re.findall(r'pid=(\\d+)',line)})\n"
+            "    if not old and new and all(ids and ids.issubset(pids) for ids in new): raise SystemExit(0)\n"
+            " except (subprocess.TimeoutExpired,json.JSONDecodeError,IndexError,KeyError): pass\n"
+            " time.sleep(2)\n"
+            "raise SystemExit(38)\n"
+        )
+        try:
+            await remote.run(
+                f"python3 -c {shlex.quote(script)} {owner_id(new_spec)} {old_spec.client_port} {new_spec.client_port}",
+                step="haproxy_verify",
+                timeout=55,
+            )
+        except InstallError:
+            raise InstallError(
+                "haproxy_verify",
+                "Нода ещё не подтвердила смену порта HAProxy; оба порта остаются защищены. Повторите проверку",
+            ) from None
+        from .haproxy import protect_haproxy_exit
+
+        await protect_haproxy_exit(remote, new_spec)
     if checkpoint:
         await checkpoint(artifacts)
 

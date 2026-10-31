@@ -14,6 +14,7 @@ from .settings.modes_config import MODES_CONFIG, load_modes_config, update_modes
 from .settings.money_config import MONEY_CONFIG, load_money_config, update_money_config
 from .settings.notifications_config import NOTIFICATIONS_CONFIG, load_notifications_config, update_notifications_config
 from .settings.overpay_autopay_config import load_overpay_autopay_config
+from .settings.payhot_autopay_config import load_payhot_autopay_config
 from .settings.payments_config import PAYMENTS_CONFIG, load_payments_config, update_payments_config
 from .settings.providers_order_config import PROVIDERS_ORDER, load_providers_order, update_providers_order
 from .settings.remnawave_config import REMNAWAVE_CONFIG, load_remnawave_config, update_remnawave_config
@@ -38,6 +39,7 @@ async def bootstrap() -> None:
         await load_yookassa_autopay_config(session)
         await load_kassai_autopay_config(session)
         await load_overpay_autopay_config(session)
+        await load_payhot_autopay_config(session)
         await load_providers_order(session)
         await load_money_config(session)
         await load_management_config(session)

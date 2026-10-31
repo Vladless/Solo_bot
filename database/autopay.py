@@ -6,6 +6,8 @@ from database.models import (
     KassaISubscription,
     OverPayAutopayAttempt,
     OverPaySubscription,
+    PayHotAutopayAttempt,
+    PayHotSubscription,
     YooKassaAutopayAttempt,
     YooKassaSubscription,
 )
@@ -16,6 +18,7 @@ _PROVIDERS = (
     ("YOOKASSA_AUTOPAY", YooKassaSubscription, YooKassaAutopayAttempt),
     ("KASSAI_AUTOPAY", KassaISubscription, KassaIAutopayAttempt),
     ("OVERPAY_AUTOPAY", OverPaySubscription, OverPayAutopayAttempt),
+    ("PAYHOT_AUTOPAY", PayHotSubscription, PayHotAutopayAttempt),
 )
 _UNFINISHED = ("prepared", "unknown", "pending", "succeeded", "manual_review")
 

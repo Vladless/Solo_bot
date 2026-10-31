@@ -13,9 +13,10 @@ from settings import texts
 
 
 class PaymentError(ValueError):
-    def __init__(self, message: str, *, retryable: bool = False) -> None:
+    def __init__(self, message: str, *, retryable: bool = False, rejected: bool = False) -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.rejected = rejected
 
 
 def normalize_phone(value) -> str:
@@ -96,12 +97,16 @@ def _api_error(status: int, data: dict) -> PaymentError:
             minimum = Decimal(details["minimum_amount_minor"]) / 100
             maximum = Decimal(details["maximum_amount_minor"]) / 100
             if minimum.is_finite() and maximum.is_finite() and 0 <= minimum <= maximum:
-                return PaymentError(texts.PAYHOT_METHOD_AMOUNT_OUT_OF_RANGE.format(minimum=minimum, maximum=maximum))
+                return PaymentError(
+                    texts.PAYHOT_METHOD_AMOUNT_OUT_OF_RANGE.format(minimum=minimum, maximum=maximum),
+                    rejected=status == 422,
+                )
         except (KeyError, InvalidOperation, TypeError, ValueError):
             pass
     return PaymentError(
         texts.PAYHOT_PROVIDER_ERROR,
-        retryable=status >= 500 or status == 429,
+        retryable=status >= 500 or status == 429 or error.get("retryable") is True,
+        rejected=status in {400, 401, 403, 404, 415, 422} and error.get("retryable") is not True,
     )
 
 
@@ -138,7 +143,11 @@ async def api_request(
                     data = parse_json(raw)
                 except (ValueError, UnicodeError, RecursionError) as exc:
                     raise PaymentError(texts.PAYHOT_RESPONSE_INVALID, retryable=response.status >= 500) from exc
-                if response.status not in {200, 201} or "error" in data:
+                if (
+                    response.status
+                    not in ({200, 201, 202} if path == "/recurring-charges" and method == "POST" else {200, 201})
+                    or "error" in data
+                ):
                     raise _api_error(response.status, data)
                 if data.get("environment") == "sandbox":
                     raise PaymentError(texts.PAYHOT_SANDBOX_PAYMENT_REJECTED)

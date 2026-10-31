@@ -190,6 +190,7 @@ async def _show_invoice(
     expected_state: str | None = None,
     customer_phone: str | None = None,
     checkout_snapshot: dict | None = None,
+    metadata: dict | None = None,
 ) -> bool:
     """Создаёт счёт и показывает ссылку для оплаты."""
     message = target_message or (event.message if isinstance(event, CallbackQuery) else event)
@@ -225,11 +226,14 @@ async def _show_invoice(
                 raise ValueError(texts.PAYHOT_CHECKOUT_CHANGED)
             if not await _invoice_context_current(state, request_id, expected_state):
                 return False
-        metadata = (
-            {"source": "telegram_fast_flow"}
-            if fast
-            else {"source": "telegram_balance", "payment_flow": "balance_topup"}
-        )
+        metadata = {
+            **(
+                {"source": "telegram_fast_flow"}
+                if fast
+                else {"source": "telegram_balance", "payment_flow": "balance_topup"}
+            ),
+            **(metadata or {}),
+        }
         if method_name == "sberpay":
             metadata["payhot_customer_phone"] = normalize_phone(customer_phone)
         payment_url, _payment_id = await create_invoice(

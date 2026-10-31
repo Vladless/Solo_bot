@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.settings.kassai_autopay_config import KASSAI_AUTOPAY_CONFIG
 from core.settings.modes_config import MODES_CONFIG
 from core.settings.overpay_autopay_config import OVERPAY_AUTOPAY_CONFIG
+from core.settings.payhot_autopay_config import PAYHOT_AUTOPAY_CONFIG
 from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
 from core.settings.yookassa_autopay_config import YOOKASSA_AUTOPAY_CONFIG
 from database.access.resolution import UserId
@@ -172,6 +173,7 @@ def autopay_terms_for_tariff(
         "YOOKASSA_AUTOPAY": YOOKASSA_AUTOPAY_CONFIG,
         "KASSAI_AUTOPAY": KASSAI_AUTOPAY_CONFIG,
         "OVERPAY_AUTOPAY": OVERPAY_AUTOPAY_CONFIG,
+        "PAYHOT_AUTOPAY": PAYHOT_AUTOPAY_CONFIG,
     }.get(provider_id, YOOKASSA_AUTOPAY_CONFIG)
     discount = max(0, min(100, float(config.get("AUTOPAY_DISCOUNT_PERCENT", 0))))
     period = int(tariff.get("duration_days") or 0)

@@ -173,6 +173,13 @@ PROVIDERS_BASE: dict[str, dict[str, Any]] = {
         "module": "payhot",
         "order": 22,
     },
+    "PAYHOT_AUTOPAY": {
+        "currency": "RUB",
+        "value": "pay_payhot_autopay",
+        "fast": "process_fast_renewal_flow",
+        "module": "payhot_autopay",
+        "order": 26,
+    },
     "PAYHOT_SBP": {
         "currency": "RUB",
         "value": "pay_payhot_sbp",
@@ -215,6 +222,7 @@ WEB_LINK_PROVIDER_IDS = (
     "PAYHOT_CARDS",
     "PAYHOT_SBP",
     "PAYHOT_SBERPAY",
+    "PAYHOT_AUTOPAY",
 )
 
 TELEGRAM_ONLY_PROVIDER_IDS = (

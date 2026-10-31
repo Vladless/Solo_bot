@@ -42,6 +42,7 @@ from database.models import (
 )
 from database.overpay_autopay import transfer_recurring_user_data as transfer_overpay_recurring_user_data
 from database.partners import transfer_partner_user_data
+from database.payhot_autopay import transfer_recurring_user_data as transfer_payhot_recurring_user_data
 from database.users import (
     add_user,
     check_user_exists,
@@ -575,6 +576,7 @@ async def _transfer_user_data(
     await transfer_recurring_user_data(session, src_uid, dst_uid)
     await transfer_kassai_recurring_user_data(session, src_uid, dst_uid)
     await transfer_overpay_recurring_user_data(session, src_uid, dst_uid)
+    await transfer_payhot_recurring_user_data(session, src_uid, dst_uid)
 
     for notification in (
         (await session.execute(select(Notification).where(Notification.user_id == src_uid))).scalars().all()

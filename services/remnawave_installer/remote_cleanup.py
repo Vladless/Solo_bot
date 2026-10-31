@@ -10,10 +10,10 @@ root=pathlib.Path(sys.argv[1]); owner=sys.argv[2]; plan=json.loads(sys.argv[3])
 plan_hash=hashlib.sha256(json.dumps(plan,sort_keys=True).encode()).hexdigest()
 garbage=root.with_name(root.name+'.removing-'+owner)
 receipt_path=root.with_name('.'+root.name+'.removing-'+owner+'.json')
-units=("solobot-remnawave-cert.timer","solobot-remnawave-cert.service","solobot-shaper.service","solobot-psiphon.service","solobot-antitorrent.service","solobot-shaper-nft.service","solobot-antitorrent-nft.service","solobot-remnawave_mgmt-nft.service","solobot-remnawave-exit-ip.service")
+units=("solobot-remnawave-cert.timer","solobot-remnawave-cert.service","solobot-shaper.service","solobot-psiphon.service","solobot-antitorrent.service","solobot-shaper-nft.service","solobot-antitorrent-nft.service","solobot-remnawave_mgmt-nft.service","solobot-haproxy_exit-nft.service","solobot-remnawave-exit-ip.service")
 unit_paths={name:pathlib.Path('/etc/systemd/system')/name for name in units}
 extra_paths=(pathlib.Path('/etc/sysctl.d/90-solobot-remnawave-bbr.conf'),pathlib.Path('/etc/sysctl.d/90-solobot-conntrack.conf'),pathlib.Path('/etc/fail2ban/jail.d/solobot-remnawave.conf'))
-tables={'solobot_shaper':'shaper','solobot_antitorrent':'antitorrent','solobot_remnawave_mgmt':'remnawave_mgmt'}
+tables={'solobot_shaper':'shaper','solobot_antitorrent':'antitorrent','solobot_remnawave_mgmt':'remnawave_mgmt','solobot_haproxy_exit':'haproxy_exit'}
 def fail(message):
  print(json.dumps({'error':message},ensure_ascii=False)); raise SystemExit(0)
 def command(args,check=False):
@@ -116,18 +116,19 @@ def inspect_containers():
  return data
 containers=inspect_containers()
 owned_containers=[]
+managed_names=('solobot-haproxy',) if plan.get('role')=='haproxy_entry' else ('remnanode','cdn-nginx')
 for item in containers:
  identifier=item.get('Id'); name=str(item.get('Name','')).lstrip('/')
  labels=item.get('Config',{}).get('Labels') or {}
  ours=labels.get('io.solobot.remnawave.owner')==owner
- if name in ('remnanode','cdn-nginx'):
+ if name in managed_names:
   if not ours: fail('Контейнер '+name+' принадлежит другой установке')
   if not isinstance(identifier,str) or not re.fullmatch('[a-f0-9]{64}',identifier): fail('Некорректный идентификатор контейнера')
   owned_containers.append(identifier)
  for mount in item.get('Mounts',[]):
   source=mount.get('Source')
   if isinstance(source,str) and (source==str(garbage) or source.startswith(str(garbage)+'/')): fail('Временный каталог удаления используется контейнером')
-  if isinstance(source,str) and (source==str(root) or source.startswith(str(root)+'/')) and not (ours and name in ('remnanode','cdn-nginx')):
+  if isinstance(source,str) and (source==str(root) or source.startswith(str(root)+'/')) and not (ours and name in managed_names):
    fail('Каталог установщика используется посторонним контейнером')
 if not safe(root): fail('Каталог установщика или его родитель является символической ссылкой')
 mounts=pathlib.Path('/proc/self/mountinfo')
@@ -352,6 +353,7 @@ def _plan(spec: InstallSpec, artifacts: dict) -> dict:
     previous = artifacts.get("conntrack_accounting_previous")
     return {
         "address": spec.address,
+        **({"role": spec.role} if spec.role == "haproxy_entry" else {}),
         "aliases": aliases,
         "bbr_previous": artifacts.get("bbr_previous") or {},
         "conntrack_previous": {"net.netfilter.nf_conntrack_acct": previous} if previous in {"0", "1"} else {},

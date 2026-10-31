@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -86,6 +88,7 @@ class AccountKeyRenewRequest(BaseModel):
     tariff_id: int | None = None
     provider_id: str | None = None
     payhot_customer_phone: str | None = Field(None, max_length=32)
+    payhot_method: Literal["card", "sbp"] | None = None
     autopay_consent: bool = False
     autopay_accepted_amount: float | None = Field(None, gt=0)
     autopay_accepted_gross_amount: float | None = Field(None, gt=0)
@@ -110,6 +113,8 @@ class AccountKeyRenewResponse(AccountKeyActionResponse):
     kassai_autopay_period_days: int | None = None
     overpay_autopay_price_rub: float | None = None
     overpay_autopay_period_days: int | None = None
+    payhot_autopay_price_rub: float | None = None
+    payhot_autopay_period_days: int | None = None
     discount_rub: int = 0
     final_price_rub: int = 0
     applied_coupon_code: str | None = None
@@ -175,6 +180,7 @@ class AccountKeyAddonsPreviewRequest(BaseModel):
     include_traffic: bool | None = None
     provider_id: str | None = None
     payhot_customer_phone: str | None = Field(None, max_length=32)
+    payhot_method: Literal["card", "sbp"] | None = None
     autopay_consent: bool = False
     autopay_accepted_amount: float | None = Field(None, gt=0)
     autopay_accepted_gross_amount: float | None = Field(None, gt=0)
@@ -272,6 +278,7 @@ class TariffPurchaseRequest(BaseModel):
     selected_traffic_gb: int | None = None
     provider_id: str | None = None
     payhot_customer_phone: str | None = Field(None, max_length=32)
+    payhot_method: Literal["card", "sbp"] | None = None
     autopay_consent: bool = False
     autopay_accepted_amount: float | None = Field(None, gt=0)
     autopay_accepted_gross_amount: float | None = Field(None, gt=0)
@@ -294,6 +301,8 @@ class TariffPurchaseResponse(BaseModel):
     kassai_autopay_period_days: int | None = None
     overpay_autopay_price_rub: float | None = None
     overpay_autopay_period_days: int | None = None
+    payhot_autopay_price_rub: float | None = None
+    payhot_autopay_period_days: int | None = None
     discount_rub: int = 0
     final_price_rub: int = 0
     applied_coupon_code: str | None = None
@@ -309,6 +318,7 @@ class GiftCreateRequest(BaseModel):
     selected_traffic_gb: int | None = None
     provider_id: str | None = None
     payhot_customer_phone: str | None = Field(None, max_length=32)
+    payhot_method: Literal["card", "sbp"] | None = None
     autopay_consent: bool = False
     autopay_accepted_amount: float | None = Field(None, gt=0)
     autopay_accepted_gross_amount: float | None = Field(None, gt=0)

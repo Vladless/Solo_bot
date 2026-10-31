@@ -22,7 +22,16 @@ from database.models import RemnawaveInstall
 
 from .naming import node_name_from_host
 from .progress import build_progress, job_actions, job_status_text
-from .types import DELETABLE_STATUSES, NODE_IMAGE, InstallError, InstallSpec, InstallWaitingError, needs_certificate
+from .types import (
+    DELETABLE_STATUSES,
+    ENTRY_ROLES,
+    EXIT_ROLES,
+    NODE_IMAGE,
+    InstallError,
+    InstallSpec,
+    InstallWaitingError,
+    needs_certificate,
+)
 from .vault import vault
 
 
@@ -101,6 +110,11 @@ def _view(row, *, include_credentials: bool = True) -> dict:
         "stage": row.stage,
         "params": copy.deepcopy(row.params or {}),
         "pending_params": copy.deepcopy(pending),
+        "haproxy": {
+            key: artifacts["haproxy"][key]
+            for key in ("exit_install_id", "name", "address", "port", "squad_uuid")
+            if key in artifacts.get("haproxy", {})
+        },
         "deletion": _deleting(row, artifacts),
         "deletion_requires_credentials": _deletion_requires_credentials(artifacts),
         "can_delete": _idle_deletable(row),
@@ -618,7 +632,10 @@ def _require_credentials(spec: InstallSpec, secrets: dict) -> None:
 def _require_change_credentials(spec: InstallSpec, secrets: dict, operations: list[str]) -> bool:
     """Требует доступы только к затрагиваемым системам."""
     remote = bool(set(operations) & {"connection", "prepare", "remote"}) or (
-        spec.transport == "hysteria2" and "verify" in operations
+        spec.role == "haproxy_entry"
+        and "verify" in operations
+        or spec.transport == "hysteria2"
+        and "verify" in operations
     )
     cloud = "cloud" in operations and spec.transport.startswith("cdn_")
     if remote and not (secrets.get("ssh_password") or secrets.get("ssh_private_key")):
@@ -760,7 +777,7 @@ async def preview_changes(job_id: str, owner_id: int, *, params: dict) -> dict:
             InstallSpec.from_dict(row.params) if row.fingerprint else InstallSpec.from_dict(row.params, complete=False)
         )
         visible = InstallSpec.from_dict(edit.get("after") or row.params, complete=bool(row.fingerprint))
-        if old.role == "exit":
+        if old.role in EXIT_ROLES:
             dependent = (
                 (
                     await session.execute(
@@ -839,6 +856,15 @@ async def apply_changes(job_id: str, owner_id: int, *, params: dict, token: str,
         if required and row.secrets_expire_at and row.secrets_expire_at <= datetime.utcnow():
             raise ValueError("Срок хранения SSH-доступов истёк; введите их повторно")
         old = InstallSpec.from_dict(row.params)
+        if old.role == "haproxy_exit":
+            from .changes import build_change_plan
+
+            current = dict(artifacts)
+            try:
+                await _guard_dependents(session, row)
+            except ValueError:
+                current["dependent_entries"] = [row.id]
+            build_change_plan(old, spec, current)
         artifacts.setdefault("remote_owner_id", remote_owner_id(old))
         old_config = artifacts.get("profile_config", {})
         if not artifacts.get("inbound_tag") and old_config.get("inbounds"):
@@ -939,19 +965,29 @@ def _approved_specs(row, artifacts: dict) -> list[dict]:
 
 async def _guard_exit_reference(session, row, spec: InstallSpec) -> None:
     """Фиксирует новую связь с выходом до удаления его записи."""
-    if spec.role != "entry" or not spec.exit_install_id:
+    if spec.role not in ENTRY_ROLES or not spec.exit_install_id:
         return
     if spec.exit_install_id == row.id:
         raise ValueError("Входная нода не может ссылаться на себя")
     artifacts = vault.open(row.id, row.encrypted_artifacts)
-    if any(item.get("exit_install_id") == spec.exit_install_id for item in _approved_specs(row, artifacts)):
+    if spec.role != "haproxy_entry" and any(
+        item.get("exit_install_id") == spec.exit_install_id for item in _approved_specs(row, artifacts)
+    ):
         return
     candidate = await _row(session, spec.exit_install_id, row.owner_id)
-    if (candidate.params or {}).get("role") != "exit":
+    expected_role = "haproxy_exit" if spec.role == "haproxy_entry" else "exit"
+    if (candidate.params or {}).get("role") != expected_role:
         raise ValueError("Выберите существующую выходную ноду этого администратора")
     candidate = await _row(session, spec.exit_install_id, row.owner_id, lock=True)
-    if (candidate.params or {}).get("role") != "exit" or _deleting(candidate):
+    if (candidate.params or {}).get("role") != expected_role or _deleting(candidate):
         raise ValueError("Выходная нода удаляется или больше недоступна для каскада")
+    if spec.role == "haproxy_entry" and (
+        candidate.status not in {"succeeded", "warning"}
+        or candidate.params.get("panel_ref") != spec.panel_ref
+        or candidate.params.get("address") == spec.address
+        or candidate.params.get("squad_uuid") != spec.squad_uuid
+    ):
+        raise ValueError("Выберите выход HAProxy на другом сервере той же панели с его клиентским сквадом")
 
 
 async def _assignment_row(session, job_id: str, owner_id: int, params: dict | None):
@@ -962,7 +998,7 @@ async def _assignment_row(session, job_id: str, owner_id: int, params: dict | No
         artifacts = vault.open(value.id, value.encrypted_artifacts) if params is not None else {}
         visible = (artifacts.get("edit") or {}).get("after") or value.params or {}
         proposed = {**visible, **(params or {})}
-        return proposed.get("exit_install_id") if params is not None and proposed.get("role") == "entry" else None
+        return proposed.get("exit_install_id") if params is not None and proposed.get("role") in ENTRY_ROLES else None
 
     exit_id = target(row)
     identifiers = {job_id, exit_id} if isinstance(exit_id, str) else {job_id}
@@ -986,7 +1022,7 @@ async def _guard_dependents(session, row) -> None:
     with suppress(InstallError):
         own = vault.open(row.id, row.encrypted_artifacts)
     own_specs = _approved_specs(row, own)
-    is_exit = any(item.get("role") == "exit" for item in own_specs)
+    is_exit = any(item.get("role") in EXIT_ROLES for item in own_specs)
     addresses = {item.get("address") for item in own_specs if item.get("address")}
     others = (await session.execute(select(RemnawaveInstall).where(RemnawaveInstall.id != row.id))).scalars()
     for other in others:
@@ -1002,7 +1038,12 @@ async def _guard_dependents(session, row) -> None:
             raise ValueError(
                 "Выходная нода используется другой установкой каскада. Сначала удалите или измените входную ноду"
             )
-        cascades = [artifacts.get("cascade"), *artifacts.get("retained_cascades", [])]
+        cascades = [
+            artifacts.get("cascade"),
+            *artifacts.get("retained_cascades", []),
+            artifacts.get("haproxy"),
+            *artifacts.get("haproxy_targets", []),
+        ]
         contexts = (artifacts.get("cleanup_cascade_contexts") or {}).values()
         if any(isinstance(item, dict) and item.get("exit_install_id") == row.id for item in [*cascades, *contexts]):
             raise ValueError("Выходная нода используется сохранённым техническим каскадом")
@@ -1292,9 +1333,14 @@ async def reinstall_job(
         if row.secrets_expire_at and row.secrets_expire_at <= datetime.utcnow():
             raise ValueError("Перед переустановкой введите SSH- и облачные доступы повторно")
         artifacts = vault.open(row.id, row.encrypted_artifacts)
-        if not all(artifacts.get(key) for key in ("profile_uuid", "inbound_uuid", "node_uuid", "node_secret")):
+        required = (
+            ("haproxy",)
+            if spec.role == "haproxy_entry"
+            else ("profile_uuid", "inbound_uuid", "node_uuid", "node_secret")
+        )
+        if not all(artifacts.get(key) for key in required):
             raise ValueError("В снимке отсутствуют подтверждённые ресурсы установленной ноды")
-        artifacts["done"] = ["keys", "panel_profile", "panel_node"]
+        artifacts["done"] = [] if spec.role == "haproxy_entry" else ["keys", "panel_profile", "panel_node"]
         artifacts.pop("verify_started_at", None)
         artifacts.pop("management", None)
         artifacts.pop("warnings", None)
@@ -1405,7 +1451,10 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
     operations = edit["operations"]
     panel_needed = bool(set(operations) & {"cascade", "profile", "node", "cloud", "verify", "squad", "host"})
     remote_needed = bool(set(operations) & {"connection", "prepare", "remote"}) or (
-        new.transport == "hysteria2" and "verify" in operations
+        new.role == "haproxy_entry"
+        and "verify" in operations
+        or new.transport == "hysteria2"
+        and "verify" in operations
     )
     async with AsyncExitStack() as stack:
         panel = await stack.enter_async_context(InstallerPanel(old, checkpoint=checkpoint)) if panel_needed else None
@@ -1433,6 +1482,12 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
                     await check_origin_dns(new)
                 await prepare_remote_changes(remote, previous, new, artifacts, changed, checkpoint=checkpoint)
             elif step == "cascade":
+                if new.role == "haproxy_entry":
+                    await _prepare_haproxy_target(snapshot, new, artifacts, checkpoint)
+                    edit["done"].append(step)
+                    edit.setdefault("applied_specs", {})[step] = new.to_dict()
+                    await checkpoint(artifacts)
+                    continue
                 exit_snapshot = await _snapshot(new.exit_install_id, snapshot["owner_id"])
                 exit_spec = InstallSpec.from_dict(exit_snapshot["params"])
                 if (
@@ -1467,12 +1522,19 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
                     if time.time() - started < 180:
                         raise InstallWaitingError("Ожидание подключения ноды после изменения настроек", retry_after=30)
                     raise InstallError("verify", "Изменения применены, но панель ещё не подтвердила подключение ноды")
+                if new.role == "haproxy_entry":
+                    from .haproxy import check_haproxy
+
+                    await check_haproxy(remote, new, artifacts)
                 if new.transport == "hysteria2":
                     from .checks import check_hysteria
 
                     await check_hysteria(remote, new)
             elif step == "squad":
-                await panel.move_to_squad(previous, new, artifacts)
+                if new.role == "haproxy_entry":
+                    await panel.add_to_squad(new, artifacts)
+                else:
+                    await panel.move_to_squad(previous, new, artifacts)
             elif step == "host":
                 await panel.update_host(previous, new, artifacts)
             edit["done"].append(step)
@@ -1498,6 +1560,64 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
                 done.add(stage)
         artifacts["done"] = [stage for stage in _STAGES if stage in done]
     return {"params": new.to_dict(), "fingerprint": new.fingerprint(), "resume_install": edit["resume_install"]}
+
+
+async def _prepare_haproxy_target(snapshot: dict, spec: InstallSpec, artifacts: dict, checkpoint) -> None:
+    """Закрепляет проверенный выход, сохраняя прежние цели для восстановления."""
+    from .panel import _uuid
+
+    if spec.role != "haproxy_entry" or not spec.exit_install_id or spec.exit_install_id == snapshot["id"]:
+        raise InstallError("cascade", "Выберите отдельный установленный выход HAProxy", retryable=False)
+    target_snapshot = await _snapshot(spec.exit_install_id, snapshot["owner_id"], include_secrets=False)
+    target_spec = InstallSpec.from_dict(target_snapshot["params"])
+    target_artifacts = target_snapshot["artifacts"]
+    if (
+        target_snapshot["status"] not in {"succeeded", "warning"}
+        or target_spec.role != "haproxy_exit"
+        or target_spec.panel_ref != spec.panel_ref
+        or target_spec.address == spec.address
+        or not target_artifacts.get("installed")
+        or not target_artifacts.get("remote_deployed")
+        or target_artifacts.get("install_id") != target_snapshot["id"]
+        or not spec.squad_uuid
+        or spec.squad_uuid != target_spec.squad_uuid
+        or target_artifacts.get("squad_uuid") != target_spec.squad_uuid
+        or not any(
+            ipaddress.ip_address(spec.address) in ipaddress.ip_network(source) for source in target_spec.haproxy_sources
+        )
+    ):
+        raise InstallError(
+            "cascade", "Выход HAProxy, его клиентский сквад или доступ с входного IP не подтверждены", retryable=False
+        )
+    config_inbounds = (target_artifacts.get("profile_config") or {}).get("inbounds") or []
+    if (
+        not isinstance(config_inbounds, list)
+        or len(config_inbounds) != 1
+        or not isinstance(config_inbounds[0], dict)
+        or config_inbounds[0].get("port") != target_spec.client_port
+        or (config_inbounds[0].get("streamSettings") or {}).get("tcpSettings", {}).get("acceptProxyProtocol")
+        is not True
+    ):
+        raise InstallError("cascade", "Выход HAProxy не подтвердил приём PROXY protocol", retryable=False)
+    target = {
+        "exit_install_id": target_snapshot["id"],
+        "panel_ref": target_spec.panel_ref,
+        "name": target_spec.name,
+        "address": target_spec.address,
+        "port": target_spec.client_port,
+        "profile_uuid": _uuid(target_artifacts.get("profile_uuid"), "профиль выхода HAProxy"),
+        "inbound_uuid": _uuid(target_artifacts.get("inbound_uuid"), "инбаунд выхода HAProxy"),
+        "node_uuid": _uuid(target_artifacts.get("node_uuid"), "нода выхода HAProxy"),
+        "reality_domain": target_spec.reality_domain,
+        "squad_uuid": target_spec.squad_uuid,
+    }
+    previous = artifacts.get("haproxy")
+    if previous and previous != target:
+        history = artifacts.setdefault("haproxy_targets", [])
+        if previous not in history:
+            history.append(copy.deepcopy(previous))
+    artifacts["haproxy"] = target
+    await checkpoint(artifacts)
 
 
 async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
@@ -1530,6 +1650,8 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
             await preflight(remote, spec)
             await check_origin_dns(spec)
             await prepare_exit_ip(remote, spec, artifacts, checkpoint=checkpoint)
+            if spec.role == "haproxy_entry":
+                await _prepare_haproxy_target(snapshot, spec, artifacts, checkpoint)
             if spec.role == "entry":
                 exit_snapshot = await _snapshot(spec.exit_install_id, snapshot["owner_id"])
                 exit_spec = InstallSpec.from_dict(exit_snapshot["params"])
@@ -1549,8 +1671,11 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                 and previous_update.get("runtime_only") is True
             )
             runtime_upgrade = bool(
-                (confirmed_runtime or resuming_runtime or artifacts.get("remote_deployed"))
-                and artifacts.get("deployed_node_image") != NODE_IMAGE
+                spec.role != "haproxy_entry"
+                and (
+                    (confirmed_runtime or resuming_runtime or artifacts.get("remote_deployed"))
+                    and artifacts.get("deployed_node_image") != NODE_IMAGE
+                )
             )
             if runtime_upgrade:
                 confirmed_runtime = confirmed_runtime or resuming_runtime
@@ -1564,6 +1689,8 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                 await checkpoint(artifacts)
             verified_now = False
             for stage in _STAGES:
+                if spec.role == "haproxy_entry" and stage in {"keys", "panel_profile", "panel_node", "cdn"}:
+                    continue
                 if stage in artifacts["done"]:
                     continue
                 await log("Этап: " + stage, stage=stage)
@@ -1580,19 +1707,25 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                     await panel.ensure_node(spec, artifacts)
                     await panel.fetch_node_secret(artifacts)
                 elif stage == "docker":
-                    await deploy_node(
-                        remote,
-                        spec,
-                        artifacts,
-                        log,
-                        checkpoint=checkpoint,
-                        runtime_only=runtime_upgrade and confirmed_runtime,
-                    )
-                    artifacts["deployed_node_image"] = NODE_IMAGE
-                    artifacts.pop("node_image_update", None)
+                    if spec.role == "haproxy_entry":
+                        from .haproxy import deploy_haproxy
+
+                        await deploy_haproxy(remote, spec, artifacts, log, checkpoint=checkpoint)
+                    else:
+                        await deploy_node(
+                            remote,
+                            spec,
+                            artifacts,
+                            log,
+                            checkpoint=checkpoint,
+                            runtime_only=runtime_upgrade and confirmed_runtime,
+                        )
+                        artifacts["deployed_node_image"] = NODE_IMAGE
+                        artifacts.pop("node_image_update", None)
                 elif stage == "addons":
                     await install_addons(remote, spec, artifacts, log, checkpoint=checkpoint)
-                    await panel.update_profile(spec, artifacts, build_profile(spec, artifacts))
+                    if spec.role != "haproxy_entry":
+                        await panel.update_profile(spec, artifacts, build_profile(spec, artifacts))
                 elif stage == "cdn" and spec.transport.startswith("cdn_"):
                     await configure_cdn(spec, secrets, artifacts, checkpoint)
                 elif stage == "panel_squad":
@@ -1600,6 +1733,11 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                 elif stage == "panel_host" and spec.publish_host:
                     if not verified_now and not await panel.check_online(spec, artifacts):
                         raise InstallError("verify", "Нода отключилась во время ожидания DNS; хост ещё не опубликован")
+                    if spec.role == "haproxy_entry":
+                        from .haproxy import check_haproxy
+
+                        await check_haproxy(remote, spec, artifacts)
+                        await panel.add_to_squad(spec, artifacts)
                     await panel.ensure_host(spec, artifacts)
                 elif stage == "verify":
                     if not await panel.check_online(spec, artifacts):
@@ -1611,6 +1749,10 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                             "verify",
                             "Панель ещё не подтвердила подключение ноды. Проверьте порт управления, адрес панели и журнал контейнера",
                         )
+                    if spec.role == "haproxy_entry":
+                        from .haproxy import check_haproxy
+
+                        await check_haproxy(remote, spec, artifacts)
                     if spec.transport == "hysteria2":
                         from .checks import check_hysteria
 

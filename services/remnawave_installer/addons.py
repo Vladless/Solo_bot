@@ -5,7 +5,7 @@ import re
 import shlex
 
 from .psiphon import public_psiphon_config
-from .remote import APT, ROOT, RemoteServer, claim_paths, transport_bindings, transport_ports
+from .remote import APT, ROOT, RemoteServer, _ufw_rules, claim_paths, transport_bindings, transport_ports
 from .types import InstallError, InstallSpec
 
 
@@ -90,6 +90,8 @@ def psiphon_config(secrets: dict) -> tuple[dict, list[str]]:
 
 def validate_addons(spec: InstallSpec, secrets: dict) -> None:
     """Проверяет дополнения до удалённых изменений."""
+    if spec.role == "haproxy_entry" and (set(spec.addons) - {"bbr", "fail2ban", "ufw"} or spec.shaping or spec.exit_ip):
+        raise InstallError("addons", "Вход HAProxy поддерживает только BBR, fail2ban и UFW", retryable=False)
     if "psiphon" in spec.addons:
         psiphon_config(secrets)
     if spec.shaping:
@@ -425,23 +427,8 @@ async def _ufw(remote: RemoteServer, spec: InstallSpec, artifacts: dict, checkpo
         if checkpoint:
             await checkpoint(artifacts)
     await _packages(remote, "ufw")
-    if spec.trusted_ssh_sources:
-        for source in spec.trusted_ssh_sources:
-            await remote.run(
-                f"ufw allow from {shlex.quote(source)} to any port {spec.ssh_port} proto tcp comment solobot-remnawave",
-                step="ufw",
-            )
-    else:
-        await remote.run(f"ufw allow {spec.ssh_port}/tcp comment solobot-remnawave", step="ufw")
-    if not spec.panel_sources:
-        await remote.run(f"ufw allow {spec.node_port}/tcp comment solobot-remnawave", step="ufw")
-    for source in spec.panel_sources:
-        await remote.run(
-            f"ufw allow from {shlex.quote(source)} to any port {spec.node_port} proto tcp comment solobot-remnawave",
-            step="ufw",
-        )
-    for port, protocol in transport_bindings(spec):
-        await remote.run(f"ufw allow {port}/{protocol} comment solobot-remnawave", step="ufw")
+    for rule in sorted(_ufw_rules(spec)):
+        await remote.run("ufw " + shlex.join(rule) + " comment solobot-remnawave", step="ufw")
     listeners = await remote.run("ss -tlnpH", step="ufw")
     for line in listeners.splitlines():
         if not any(
@@ -452,7 +439,10 @@ async def _ufw(remote: RemoteServer, spec: InstallSpec, artifacts: dict, checkpo
         if len(fields) < 4 or fields[3].startswith(("127.", "[::1]:")):
             continue
         port = fields[3].rsplit(":", 1)[-1]
-        if port.isdecimal() and 1 <= int(port) <= 65535 and int(port) not in {spec.ssh_port, spec.node_port}:
+        protected = {spec.ssh_port, spec.node_port}
+        if spec.role == "haproxy_exit":
+            protected.add(spec.client_port)
+        if port.isdecimal() and 1 <= int(port) <= 65535 and int(port) not in protected:
             await remote.run(f"ufw allow {int(port)}/tcp comment solobot-remnawave", step="ufw")
     await remote.run("ufw --force enable && LC_ALL=C ufw status | grep -q 'Status: active'", step="ufw")
 
@@ -659,6 +649,11 @@ async def manage_addons(
     remote: RemoteServer, spec: InstallSpec, artifacts: dict, action: str, params: dict, log, checkpoint=None
 ) -> None:
     """Изменяет только дополнения собственной установки."""
+    if spec.role == "haproxy_entry" and (
+        action in {"shaping", "shaper"}
+        or (action in {"addon", "addon_uninstall"} and params.get("name") not in {"bbr", "fail2ban", "ufw"})
+    ):
+        raise InstallError("addons", "Вход HAProxy поддерживает только BBR, fail2ban и UFW", retryable=False)
     await claim_paths(remote, spec)
     if action in {"shaping", "shaper"}:
         value = params.get("config", params)

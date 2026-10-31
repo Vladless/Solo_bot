@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ class PaymentLinkCreateRequest(BaseModel):
         description="Идентификатор кассы: ROBOKASSA, FREEKASSA, YOOKASSA, YOOMONEY, KASSAI_CARDS, KASSAI_SBP, HELEKET и др. Если не задан — берётся первый доступный.",
     )
     payhot_customer_phone: str | None = Field(None, max_length=32)
+    payhot_method: Literal["card", "sbp"] | None = None
     success_url: str | None = Field(None, description="URL перенаправления после успешной оплаты")
     failure_url: str | None = Field(None, description="URL перенаправления после неуспешной оплаты")
     metadata: dict[str, Any] | None = Field(None, description="Дополнительные данные")

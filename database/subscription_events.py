@@ -28,31 +28,30 @@ _DEDUP_EVENT_TYPES = ("renewed", "created")
 _DEDUP_WINDOW_SEC = 120
 
 
-async def _already_recorded(session: AsyncSession, event_type: str, client_id, expiry_time) -> bool:
-    """Событие того же типа с тем же ключом и сроком уже записано."""
+async def _already_recorded(session: AsyncSession, event_type: str, client_id, expiry_time, tariff_id) -> bool:
+    """Проверяет повтор события с тем же ключом, сроком и тарифом."""
     if event_type not in _DEDUP_EVENT_TYPES or not client_id or expiry_time is None:
         return False
     try:
         since = datetime.utcnow() - timedelta(seconds=_DEDUP_WINDOW_SEC)
-        for pending in session.new:
+        for pending in reversed(list(session.new)):
             if (
                 isinstance(pending, SubscriptionEvent)
                 and pending.event_type == event_type
                 and pending.client_id == str(client_id)[:128]
-                and pending.expiry_time == expiry_time
             ):
-                return True
+                return pending.expiry_time == expiry_time and pending.tariff_id == tariff_id
         found = await session.scalar(
-            select(SubscriptionEvent.id)
+            select(SubscriptionEvent)
             .where(
                 SubscriptionEvent.event_type == event_type,
                 SubscriptionEvent.client_id == str(client_id)[:128],
-                SubscriptionEvent.expiry_time == expiry_time,
                 SubscriptionEvent.created_at >= since,
             )
+            .order_by(SubscriptionEvent.created_at.desc(), SubscriptionEvent.id.desc())
             .limit(1)
         )
-        return found is not None
+        return found is not None and found.expiry_time == expiry_time and found.tariff_id == tariff_id
     except Exception:
         return False
 
@@ -75,7 +74,7 @@ async def record_subscription_event(
 ) -> None:
     """Сохраняет событие подписки без прерывания основной операции."""
     try:
-        if await _already_recorded(session, event_type, client_id, expiry_time):
+        if await _already_recorded(session, event_type, client_id, expiry_time, tariff_id):
             return
         add_result = session.add(
             SubscriptionEvent(

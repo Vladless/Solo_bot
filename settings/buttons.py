@@ -197,3 +197,13 @@ OVERPAY_AUTOPAY_DELETE_METHOD = "Удалить карту OverPay"
 OVERPAY_AUTOPAY_CANCEL_SUBSCRIPTION = "Отключить автопродление"
 OVERPAY_AUTOPAY_ENABLE_KEY = "Включить для {label}"
 OVERPAY_AUTOPAY_ENABLE = "Согласен, включить автопродление"
+
+
+PAYHOT_AUTOPAY = "💳 PayHOT · автоплатёж карты / СБП"
+AUTOPAY_PROVIDER_PAYHOT = "PayHOT"
+PAYHOT_AUTOPAY_CONFIRM = "Согласен, перейти к оплате"
+PAYHOT_AUTOPAY_ADD_METHOD = "Привязать способ оплаты PayHOT"
+PAYHOT_AUTOPAY_DELETE_METHOD = "Удалить способ оплаты PayHOT"
+PAYHOT_AUTOPAY_CANCEL_SUBSCRIPTION = "Отключить автопродление"
+PAYHOT_AUTOPAY_ENABLE_KEY = "Включить для {label}"
+PAYHOT_AUTOPAY_ENABLE = "Согласен, включить автопродление"

@@ -10,6 +10,7 @@ import { useCheckoutFlowContext } from "@/components/constructor/blockContent/ch
 import { useFlowPage } from "@/lib/flow-page-provider";
 import { hexToRgba } from "@/components/constructor/utils";
 import { PayhotCustomerPhoneField } from "@/components/constructor/blockContent/checkout/PayhotCustomerPhoneField";
+import { PayhotAutopayMethodField } from "@/components/constructor/blockContent/checkout/PayhotAutopayMethodField";
 
 
 const DCP_CSS = `
@@ -226,6 +227,13 @@ export function DefaultCheckoutProviderBlockView({ block, context, editMode }: T
           })}
         </div>
       )}
+      {live && effectiveSelected === "PAYHOT_AUTOPAY" && checkout!.requiredToPayRub > 0 ? (
+        <PayhotAutopayMethodField
+          checkout={checkout!}
+          style={{ color: t.ink, fontSize: t.font.sm }}
+          inputStyle={{ backgroundColor: t.innerBg, border: `1px solid ${t.line}`, borderRadius: t.radius.sm }}
+        />
+      ) : null}
       {live && effectiveSelected === "PAYHOT_SBERPAY" && checkout!.requiredToPayRub > 0 ? (
         <PayhotCustomerPhoneField
           value={checkout!.payhotCustomerPhone ?? ""}

@@ -167,6 +167,9 @@ async def user_key_renew(
         overpay_autopay_terms = autopay_terms_for_tariff(
             renew_tariff, quote.selected_device_limit, quote.selected_traffic_limit, provider_id="OVERPAY_AUTOPAY"
         )
+        payhot_autopay_terms = autopay_terms_for_tariff(
+            renew_tariff, quote.selected_device_limit, quote.selected_traffic_limit, provider_id="PAYHOT_AUTOPAY"
+        )
         return AccountKeyRenewResponse(
             ok=True,
             message="Расчет обновлен",
@@ -181,6 +184,8 @@ async def user_key_renew(
             kassai_autopay_period_days=kassai_autopay_terms["period_days"] if kassai_autopay_terms else None,
             overpay_autopay_price_rub=overpay_autopay_terms["amount"] if overpay_autopay_terms else None,
             overpay_autopay_period_days=overpay_autopay_terms["period_days"] if overpay_autopay_terms else None,
+            payhot_autopay_price_rub=payhot_autopay_terms["amount"] if payhot_autopay_terms else None,
+            payhot_autopay_period_days=payhot_autopay_terms["period_days"] if payhot_autopay_terms else None,
             discount_rub=pricing.discount_rub,
             final_price_rub=net_cost,
             applied_coupon_code=pricing.applied_coupon_code,
@@ -219,6 +224,7 @@ async def user_key_renew(
             metadata={
                 "payment_flow": "key_renewal",
                 "payhot_customer_phone": body.payhot_customer_phone,
+                "payhot_method": body.payhot_method,
                 "autopay_consent": body.autopay_consent,
                 "autopay_accepted_amount": body.autopay_accepted_amount,
                 "autopay_accepted_gross_amount": body.autopay_accepted_gross_amount,

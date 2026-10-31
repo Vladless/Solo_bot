@@ -200,6 +200,7 @@ async def create_gift_for_user(
             metadata={
                 "payment_flow": "gift_create",
                 "payhot_customer_phone": body.payhot_customer_phone,
+                "payhot_method": body.payhot_method,
                 "autopay_consent": body.autopay_consent,
                 "autopay_accepted_amount": body.autopay_accepted_amount,
                 "autopay_accepted_gross_amount": body.autopay_accepted_gross_amount,

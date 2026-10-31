@@ -138,6 +138,7 @@ async def process_success_payment(
                     "kassai",
                     "kassai_autopay",
                     "overpay_autopay",
+                    "payhot_autopay",
                     "paritypay",
                     "overpay",
                     "payhot",

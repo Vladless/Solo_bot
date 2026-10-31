@@ -2,7 +2,7 @@ import copy
 
 from dataclasses import fields
 
-from .types import InstallSpec
+from .types import EXIT_ROLES, InstallSpec
 
 
 LABELS = {
@@ -29,6 +29,7 @@ LABELS = {
     "exit_interface": "Интерфейс выходного IP",
     "panel_sources": "Адреса панели",
     "trusted_ssh_sources": "Доверенные адреса SSH",
+    "haproxy_sources": "IP входных серверов HAProxy",
     "addons": "Дополнения",
     "shaping": "Шейпинг",
     "cloud": "Доступ и проект / каталог облака",
@@ -71,6 +72,7 @@ REMOTE_FIELDS = {
     "ssh_port",
     "addons",
     "shaping",
+    "haproxy_sources",
 }
 CLOUD_FIELDS = {"transport", "domain", "cdn_domain", "email", "cloud"}
 HOST_FIELDS = {"host_remark", "transport", "client_port", "domain", "cdn_domain", "publish_host"}
@@ -108,7 +110,8 @@ def build_change_plan(
         )
     cloud = cloud_change_plan(old, new)
     operations = []
-    remote_needed = bool(artifacts.get("remote_deployed") and changed & REMOTE_FIELDS)
+    remote_fields = REMOTE_FIELDS | ({"exit_install_id"} if old.role == "haproxy_entry" else set())
+    remote_needed = bool(artifacts.get("remote_deployed") and changed & remote_fields)
     prepare = (
         bool(artifacts.get("profile_uuid") and changed & {"transport", "exit_ip", "exit_interface"}) or remote_needed
     )
@@ -116,7 +119,14 @@ def build_change_plan(
         operations.append("connection")
     if prepare:
         operations.append("prepare")
-    if artifacts.get("profile_uuid") and old.role == "entry" and "exit_install_id" in changed:
+    if (
+        artifacts.get("profile_uuid")
+        and old.role == "entry"
+        and "exit_install_id" in changed
+        or old.role == "haproxy_entry"
+        and artifacts.get("haproxy")
+        and "exit_install_id" in changed
+    ):
         operations.append("cascade")
     if artifacts.get("profile_uuid") and changed & PROFILE_FIELDS:
         operations.append("profile")
@@ -131,7 +141,7 @@ def build_change_plan(
     ):
         operations.append("cloud")
     if (
-        artifacts.get("node_uuid")
+        (artifacts.get("node_uuid") or old.role == "haproxy_entry")
         and artifacts.get("remote_deployed")
         and changed
         & {
@@ -145,16 +155,18 @@ def build_change_plan(
             "panel_sources",
             "addons",
             "exit_install_id",
+            "haproxy_sources",
         }
     ):
         operations.append("verify")
     if (
-        artifacts.get("inbound_uuid")
+        (artifacts.get("inbound_uuid") or old.role == "haproxy_entry")
         and (artifacts.get("remote_deployed") or artifacts.get("squad_uuid"))
         and "squad_uuid" in changed
     ):
         operations.append("squad")
-    if (artifacts.get("host_uuid") or is_installed(artifacts)) and changed & HOST_FIELDS:
+    host_fields = HOST_FIELDS | ({"exit_install_id"} if old.role == "haproxy_entry" else set())
+    if (artifacts.get("host_uuid") or is_installed(artifacts)) and changed & host_fields:
         operations.append("host")
     warnings = []
     if remote_needed or "profile" in operations and changed - {"profile_name"}:
@@ -165,8 +177,14 @@ def build_change_plan(
     if "squad_uuid" in changed and resources:
         warnings.append("Изменится доступ пользователей выбранных сквадов к этому инбаунду")
     if (
-        changed & {"transport", "reality_domain", "domain", "cdn_domain", "client_port"}
-        and old.role == "exit"
+        (
+            changed & {"transport", "reality_domain", "domain", "cdn_domain", "client_port"}
+            or old.role == "haproxy_exit"
+            and "squad_uuid" in changed
+            or old.role == "haproxy_exit"
+            and not set(old.haproxy_sources).issubset(new.haproxy_sources)
+        )
+        and old.role in EXIT_ROLES
         and artifacts.get("dependent_entries")
     ):
         raise ValueError(

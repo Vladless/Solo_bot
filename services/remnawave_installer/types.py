@@ -24,7 +24,16 @@ TRANSPORTS = {
     "hysteria2": "Hysteria2",
 }
 CERTIFICATE_TRANSPORTS = frozenset({"vless_tcp_selfsteal", "cdn_vk", "cdn_yandex", "hysteria2"})
-ROLES = {"normal": "Обычная", "entry": "Вход каскада", "exit": "Выход каскада"}
+ROLES = {
+    "normal": "Обычная",
+    "entry": "Вход каскада VLESS",
+    "exit": "Выход каскада VLESS",
+    "haproxy_entry": "Вход HAProxy",
+    "haproxy_exit": "Выход HAProxy",
+}
+ENTRY_ROLES = frozenset({"entry", "haproxy_entry"})
+EXIT_ROLES = frozenset({"exit", "haproxy_exit"})
+HAPROXY_ROLES = frozenset({"haproxy_entry", "haproxy_exit"})
 ADDONS = {
     "bbr": "BBR",
     "fail2ban": "fail2ban",
@@ -100,6 +109,7 @@ class InstallSpec:
     exit_interface: str = ""
     panel_sources: list[str] = field(default_factory=list)
     trusted_ssh_sources: list[str] = field(default_factory=list)
+    haproxy_sources: list[str] = field(default_factory=list)
     addons: list[str] = field(default_factory=list)
     shaping: dict[str, Any] = field(default_factory=dict)
     cloud: dict[str, Any] = field(default_factory=dict)
@@ -127,8 +137,10 @@ class InstallSpec:
             raise ValueError("Hysteria2 доступна только для обычной ноды")
         if spec.site_template not in {"standard", "streaming"}:
             raise ValueError("Неизвестный шаблон сайта")
-        if spec.role == "exit":
+        if spec.role in EXIT_ROLES:
             spec.publish_host = False
+        if spec.role in HAPROXY_ROLES and spec.transport != "vless_tcp_reality":
+            raise ValueError("Для каскада HAProxy выберите VLESS TCP Reality")
         for name in ("ssh_port", "client_port", "node_port"):
             port = getattr(spec, name)
             if type(port) is not int or not 1 <= port <= 65535:
@@ -168,9 +180,15 @@ class InstallSpec:
                 raise ValueError("Параметр шейпинга вне допустимого диапазона: " + name)
         if spec.shaping and spec.transport == "hysteria2":
             raise ValueError("Шейпинг Hysteria2 не поддерживается: текущий шейпер работает только с TCP")
-        if spec.shaping and (spec.transport.startswith("cdn_") or spec.role == "exit"):
+        if spec.shaping and (spec.transport.startswith("cdn_") or spec.role in EXIT_ROLES):
             raise ValueError("Шейпинг доступен только для прямых транспортов и входа каскада")
-        for name in ("panel_sources", "trusted_ssh_sources"):
+        if spec.role == "haproxy_entry" and (
+            set(spec.addons) - {"bbr", "fail2ban", "ufw"} or spec.shaping or spec.exit_ip or spec.exit_interface
+        ):
+            raise ValueError(
+                "Вход HAProxy поддерживает BBR, fail2ban и UFW; маршрутизация и шейпинг настраиваются на выходе"
+            )
+        for name in ("panel_sources", "trusted_ssh_sources", "haproxy_sources"):
             values = getattr(spec, name)
             if not isinstance(values, list):
                 raise ValueError("Адреса доступа передаются списком IP или CIDR")
@@ -178,6 +196,9 @@ class InstallSpec:
                 setattr(spec, name, [str(ipaddress.ip_network(item, strict=False)) for item in values])
             except (ValueError, TypeError) as error:
                 raise ValueError("Некорректный IP или CIDR доступа") from error
+        if any(ipaddress.ip_network(item).num_addresses != 1 for item in spec.haproxy_sources):
+            raise ValueError("Для HAProxy укажите отдельные IP входных серверов, без подсетей")
+        spec.haproxy_sources = list(dict.fromkeys(spec.haproxy_sources))
         if spec.host_fingerprint and not re.fullmatch(r"SHA256:[A-Za-z0-9+/]{43}", spec.host_fingerprint):
             raise ValueError("Некорректный отпечаток SSH-ключа сервера")
         if not spec.name and spec.address:
@@ -224,8 +245,12 @@ class InstallSpec:
             spec.cdn_domain = _domain(spec.cdn_domain)
             if spec.domain == spec.cdn_domain:
                 raise ValueError("Origin и CDN должны иметь разные домены")
-        if spec.role == "entry" and not spec.exit_install_id:
+        if spec.role in ENTRY_ROLES and not spec.exit_install_id:
             raise ValueError("Выберите установленную выходную ноду каскада")
+        if spec.role == "haproxy_exit" and (not spec.haproxy_sources or not spec.squad_uuid):
+            raise ValueError("Для выхода HAProxy укажите IP входных серверов и выберите клиентский сквад")
+        if spec.role == "haproxy_entry" and not spec.squad_uuid:
+            raise ValueError("Для входа HAProxy выберите выходную ноду с клиентским сквадом")
         if spec.exit_install_id is not None and (
             not isinstance(spec.exit_install_id, str) or not re.fullmatch(r"[a-f0-9]{32}", spec.exit_install_id)
         ):
@@ -235,7 +260,7 @@ class InstallSpec:
                 UUID(spec.squad_uuid)
             except (ValueError, TypeError, AttributeError) as error:
                 raise ValueError("Некорректный UUID сквада") from error
-        if spec.role == "exit" and spec.transport != "vless_tcp_reality":
+        if spec.role in EXIT_ROLES and spec.transport != "vless_tcp_reality":
             raise ValueError("Для выхода каскада выберите VLESS TCP Reality")
         if spec.exit_ip:
             try:
@@ -244,11 +269,12 @@ class InstallSpec:
                 raise ValueError("Некорректный выходной IP") from error
             if spec.exit_interface and not re.fullmatch(r"[A-Za-z0-9_.:-]{1,32}", spec.exit_interface):
                 raise ValueError("Некорректное имя сетевого интерфейса")
-        if spec.ssh_port == spec.node_port or (
-            client_network(spec) == "tcp" and spec.client_port in {spec.ssh_port, spec.node_port}
+        management_ports = {spec.node_port} if spec.role != "haproxy_entry" else set()
+        if spec.ssh_port in management_ports or (
+            client_network(spec) == "tcp" and spec.client_port in {spec.ssh_port, *management_ports}
         ):
             raise ValueError("Порты SSH, клиентов и управления нодой должны различаться")
-        tcp_ports = {spec.ssh_port, spec.node_port}
+        tcp_ports = {spec.ssh_port, *management_ports}
         if client_network(spec) == "tcp":
             tcp_ports.add(spec.client_port)
         if needs_certificate(spec) and 80 in tcp_ports:
@@ -261,7 +287,10 @@ class InstallSpec:
 
     def fingerprint(self) -> str:
         """Привязывает снимок установки к неизменным параметрам."""
-        payload = json.dumps(self.to_dict(), sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+        values = self.to_dict()
+        if not values["haproxy_sources"]:
+            values.pop("haproxy_sources")
+        payload = json.dumps(values, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()
 
 

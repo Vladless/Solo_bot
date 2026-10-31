@@ -396,7 +396,14 @@ async def add_payment(
         status == "pending"
         and PAYMENT_CHECKOUT_SNAPSHOT not in metadata
         and str(payment_system).lower()
-        not in {"2328", "yookassa_autopay", "yookassa_autopay_web", "kassai_autopay", "overpay_autopay"}
+        not in {
+            "2328",
+            "yookassa_autopay",
+            "yookassa_autopay_web",
+            "kassai_autopay",
+            "overpay_autopay",
+            "payhot_autopay",
+        }
     ):
         metadata = await capture_payment_checkout(session, UserId(u.id), metadata)
     now_moscow = datetime.now(MOSCOW_TZ).replace(tzinfo=None)
@@ -648,6 +655,7 @@ async def cancel_expired_pending_payments(session: AsyncSession) -> int:
                     "YOOKASSA_AUTOPAY_WEB",
                     "KASSAI_AUTOPAY",
                     "OVERPAY_AUTOPAY",
+                    "PAYHOT_AUTOPAY",
                     "2328",
                     "PAYHOT",
                     "PAYHOT_CARDS",

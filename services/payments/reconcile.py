@@ -45,6 +45,17 @@ async def reconcile_pending_payment(payment: dict) -> str:
         status = await reconcile_payment(payment_id)
         return "success" if status == "success" else "canceled" if status in {"cancelled", "failed", "refunded"} else ""
 
+    if provider == "payhot_autopay":
+        from services.payments.payhot.autopay import reconcile_payment
+
+        result = await reconcile_payment(payment_id)
+        if not result.ok:
+            return ""
+        async with async_session_maker() as session:
+            current = await get_payment_from_db_by_payment_id(session, payment_id)
+        status = str((current or {}).get("status") or "").lower()
+        return "success" if status == "success" else "canceled" if status in {"canceled", "cancelled"} else ""
+
     if provider in {"yookassa_autopay", "yookassa_autopay_web"}:
         from services.payments.yookassa_autopay.service import reconcile_payment
 

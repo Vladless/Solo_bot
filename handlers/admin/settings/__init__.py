@@ -14,6 +14,7 @@ from .settings_modes import router as settings_modes_router
 from .settings_money import router as settings_panels_router
 from .settings_notifications import router as settings_notifications_router
 from .settings_overpay import router as settings_overpay_router
+from .settings_payhot import router as settings_payhot_router
 from .settings_remnawave import router as settings_remnawave_router
 from .settings_remnawave_install import router as settings_remnawave_install_router
 from .settings_tariffs import router as settings_tariffs_router
@@ -32,6 +33,7 @@ router.include_router(settings_menu_layout_router)
 router.include_router(settings_cashboxes_router)
 router.include_router(settings_kassai_router)
 router.include_router(settings_overpay_router)
+router.include_router(settings_payhot_router)
 router.include_router(settings_yookassa_router)
 router.include_router(settings_yookassa_autopay_router)
 router.include_router(settings_yookassa_refunds_router)

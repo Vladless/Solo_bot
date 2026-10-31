@@ -90,6 +90,7 @@ PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
     "PAYHOT_CARDS": "PayHOT карты",
     "PAYHOT_SBP": "PayHOT СБП",
     "PAYHOT_SBERPAY": "PayHOT SberPay",
+    "PAYHOT_AUTOPAY": "PayHOT · автоплатёж карты / СБП",
 }
 
 PAYMENT_CASHBOX_TITLES: Final[dict[str, str]] = {
@@ -125,7 +126,7 @@ PAYMENT_CASHBOX_GROUPS: Final[dict[str, tuple[str, ...]]] = {
     "FREEKASSA": ("FREEKASSA",),
     "STARS": ("STARS",),
     "KASSA2328": ("KASSA2328",),
-    "PAYHOT": ("PAYHOT_CARDS", "PAYHOT_SBP", "PAYHOT_SBERPAY"),
+    "PAYHOT": ("PAYHOT_CARDS", "PAYHOT_SBP", "PAYHOT_SBERPAY", "PAYHOT_AUTOPAY"),
 }
 
 MODES_TITLES: Final[dict[str, str]] = {
@@ -264,3 +265,13 @@ OVERPAY_AUTOPAY_TITLES: Final[dict[str, str]] = {
     "API_TIMEOUT": "Ожидание ответа OverPay (секунды)",
 }
 OVERPAY_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {"MANAGE_BUTTON_LOCATION": AUTOPAY_MANAGEMENT_OPTIONS}
+
+
+PAYHOT_AUTOPAY_TITLES: Final[dict[str, str]] = {
+    "DAYS_BEFORE_EXPIRY": "Начинать автопродление за (дни)",
+    "MAX_RETRY_ATTEMPTS": "Максимум попыток списания",
+    "RETRY_INTERVAL_HOURS": "Интервал повторных попыток (часы)",
+    "MIN_PAYMENT_AMOUNT": "Минимальная сумма списания (₽)",
+    "MANAGE_BUTTON_LOCATION": "Кнопка управления автоплатежами",
+}
+PAYHOT_AUTOPAY_OPTIONS: Final[dict[str, list[dict[str, str]]]] = {"MANAGE_BUTTON_LOCATION": AUTOPAY_MANAGEMENT_OPTIONS}

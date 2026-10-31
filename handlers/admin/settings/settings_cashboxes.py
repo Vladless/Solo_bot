@@ -19,6 +19,7 @@ from .keyboard import (
 from .settings_config import PAYMENT_CASHBOX_GROUPS, PAYMENT_CASHBOX_TITLES
 from .settings_kassai import show_kassai_settings
 from .settings_overpay import show_overpay_settings
+from .settings_payhot import show_payhot_settings
 from .settings_yookassa import show_yookassa_settings
 
 
@@ -68,6 +69,9 @@ async def show_cashbox_settings(callback: CallbackQuery, cashbox: str) -> None:
     if cashbox == "KASSAI":
         await show_kassai_settings(callback)
         return
+    if cashbox == "PAYHOT":
+        await show_payhot_settings(callback)
+        return
     if cashbox == "OVERPAY":
         await show_overpay_settings(callback)
         return
@@ -104,7 +108,7 @@ async def toggle_cashbox_setting(
 
     provider_code = keys[index - 1]
 
-    if provider_code in {"KASSAI_AUTOPAY", "OVERPAY_AUTOPAY"}:
+    if provider_code in {"KASSAI_AUTOPAY", "OVERPAY_AUTOPAY", "PAYHOT_AUTOPAY"}:
         _, is_super, _ = await get_admin_context(callback.from_user.id, fresh=True)
         if not is_super:
             await callback.answer("Недостаточно прав для этого действия.", show_alert=True)

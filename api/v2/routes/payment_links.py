@@ -65,6 +65,11 @@ async def quote_link(body: PaymentLinkCreateRequest, identity=Depends(verify_ide
         raise HTTPException(status_code=400, detail=texts.KASSAI_AUTOPAY_DISABLED)
     if provider == "OVERPAY_AUTOPAY" and not PAYMENTS_CONFIG.get(provider):
         raise HTTPException(status_code=400, detail=texts.OVERPAY_AUTOPAY_DISABLED)
+    if provider == "PAYHOT_AUTOPAY":
+        from core.settings.payhot_autopay_config import is_payhot_autopay_enabled
+
+        if not is_payhot_autopay_enabled():
+            raise HTTPException(status_code=400, detail=texts.PAYHOT_AUTOPAY_DISABLED)
     if provider in YOOKASSA_PROVIDERS and not PAYMENTS_CONFIG.get(enabled_id):
         raise HTTPException(status_code=400, detail=texts.YOOKASSA_PROVIDER_DISABLED)
     try:
@@ -238,6 +243,8 @@ async def create_link(
     web_metadata.setdefault("payment_flow", "balance_topup")
     if body.payhot_customer_phone is not None:
         web_metadata["payhot_customer_phone"] = body.payhot_customer_phone
+    if body.payhot_method is not None:
+        web_metadata["payhot_method"] = body.payhot_method
     await _validate_payment_intent(session, billing_user_ref, web_metadata)
     base_url = resolve_public_base_url(http_request)
     payment_request = PaymentLinkRequest(
@@ -255,6 +262,7 @@ async def create_link(
         "YOOKASSA_AUTOPAY_WEB",
         "KASSAI_AUTOPAY",
         "OVERPAY_AUTOPAY",
+        "PAYHOT_AUTOPAY",
         "KASSA2328",
     }:
         try:
@@ -369,6 +377,7 @@ async def get_link_status(
         "YOOKASSA_AUTOPAY_WEB",
         "KASSAI_AUTOPAY",
         "OVERPAY_AUTOPAY",
+        "PAYHOT_AUTOPAY",
         "2328",
         "PAYHOT",
         "PAYHOT_CARDS",

@@ -267,6 +267,9 @@ async def purchase_tariff_with_balance(
         overpay_autopay_terms = autopay_terms_for_tariff(
             tariff, body.selected_device_limit, body.selected_traffic_gb, provider_id="OVERPAY_AUTOPAY"
         )
+        payhot_autopay_terms = autopay_terms_for_tariff(
+            tariff, body.selected_device_limit, body.selected_traffic_gb, provider_id="PAYHOT_AUTOPAY"
+        )
         return TariffPurchaseResponse(
             ok=True,
             message="Расчет обновлен",
@@ -279,6 +282,8 @@ async def purchase_tariff_with_balance(
             kassai_autopay_period_days=kassai_autopay_terms["period_days"] if kassai_autopay_terms else None,
             overpay_autopay_price_rub=overpay_autopay_terms["amount"] if overpay_autopay_terms else None,
             overpay_autopay_period_days=overpay_autopay_terms["period_days"] if overpay_autopay_terms else None,
+            payhot_autopay_price_rub=payhot_autopay_terms["amount"] if payhot_autopay_terms else None,
+            payhot_autopay_period_days=payhot_autopay_terms["period_days"] if payhot_autopay_terms else None,
             discount_rub=int(discount_rub),
             final_price_rub=int(final_price),
             applied_coupon_code=applied_coupon_code,
@@ -305,6 +310,7 @@ async def purchase_tariff_with_balance(
             metadata={
                 "payment_flow": "tariff_purchase",
                 "payhot_customer_phone": body.payhot_customer_phone,
+                "payhot_method": body.payhot_method,
                 "autopay_consent": body.autopay_consent,
                 "autopay_accepted_amount": body.autopay_accepted_amount,
                 "autopay_accepted_gross_amount": body.autopay_accepted_gross_amount,

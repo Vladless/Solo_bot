@@ -35,6 +35,7 @@ from database.models import (
 )
 from database.overpay_autopay import delete_recurring_user_data as delete_overpay_recurring_user_data
 from database.partners import delete_partner_user_data
+from database.payhot_autopay import delete_recurring_user_data as delete_payhot_recurring_user_data
 from database.yookassa_autopay import delete_recurring_user_data
 from logger import logger
 from settings.cache_config import (
@@ -455,6 +456,7 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
     await delete_recurring_user_data(session, uid)
     await delete_kassai_recurring_user_data(session, uid)
     await delete_overpay_recurring_user_data(session, uid)
+    await delete_payhot_recurring_user_data(session, uid)
     await delete_partner_user_data(session, uid)
 
     for model in (WebPushSubscription, WebNotification):

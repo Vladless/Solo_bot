@@ -13,6 +13,7 @@ from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, MONEY_CONFIG, PAYMENTS_
 from core.defaults import DEFAULT_WEB_CONFIG
 from core.settings.bonus_config import is_daily_bonus_enabled
 from core.settings.money_config import get_currency_mode
+from core.settings.payhot_autopay_config import available_payment_methods, is_payhot_autopay_enabled
 from core.settings.web_config import (
     WEB_CONFIG,
     get_email_binding_reminder_interval_days,
@@ -154,6 +155,7 @@ async def site_config(session: AsyncSession = Depends(get_session)):
     bot_username = USERNAME_BOT.replace("@", "").strip()
     providers_map = await get_providers_with_hooks(dict(PAYMENTS_CONFIG or {}))
     pay_flags = {name: bool(cfg.get("enabled")) for name, cfg in providers_map.items()}
+    pay_flags["PAYHOT_AUTOPAY"] = is_payhot_autopay_enabled()
     any_pay = any(pay_flags.values())
     web_link_set = set(get_web_link_provider_ids())
     tg_only_set = set(TELEGRAM_ONLY_PROVIDER_IDS)
@@ -269,6 +271,7 @@ async def site_config(session: AsyncSession = Depends(get_session)):
             "payhot_phone_label": texts.PAYHOT_WEB_PHONE_LABEL,
             "payhot_phone_placeholder": texts.PAYHOT_WEB_PHONE_PLACEHOLDER,
             "payhot_phone_invalid": texts.PAYHOT_WEB_PHONE_INVALID,
+            "payhot_autopay_methods": available_payment_methods(),
             "telegram_only_provider_ids": telegram_only_provider_ids,
             "yookassa_enabled": pay_flags.get("YOOKASSA", False),
             "yoomoney_enabled": pay_flags.get("YOOMONEY", False),

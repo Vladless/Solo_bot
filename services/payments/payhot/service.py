@@ -11,6 +11,7 @@ from core.settings import payhot_config as config
 from core.settings.payments_config import PAYMENTS_CONFIG
 from database import async_session_maker, register_pending_payment
 from database.payments import (
+    PAYMENT_CHECKOUT_OPERATION,
     PAYMENT_CHECKOUT_SNAPSHOT,
     _checkout_snapshot,
     canonical_payment_provider,
@@ -164,7 +165,34 @@ async def _process_confirmed(payment: dict, *, event_id: str | None = None) -> P
     )
     status = payment["status"]
     if status == "succeeded":
-        result = await process_success_payment("payhot", parsed)
+        if (invoice.get("metadata") or {}).get("autopay_consent") is True:
+            from services.payments.payhot.autopay import complete_first_payment, verified_first_enrollment
+
+            mandate, enrollment_error = None, None
+            try:
+                mandate = await verified_first_enrollment(payment, invoice)
+            except PaymentError as exc:
+                enrollment_error = exc
+                logger.warning("[PayHOT] Привязка требует повторной проверки: {}", invoice["payment_id"])
+            async with async_session_maker() as session:
+                row = await lock_payment_for_processing(session, invoice["payment_id"])
+                metadata = dict(row.metadata_ or {})
+                metadata["payhot_recurring_enrollment"] = payment.get("recurring_enrollment") or {}
+                if mandate is not None:
+                    metadata["payhot_verified_mandate"] = mandate
+                    metadata.pop("payhot_enrollment_error", None)
+                elif enrollment_error is not None:
+                    metadata["payhot_enrollment_error"] = str(enrollment_error)
+                    if not enrollment_error.retryable:
+                        metadata["payhot_autopay_requires_consent"] = True
+                row.metadata_ = metadata
+                await session.commit()
+            await invalidate_payment_cache(invoice["payment_id"])
+            result = await process_success_payment(
+                "payhot", parsed, completion=complete_first_payment, use_temporary_checkout=False
+            )
+        else:
+            result = await process_success_payment("payhot", parsed)
     elif status in {"failed", "cancelled", "refunded"}:
         result = await process_cancelled_payment(
             "payhot", parsed, new_status={"failed": "failed", "cancelled": "cancelled", "refunded": "refunded"}[status]
@@ -232,6 +260,15 @@ async def create_invoice(
     }
     if customer_phone is not None:
         payload["customer"].update(phone=customer_phone, sberpay={"front_type": "back2app"})
+    consent = (metadata or {}).get("autopay_consent") is True
+    if consent:
+        from core.settings.payhot_autopay_config import is_payhot_autopay_enabled_for_session
+
+        if method_name not in {"cards", "sbp"} or not await is_payhot_autopay_enabled_for_session(
+            session, payment_method=method["payment_method"]
+        ):
+            raise PaymentError(texts.PAYHOT_AUTOPAY_NEW_PAYMENTS_DISABLED)
+        payload["recurring_enrollment"] = {}
     previous = await get_payment_from_db_by_payment_id(session, payment_id) if order_id else None
     if previous:
         if (
@@ -249,6 +286,38 @@ async def create_invoice(
             expected_checkout
         ):
             raise PaymentError(texts.PAYHOT_PURCHASE_CHANGED)
+        if consent:
+            from database.access.resolution import UserId
+            from services.payments.checkout_intent import _optional_int, freeze_checkout_intent
+            from services.payments.payhot.autopay import money
+
+            frozen_metadata = {**meta, "autopay_provider": "PAYHOT_AUTOPAY"}
+            snapshot = meta.get(PAYMENT_CHECKOUT_SNAPSHOT)
+            if snapshot:
+                frozen_metadata["checkout_intent"] = snapshot
+            checkout = await freeze_checkout_intent(session, UserId(owner), frozen_metadata, float(value))
+            if checkout.get("state") != "balance_topup":
+                if checkout.get("state") not in {"waiting_for_payment", "waiting_for_renewal_payment"} or checkout[
+                    "data"
+                ].get("payment_flow") not in {"tariff_purchase", "key_renewal"}:
+                    raise PaymentError(texts.PAYHOT_AUTOPAY_SUBSCRIPTION_UNAVAILABLE)
+                if meta.get("autopay_accepted_amount") is None or meta.get("autopay_accepted_period_days") is None:
+                    raise PaymentError(texts.PAYHOT_AUTOPAY_TERMS_CONSENT_REQUIRED)
+                if money(checkout["data"].get("autopay_amount") or 0) > money(meta["autopay_accepted_amount"]):
+                    raise PaymentError(texts.PAYHOT_AUTOPAY_AMOUNT_CHANGED)
+                if int(checkout["data"].get("autopay_period_days") or 0) != _optional_int(
+                    meta["autopay_accepted_period_days"]
+                ):
+                    raise PaymentError(texts.PAYHOT_AUTOPAY_PERIOD_CHANGED)
+            meta["payhot_checkout_intent"] = checkout
+            meta["autopay_provider"] = "PAYHOT_AUTOPAY"
+            if checkout.get("state") == "waiting_for_payment":
+                data = checkout["data"]
+                meta[PAYMENT_CHECKOUT_OPERATION] = {
+                    "client_id": data["created_client_id"],
+                    "email": data["created_email"],
+                    "cluster": data["created_cluster"],
+                }
         meta.update(provider="payhot", payhot_method=method_name, payhot_request=payload)
         await session.commit()
         await register_pending_payment(payment_id, owner, float(value), "payhot", currency="RUB", metadata=meta)
@@ -264,6 +333,9 @@ async def create_invoice(
     invoice = await _load_invoice(payment_id)
     provider_id = _validate_payment(payment, invoice)
     if payment["status"] in _FINAL_STATUSES:
+        confirmed = await api_request("GET", f"/payments/{provider_id}")
+        payment = confirmed.get("payment")
+        _validate_payment(payment, invoice)
         await _process_confirmed(payment)
         raise PaymentError(texts.PAYHOT_PAYMENT_COMPLETED)
     await _save_provider_state(payment)

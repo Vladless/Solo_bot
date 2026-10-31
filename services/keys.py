@@ -734,7 +734,12 @@ async def execute_renewal(
     if billing_user_id is None:
         raise NotFoundError("Владелец подписки изменился. Откройте её заново.")
     await update_key_expiry(
-        session, effective_client_id, new_expiry_time, price_rub=float(cost), user_id=billing_user_id
+        session,
+        effective_client_id,
+        new_expiry_time,
+        price_rub=float(cost),
+        user_id=billing_user_id,
+        tariff_id=tariff_id,
     )
     from database.keys import invalidate_keys_list
 

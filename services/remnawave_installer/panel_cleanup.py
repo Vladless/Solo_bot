@@ -137,6 +137,36 @@ def _main_plan(spec: InstallSpec, artifacts: dict, inventory: dict) -> tuple[lis
         if explicit:
             raise _blocked("Не сохранён идентификатор владельца объектов панели")
         return [], {}
+    if spec.role == "haproxy_entry":
+        if any(artifacts.get(key) for key in ("profile_uuid", "inbound_uuid", "node_uuid", "squad_uuid")):
+            raise _blocked("Вход HAProxy не должен владеть объектами выходной ноды")
+        host_id = _uuid(artifacts["host_uuid"], "хост") if artifacts.get("host_uuid") else None
+        if not artifacts.get("haproxy") and not host_id:
+            return [], {}
+        choices = [InstallerPanel._host_body(item, artifacts) for item in specs]
+        if host_id:
+            host = inventory["hosts"].get(host_id)
+            choices.extend(InstallerPanel._update_intents(artifacts, "host", host_id))
+        else:
+            candidates = [
+                item
+                for item in inventory["hosts"].values()
+                if any(
+                    item.get("address") == choice["address"] and item.get("port") == choice["port"]
+                    for choice in choices
+                )
+            ]
+            if len(candidates) > 1:
+                raise _blocked("Найдены несколько хостов входа HAProxy")
+            host = candidates[0] if candidates else None
+            host_id = host.get("uuid") if host else None
+        entries = []
+        if host:
+            approved = [choice for choice in choices if _matches(host, choice)]
+            if not approved or host.get("nodes", []):
+                raise _blocked("Параметры или связи хоста HAProxy изменены вне установщика")
+            entries.append(_entry("host", spec.panel_ref, host_id, {**approved[0], "uuid": host_id}))
+        return entries, {}
     configs = _configs(specs, artifacts)
     profiles = inventory["profiles"]
     identifier = artifacts.get("profile_uuid")

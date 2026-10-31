@@ -44,6 +44,7 @@ from core.tasks.loop_tasks import (
     kassai_autopay_loop,
     notifications_loop,
     overpay_autopay_loop,
+    payhot_autopay_loop,
     remnawave_installer_loop,
     remnawave_monitor_loop,
     scheduled_broadcasts_loop_task,
@@ -99,6 +100,7 @@ def register_periodic_tasks() -> None:
     periodic_task_manager.register_loop_task("yookassa_autopay", yookassa_autopay_loop)
     periodic_task_manager.register_loop_task("kassai_autopay", kassai_autopay_loop)
     periodic_task_manager.register_loop_task("overpay_autopay", overpay_autopay_loop)
+    periodic_task_manager.register_loop_task("payhot_autopay", payhot_autopay_loop)
     periodic_task_manager.register_loop_task("yookassa_refunds", yookassa_refunds_loop)
     for task_id, runner in discover_module_loop_tasks():
         periodic_task_manager.register_loop_task(task_id, runner)

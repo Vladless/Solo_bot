@@ -117,6 +117,8 @@ def _cdn_extra(transport: str, path: str) -> dict:
 
 def build_profile(spec: InstallSpec, artifacts: dict) -> dict:
     """Собирает профиль транспорта, каскада и дополнений."""
+    if spec.role == "haproxy_entry":
+        raise InstallError("profile", "Вход HAProxy использует профиль выходной ноды", retryable=False)
     inbound = {
         "tag": artifacts.get("inbound_tag")
         or spec.name.replace(" ", "_")
@@ -183,6 +185,8 @@ def build_profile(spec: InstallSpec, artifacts: dict) -> dict:
             inbound["streamSettings"].update(
                 network="xhttp", xhttpSettings={"host": spec.reality_domain, "mode": "auto", "path": "/"}
             )
+    if spec.role == "haproxy_exit":
+        inbound["streamSettings"]["tcpSettings"] = {"acceptProxyProtocol": True}
 
     domain_strategy = "UseIPv6" if spec.exit_ip and ipaddress.ip_address(spec.exit_ip).version == 6 else "UseIPv4"
     direct = {"tag": "DIRECT", "protocol": "freedom", "settings": {"domainStrategy": domain_strategy}}

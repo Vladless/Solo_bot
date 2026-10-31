@@ -558,6 +558,7 @@ async def update_key_expiry(
     price_rub: float | None = None,
     *,
     user_id: int | None = None,
+    tariff_id: int | None = None,
 ):
     scope = Key.client_id == client_id
     if user_id is not None:
@@ -582,7 +583,7 @@ async def update_key_expiry(
             user_id=ctx.user_id if ctx else None,
             tg_id=ctx.tg_id if ctx else None,
             client_id=client_id,
-            tariff_id=ctx.tariff_id if ctx else None,
+            tariff_id=tariff_id if tariff_id is not None else ctx.tariff_id,
             server_id=ctx.server_id if ctx else None,
             price_rub=price_rub,
             expiry_time=new_expiry_time,

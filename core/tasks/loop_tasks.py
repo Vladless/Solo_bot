@@ -166,3 +166,10 @@ async def overpay_autopay_loop(bot, sessionmaker) -> None:
     from services.payments.overpay_autopay.service import autopay_loop
 
     await autopay_loop(bot, sessionmaker)
+
+
+async def payhot_autopay_loop(bot, sessionmaker) -> None:
+    """Сверяет списания PayHot и продлевает подписки."""
+    from services.payments.payhot.autopay import autopay_loop
+
+    await autopay_loop(bot, sessionmaker)

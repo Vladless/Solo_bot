@@ -362,7 +362,13 @@ async def renew_key_in_cluster(
             )
             if billing_user_id is None:
                 return False
-            await update_key_expiry(session, new_client_id or client_id, new_expiry_time, user_id=billing_user_id)
+            await update_key_expiry(
+                session,
+                new_client_id or client_id,
+                new_expiry_time,
+                user_id=billing_user_id,
+                tariff_id=None if expiry_only else plan,
+            )
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
                 await delete_notification(session, billing_user_id, f"{email}_{prefix}", commit=False)
 
@@ -424,7 +430,13 @@ async def renew_key_in_cluster(
             billing_user_id = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
             if billing_user_id is None:
                 return False
-            await update_key_expiry(session, client_id, new_expiry_time, user_id=billing_user_id)
+            await update_key_expiry(
+                session,
+                client_id,
+                new_expiry_time,
+                user_id=billing_user_id,
+                tariff_id=None if expiry_only else plan,
+            )
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
                 await delete_notification(session, billing_user_id, f"{email}_{prefix}", commit=False)
 

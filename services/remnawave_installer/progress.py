@@ -61,6 +61,8 @@ _EXTRA_LABELS = {
     "antitorrent": "Настройка анти-торрента",
     "ufw": "Настройка UFW",
     "shaping": "Настройка ограничений скорости",
+    "haproxy": "Настройка каскада HAProxy",
+    "haproxy_verify": "Проверка TCP-соединения через HAProxy",
     "cloud_auth": "Проверка доступа к облаку",
     "snapshot": "Проверка сохранённых параметров",
     "validation": "Проверка параметров",
@@ -85,11 +87,13 @@ def _installation_steps(stages: Sequence[str], params: dict | None) -> list[str]
     cdn = str(params.get("transport") or "").startswith("cdn_")
     shaping = params.get("shaping") or {}
     excluded = set()
+    if params.get("role") == "haproxy_entry":
+        excluded.update({"keys", "panel_profile", "panel_node"})
     if not cdn:
         excluded.add("cdn")
     if not params.get("squad_uuid") or params.get("role") == "exit":
         excluded.add("panel_squad")
-    if not params.get("publish_host", True) or params.get("role") == "exit":
+    if not params.get("publish_host", True) or params.get("role") in {"exit", "haproxy_exit"}:
         excluded.add("panel_host")
     if not params.get("addons") and not shaping.get("enabled", bool(shaping)):
         excluded.add("addons")
@@ -147,6 +151,8 @@ def build_progress(
     else:
         label = "Параметры сохранены · 100%" if finished else "Сохранение параметров · 0%"
     labels = _EDIT_LABELS if editing else _INSTALL_LABELS
+    if params and params.get("role") == "haproxy_entry":
+        labels = {**labels, "docker": "Настройка HAProxy", "verify": "Проверка каскада HAProxy"}
     key = stage.removeprefix("edit:")
     pending = next((operation for operation in operations if operation not in done), None)
     if finished:
