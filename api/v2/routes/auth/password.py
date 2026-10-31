@@ -137,7 +137,7 @@ async def register_by_email(
         try:
             code = f"{secrets.randbelow(900000) + 100000}"
             await email_verify.store_code(email, code)
-            await send_email_verify_code_email(email, code)
+            await send_email_verify_code_email(email, code, session=session)
         except Exception as e:
             logger.warning("[Site:Auth] Не удалось отправить код подтверждения почты при регистрации: {}", e)
     logger.info("[Site:Auth] Регистрация: клиент {}, почта {}, ip {}", identity.id, email, _client_ip(request))
@@ -284,7 +284,7 @@ async def send_login_code(
             detail="Не удалось сохранить код. Попробуйте позже.",
         )
     try:
-        await send_login_code_email(email_norm, code)
+        await send_login_code_email(email_norm, code, session=session)
     except Exception:
         await login_codes.release_cooldown(email_norm)
         await login_codes.delete_code(email_norm)
@@ -373,7 +373,7 @@ async def request_password_reset(
             detail="Не удалось сохранить код. Попробуйте позже.",
         )
     try:
-        await send_password_reset_code_email(email_norm, code)
+        await send_password_reset_code_email(email_norm, code, session=session)
     except Exception:
         await pwd_reset.release_cooldown(email_norm)
         await pwd_reset.delete_code(email_norm)

@@ -13,7 +13,15 @@ from logger import (
     PANEL_REMNA,
     PANEL_XUI,
 )
-from panels._3xui import ClientConfig, _update_client, add_client, attach_client, client_exists, get_xui_instance
+from panels._3xui import (
+    ClientConfig,
+    _update_client,
+    add_client,
+    attach_client,
+    client_exists,
+    get_xui_instance,
+    reset_client_traffic,
+)
 from services.cluster_access import is_server_configured, resolve_tariff_servers
 from settings.config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 
@@ -260,7 +268,6 @@ async def create_key_on_cluster(
                         is_trial=is_trial,
                         total_traffic_limit_bytes=traffic_limit_bytes_value,
                         device_limit_value=device_limit_value,
-                        reuse_existing=reuse_existing,
                     )
                     xui_confirmed = xui_confirmed or confirmed is True
             else:
@@ -276,7 +283,6 @@ async def create_key_on_cluster(
                         is_trial=is_trial,
                         total_traffic_limit_bytes=traffic_limit_bytes_value,
                         device_limit_value=device_limit_value,
-                        reuse_existing=reuse_existing,
                     )
                     for server in xui_servers
                 ]
@@ -350,10 +356,10 @@ async def create_client_on_server(
     plan: int | None = None,
     session: AsyncSession | None = None,
     is_trial: bool = False,
-    total_traffic_limit_bytes: int = 0,
-    device_limit_value: int = 0,
-    reuse_existing: bool = False,
+    total_traffic_limit_bytes: int | None = None,
+    device_limit_value: int | None = None,
     panel_tg_id: int | None = None,
+    reset_traffic: bool = False,
 ) -> bool:
     """Создаёт клиента и подтверждает его наличие на сервере."""
 
@@ -385,20 +391,23 @@ async def create_client_on_server(
             sub_id = unique_email
         unique_email = unique_email.lower()
 
-        if plan is not None and (total_traffic_limit_bytes == 0 or device_limit_value == 0):
+        if plan is not None and (total_traffic_limit_bytes is None or device_limit_value is None):
             tariff = await get_tariff_by_id(session, plan)
             logger.debug(f"{PANEL_XUI} [Tariff Debug] Получен тариф: {tariff}")
             if not tariff:
                 raise ValueError(f"{PANEL_XUI} Тариф с id={plan} не найден.")
 
-            if total_traffic_limit_bytes == 0:
+            if total_traffic_limit_bytes is None:
                 raw_limit = tariff.get("traffic_limit")
                 base_gb = int(raw_limit) if raw_limit else 0
                 total_traffic_limit_bytes = base_gb * 1024 * 1024 * 1024
 
-            if device_limit_value == 0:
+            if device_limit_value is None:
                 raw_device_limit = tariff.get("device_limit")
                 device_limit_value = int(raw_device_limit) if raw_device_limit is not None else 0
+
+        total_traffic_limit_bytes = int(total_traffic_limit_bytes or 0)
+        device_limit_value = int(device_limit_value or 0)
 
         confirmed = False
         try:
@@ -407,7 +416,7 @@ async def create_client_on_server(
                 f"bytes={total_traffic_limit_bytes}, Devices={device_limit_value}"
             )
             traffic_limit_bytes = total_traffic_limit_bytes
-            reuse_client = reuse_existing and await client_exists(xui, unique_email)
+            reuse_client = await client_exists(xui, unique_email)
             if not reuse_client:
                 result = await add_client(
                     xui,
@@ -426,7 +435,7 @@ async def create_client_on_server(
                 confirmed = bool(
                     result and result.get("status") == "success" and str(result.get("client_id") or "") == client_id
                 )
-                reuse_client = bool(reuse_existing and result and result.get("status") == "duplicate")
+                reuse_client = bool(result and result.get("status") == "duplicate")
             if reuse_client:
                 client, _ = await attach_client(xui, int(inbound_id), unique_email, client_id)
                 client.update(
@@ -437,6 +446,8 @@ async def create_client_on_server(
                     tgId=int(panel_tg) if panel_tg and int(panel_tg) > 0 else 0,
                 )
                 await _update_client(xui, unique_email, client)
+                if reset_traffic:
+                    await reset_client_traffic(xui, int(inbound_id), unique_email, client_id)
                 confirmed = True
             if confirmed:
                 logger.info(f"{PANEL_XUI} [Client] Клиент успешно добавлен на сервер {server_name}")

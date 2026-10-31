@@ -67,7 +67,7 @@ async def _try_build_remna_vless(
     return result
 
 
-async def _try_build_3xui_vless(servers: list, email: str) -> str | None:
+async def _try_build_3xui_vless(servers: list, email: str, client_id: str) -> str | None:
     async def one(si: dict) -> str | None:
         name = si.get("server_name", "unknown")
         inbound_id = si.get("inbound_id")
@@ -95,6 +95,7 @@ async def _try_build_3xui_vless(servers: list, email: str) -> str | None:
                 external_host=host,
                 port=int(port) if port else None,
                 remark=email,
+                client_id=client_id,
             )
         except Exception as e:
             logger.warning(f"[{name}] ошибка VLESS: {e}")
@@ -146,14 +147,14 @@ async def make_aggregated_link(
     if vless_needed:
         if legacy_links_enabled:
             if xui:
-                xui_link = await _try_build_3xui_vless(xui, email)
+                xui_link = await _try_build_3xui_vless(xui, email, client_id)
                 if xui_link:
                     logger.info("[agg_link] LEGACY choose 3x-ui VLESS")
                     return xui_link
             logger.info("[agg_link] LEGACY fallback base")
             return public_link
         if xui:
-            xui_link = await _try_build_3xui_vless(xui, email)
+            xui_link = await _try_build_3xui_vless(xui, email, client_id)
             if xui_link:
                 logger.info("[agg_link] choose 3x-ui VLESS")
                 return xui_link

@@ -131,8 +131,7 @@ async def open_web_settings(callback: CallbackQuery) -> None:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_toggle"), flags={"popup": True})
 async def toggle_web_enabled(callback: CallbackQuery) -> None:
     current = bool(WEB_CONFIG.get("WEB_ENABLED", False))
-    new_config = dict(WEB_CONFIG)
-    new_config["WEB_ENABLED"] = not current
+    new_config = {"WEB_ENABLED": not current}
 
     async with async_session_maker() as session:
         await update_web_config(session, new_config)
@@ -148,8 +147,7 @@ async def toggle_web_enabled(callback: CallbackQuery) -> None:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_maintenance_toggle"), flags={"popup": True})
 async def toggle_web_maintenance(callback: CallbackQuery) -> None:
     current = bool(WEB_CONFIG.get("WEB_MAINTENANCE_MODE", False))
-    new_config = dict(WEB_CONFIG)
-    new_config["WEB_MAINTENANCE_MODE"] = not current
+    new_config = {"WEB_MAINTENANCE_MODE": not current}
 
     async with async_session_maker() as session:
         await update_web_config(session, new_config)
@@ -169,8 +167,7 @@ async def toggle_web_maintenance(callback: CallbackQuery) -> None:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_open_mode_toggle"), flags={"popup": True})
 async def toggle_web_open_mode(callback: CallbackQuery) -> None:
     current = bool(WEB_CONFIG.get("WEB_OPEN_IN_BROWSER", False))
-    new_config = dict(WEB_CONFIG)
-    new_config["WEB_OPEN_IN_BROWSER"] = not current
+    new_config = {"WEB_OPEN_IN_BROWSER": not current}
 
     async with async_session_maker() as session:
         await update_web_config(session, new_config)
@@ -188,8 +185,7 @@ async def toggle_web_open_mode(callback: CallbackQuery) -> None:
 )
 async def toggle_email_binding(callback: CallbackQuery) -> None:
     current = bool(WEB_CONFIG.get("EMAIL_BINDING_ENABLED", False))
-    new_config = dict(WEB_CONFIG)
-    new_config["EMAIL_BINDING_ENABLED"] = not current
+    new_config = {"EMAIL_BINDING_ENABLED": not current}
 
     async with async_session_maker() as session:
         await update_web_config(session, new_config)
@@ -205,8 +201,7 @@ async def toggle_email_binding(callback: CallbackQuery) -> None:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_email_verify_toggle"), flags={"popup": True})
 async def toggle_email_verification(callback: CallbackQuery) -> None:
     """Переключает подтверждение почты кодом в боте."""
-    new_config = dict(WEB_CONFIG)
-    new_config["EMAIL_BINDING_VERIFY_ENABLED"] = not is_email_binding_verification_enabled()
+    new_config = {"EMAIL_BINDING_VERIFY_ENABLED": not is_email_binding_verification_enabled()}
 
     async with async_session_maker() as session:
         await update_web_config(session, new_config)
@@ -262,11 +257,8 @@ async def set_node_status_interval(message: Message, state: FSMContext) -> None:
         await message.answer(menu_text("Веб-сайт", "❌ Диапазон: 1–60 минут."))
         return
 
-    new_config = dict(WEB_CONFIG)
-    new_config["WEB_NODE_STATUS_INTERVAL_MIN"] = minutes
-
     async with async_session_maker() as session:
-        await update_web_config(session, new_config)
+        await update_web_config(session, {"WEB_NODE_STATUS_INTERVAL_MIN": minutes})
 
     await state.clear()
     await message.answer(
@@ -355,11 +347,8 @@ async def set_web_url(message: Message, state: FSMContext) -> None:
 
     url = url.rstrip("/")
 
-    new_config = dict(WEB_CONFIG)
-    new_config["SITE_URL"] = url
-
     async with async_session_maker() as session:
-        await update_web_config(session, new_config)
+        await update_web_config(session, {"SITE_URL": url})
 
     await state.clear()
     await message.answer(

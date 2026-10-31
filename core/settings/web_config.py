@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+from database.settings import get_setting
 from database.settings_cache import settings_cache
 
 from ..defaults import DEFAULT_WEB_CONFIG
@@ -13,6 +14,17 @@ from .runtime_sync import publish_runtime_config, register_runtime_config
 WEB_CONFIG: dict[str, Any] = DEFAULT_WEB_CONFIG.copy()
 WEB_SETTING_KEY = "WEB_CONFIG"
 register_runtime_config(WEB_SETTING_KEY, WEB_CONFIG)
+
+
+async def refresh_web_config(session: AsyncSession) -> dict[str, Any]:
+    """Читает актуальные настройки сайта без записи в БД."""
+    stored = await get_setting(session, WEB_SETTING_KEY, {})
+    if not isinstance(stored, dict):
+        raise ValueError("Настройки сайта должны быть объектом")
+    web_config = {**DEFAULT_WEB_CONFIG, **stored}
+    WEB_CONFIG.clear()
+    WEB_CONFIG.update(web_config)
+    return dict(web_config)
 
 
 async def load_web_config(session: AsyncSession) -> None:
@@ -40,24 +52,32 @@ async def load_web_config(session: AsyncSession) -> None:
 
 
 async def update_web_config(session: AsyncSession, new_values: dict[str, Any]) -> None:
-    stmt = select(Setting).where(Setting.key == WEB_SETTING_KEY)
+    if not isinstance(new_values, dict):
+        raise ValueError("Настройки сайта должны быть объектом")
+    stmt = (
+        select(Setting)
+        .where(Setting.key == WEB_SETTING_KEY)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     result = await session.execute(stmt)
     setting = result.scalar_one_or_none()
+    web_config = DEFAULT_WEB_CONFIG.copy()
+    if setting is not None and isinstance(setting.value, dict):
+        web_config.update(setting.value)
+    web_config.update(new_values)
 
     if setting is None:
         setting = Setting(
             key=WEB_SETTING_KEY,
-            value=new_values,
+            value=web_config,
             description="Конфигурация веб-сайта",
         )
         session.add(setting)
     else:
-        setting.value = new_values
+        setting.value = web_config
 
     await session.commit()
-
-    web_config = DEFAULT_WEB_CONFIG.copy()
-    web_config.update(new_values)
 
     WEB_CONFIG.clear()
     WEB_CONFIG.update(web_config)

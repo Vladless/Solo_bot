@@ -138,7 +138,7 @@ async def user_key_connection(
         protocol = "VLESS"
     elif panel_type == "marzban":
         protocol = "VLESS"
-    elif panel_type == "3xui":
+    elif panel_type == "3x-ui":
         protocol = "VLESS"
     else:
         protocol = panel_type.upper() or "VLESS"

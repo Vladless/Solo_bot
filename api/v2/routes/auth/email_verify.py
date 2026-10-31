@@ -47,7 +47,7 @@ async def send_email_verify_code(
     code = f"{secrets.randbelow(900000) + 100000}"
     await verify_util.store_code(email, code)
     try:
-        await send_email_verify_code_email(email, code)
+        await send_email_verify_code_email(email, code, session=session)
     except Exception:
         await verify_util.delete_code(email)
         raise HTTPException(status_code=503, detail="Не удалось отправить письмо")

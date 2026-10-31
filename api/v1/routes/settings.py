@@ -14,6 +14,7 @@ from core.settings.notifications_config import NOTIFICATIONS_CONFIG, update_noti
 from core.settings.payments_config import PAYMENTS_CONFIG, update_payments_config
 from core.settings.providers_order_config import PROVIDERS_ORDER, update_providers_order
 from core.settings.tariffs_config import TARIFFS_CONFIG, update_tariffs_config
+from core.settings.web_config import refresh_web_config, update_web_config
 from core.settings.yookassa_config import YOOKASSA_CONFIG, update_yookassa_config
 from database.models import Setting
 from database.settings import set_setting
@@ -34,9 +35,10 @@ class ConfigUpdatePayload(BaseModel):
 
 
 @router.get("/", response_model=list[SettingResponse])
-async def get_all_settings(admin=Depends(verify_admin_token)):
-    """Список всех настроек (из кэша, без запроса к БД)."""
-    return settings_cache.get_all()
+async def get_all_settings(admin=Depends(verify_admin_token), session: AsyncSession = Depends(get_session)):
+    """Возвращает настройки со свежей конфигурацией сайта."""
+    web_config = await refresh_web_config(session)
+    return [{**item, "value": web_config} if item["key"] == "WEB_CONFIG" else item for item in settings_cache.get_all()]
 
 
 @router.get("/configs")
@@ -131,8 +133,11 @@ async def update_config_scope(
 
 
 @router.get("/{key}", response_model=SettingResponse)
-async def get_setting_by_key(key: str, admin=Depends(verify_admin_token)):
-    """Настройка по ключу (из кэша, без запроса к БД)."""
+async def get_setting_by_key(key: str, admin=Depends(verify_admin_token), session: AsyncSession = Depends(get_session)):
+    """Возвращает настройку и свежую конфигурацию сайта."""
+    if key == "WEB_CONFIG":
+        web_config = await refresh_web_config(session)
+        return {**(settings_cache.get(key) or {"key": key}), "value": web_config}
     obj = settings_cache.get(key)
     if not obj:
         raise HTTPException(status_code=404, detail="Setting not found")
@@ -146,6 +151,15 @@ async def upsert_setting(
     admin=Depends(verify_admin_token),
     session: AsyncSession = Depends(get_session),
 ):
+    if key == "WEB_CONFIG":
+        if not isinstance(payload.value, dict):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        await update_web_config(session, payload.value)
+        result = await session.execute(select(Setting).where(Setting.key == key))
+        obj = result.scalar_one()
+        if payload.description is not None:
+            obj.description = payload.description
+        return obj
     obj = await set_setting(
         session=session,
         key=key,

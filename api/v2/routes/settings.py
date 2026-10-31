@@ -50,7 +50,7 @@ from core.settings.payments_config import PAYMENTS_CONFIG, update_payments_confi
 from core.settings.providers_order_config import PROVIDERS_ORDER, update_providers_order
 from core.settings.remnawave_config import REMNAWAVE_CONFIG, update_remnawave_config
 from core.settings.tariffs_config import TARIFFS_CONFIG, update_tariffs_config
-from core.settings.web_config import WEB_CONFIG, update_web_config
+from core.settings.web_config import WEB_CONFIG, refresh_web_config, update_web_config
 from core.settings.yookassa_autopay_config import (
     AUTOPAY_SETTING_LIMITS,
     YOOKASSA_AUTOPAY_CONFIG,
@@ -104,14 +104,16 @@ class ConfigUpdatePayload(BaseModel):
 
 
 @router.get("/", response_model=list[SettingResponse])
-async def get_all_settings(identity=Depends(verify_identity_admin)):
-    """Список всех настроек (из кэша, без запроса к БД)."""
-    return settings_cache.get_all()
+async def get_all_settings(identity=Depends(verify_identity_admin), session: AsyncSession = Depends(get_session)):
+    """Возвращает настройки со свежей конфигурацией сайта."""
+    web_config = await refresh_web_config(session)
+    return [{**item, "value": web_config} if item["key"] == "WEB_CONFIG" else item for item in settings_cache.get_all()]
 
 
 @router.get("/configs")
-async def get_configs(identity=Depends(verify_identity_admin)):
+async def get_configs(identity=Depends(verify_identity_admin), session: AsyncSession = Depends(get_session)):
     """Возвращает текущие настройки по разделам."""
+    web_config = await refresh_web_config(session)
     return {
         "payments": dict(PAYMENTS_CONFIG),
         "buttons": dict(BUTTONS_CONFIG),
@@ -121,7 +123,7 @@ async def get_configs(identity=Depends(verify_identity_admin)):
         "money": dict(MONEY_CONFIG),
         "providers_order": dict(PROVIDERS_ORDER),
         "tariffs": dict(TARIFFS_CONFIG),
-        "web": dict(WEB_CONFIG),
+        "web": web_config,
         "remnawave": dict(REMNAWAVE_CONFIG),
         "management": dict(MANAGEMENT_CONFIG),
         "yookassa": dict(YOOKASSA_CONFIG),
@@ -216,6 +218,8 @@ def _schema_fields(config: dict, titles: dict, scope: str | None = None) -> list
         if key == "QUICK_AMOUNTS" and isinstance(value, list | tuple):
             value = ", ".join(str(amount) for amount in value)
         field_type = "enum" if options else _field_type(value)
+        if key.startswith("EMAIL_") and key.endswith(("_BODY", "_TEMPLATE")):
+            field_type = "text"
         if scope == "yookassa" and key == "MARKUP_PERCENT":
             field_type = "number"
         if field_type is None:
@@ -256,8 +260,9 @@ def _schema_fields(config: dict, titles: dict, scope: str | None = None) -> list
 
 
 @router.get("/schema")
-async def get_settings_schema(identity=Depends(verify_identity_admin)):
+async def get_settings_schema(identity=Depends(verify_identity_admin), session: AsyncSession = Depends(get_session)):
     """Возвращает схему настроек веб-админки."""
+    await refresh_web_config(session)
     sections = []
     for scope, title, config, titles in _SCHEMA_SECTIONS:
         fields = _schema_fields(config, titles)
@@ -460,9 +465,7 @@ async def update_config_scope(
                 raise HTTPException(
                     status_code=400, detail="Интервал напоминания о почте: целое число от 1 до 365 дней"
                 )
-        merged = dict(WEB_CONFIG)
-        merged.update(data)
-        await update_web_config(session, merged)
+        await update_web_config(session, data)
         return {"web": dict(WEB_CONFIG)}
     if normalized == "remnawave":
         merged = dict(REMNAWAVE_CONFIG)
@@ -482,8 +485,13 @@ async def update_config_scope(
 
 
 @router.get("/{key}", response_model=SettingResponse)
-async def get_setting_by_key(key: str, identity=Depends(verify_identity_admin)):
-    """Настройка по ключу (из кэша, без запроса к БД)."""
+async def get_setting_by_key(
+    key: str, identity=Depends(verify_identity_admin), session: AsyncSession = Depends(get_session)
+):
+    """Возвращает настройку и свежую конфигурацию сайта."""
+    if key == "WEB_CONFIG":
+        web_config = await refresh_web_config(session)
+        return {**(settings_cache.get(key) or {"key": key}), "value": web_config}
     obj = settings_cache.get(key)
     if not obj:
         raise HTTPException(status_code=404, detail="Setting not found")
@@ -498,6 +506,15 @@ async def upsert_setting(
     session: AsyncSession = Depends(get_session),
 ):
     """Создание или обновление настройки по ключу."""
+    if key == "WEB_CONFIG":
+        if not isinstance(payload.value, dict):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        await update_web_config(session, payload.value)
+        result = await session.execute(select(Setting).where(Setting.key == key))
+        obj = result.scalar_one()
+        if payload.description is not None:
+            obj.description = payload.description
+        return obj
     if key == "TARIFFS_CONFIG":
         if not isinstance(payload.value, dict):
             raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)

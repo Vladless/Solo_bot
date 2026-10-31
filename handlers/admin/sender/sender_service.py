@@ -474,7 +474,7 @@ class BroadcastService:
         if not messages:
             return (0, 0)
         try:
-            from mail.smtp import build_broadcast_email, send_broadcast_email, smtp_configured
+            from mail.smtp import _load_email_config, build_broadcast_email, send_broadcast_email, smtp_configured
 
             if not smtp_configured():
                 logger.warning("[Broadcast] Канал 'почта' выбран, но SMTP не настроен")
@@ -485,10 +485,12 @@ class BroadcastService:
             if self._session is not None:
                 email_map = await get_recipient_emails(self._session, tg_ids)
                 addresses = await get_broadcast_addresses(self._session, user_ids)
+                config = await _load_email_config(self._session)
             else:
                 async with self._sessionmaker() as session:
                     email_map = await get_recipient_emails(session, tg_ids)
                     addresses = await get_broadcast_addresses(session, user_ids)
+                    config = await _load_email_config(session)
 
             emails = sorted(
                 set(email_map.values()) | {address["email"] for address in addresses.values() if address["email"]}
@@ -507,7 +509,7 @@ class BroadcastService:
                 except Exception:
                     image_url = None
 
-            subject, html_body, text_body = build_broadcast_email(text, image_url)
+            subject, html_body, text_body = build_broadcast_email(text, image_url, config=config)
 
             sent = 0
             failed = 0
@@ -517,7 +519,7 @@ class BroadcastService:
                 nonlocal sent, failed
                 async with semaphore:
                     try:
-                        await send_broadcast_email(addr, subject, html_body, text_body)
+                        await send_broadcast_email(addr, subject, html_body, text_body, config=config)
                         sent += 1
                     except Exception as exc:
                         failed += 1

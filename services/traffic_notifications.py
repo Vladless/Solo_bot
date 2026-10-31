@@ -109,10 +109,12 @@ async def _fetch_xui_meter(key, server: dict, fallback_limit: int | None) -> Tra
     if not isinstance(rows, list) or not rows:
         return None
     inbound_id = server.get("inbound_id")
+    global_counter = data.get("scope") == "client"
     rows = [
         row
         for row in rows
-        if isinstance(row, dict) and (row.get("inboundId") is None or str(row["inboundId"]) == str(inbound_id))
+        if isinstance(row, dict)
+        and (global_counter or row.get("inboundId") is None or str(row["inboundId"]) == str(inbound_id))
     ]
     if len(rows) != 1:
         return None
@@ -134,7 +136,8 @@ async def _fetch_xui_meter(key, server: dict, fallback_limit: int | None) -> Tra
         limit = fallback_limit
     if limit is None or limit <= 0:
         return None
-    return TrafficMeter(traffic_resource_id("3x-ui", api_url, inbound_id, email), server_name, up + down, limit)
+    resource_id = traffic_resource_id("3x-ui", api_url, None if global_counter else inbound_id, email)
+    return TrafficMeter(resource_id, server_name, up + down, limit)
 
 
 async def collect_traffic_notification_meters(session, keys: list, preload_data: dict | None = None) -> dict:
@@ -189,4 +192,4 @@ async def collect_traffic_notification_meters(session, keys: list, preload_data:
         *(remna_one(api_url, entries) for api_url, entries in remnawave.items()),
         *(xui_one(key, server, limit) for key, server, limit in xui),
     )
-    return dict(result)
+    return {owner: list({meter.resource_id: meter for meter in meters}.values()) for owner, meters in result.items()}

@@ -205,6 +205,14 @@ WEB_TITLES: Final[dict[str, str]] = {
     "EMAIL_RESET_BODY": "Сброс пароля — текст",
     "EMAIL_LINK_SUBJECT": "Привязка email — тема",
     "EMAIL_LINK_BODY": "Привязка email — текст",
+    "EMAIL_VERIFY_SUBJECT": "Подтверждение email — тема",
+    "EMAIL_VERIFY_BODY": "Подтверждение email — текст",
+    "EMAIL_SUPPORT_REPLY_SUBJECT": "Ответ поддержки — тема",
+    "EMAIL_SUPPORT_REPLY_BODY": "Ответ поддержки — текст",
+    "EMAIL_FROM_NAME": "Имя отправителя писем",
+    "EMAIL_REPLY_TO": "Адрес для ответа на письма",
+    "EMAIL_BROADCAST_SUBJECT": "Письмо рассылки — тема",
+    "EMAIL_BROADCAST_TEMPLATE": "Письмо рассылки — HTML-шаблон",
 }
 
 REMNAWAVE_TITLES: Final[dict[str, str]] = {

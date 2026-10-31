@@ -4,7 +4,7 @@ import time
 
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 import py3xui
@@ -524,7 +524,14 @@ async def _fetch_traffic(xui: py3xui.AsyncApi, endpoint: str, key: str) -> list[
     """Получает трафик; при HTTP 404 возвращает None."""
     try:
         obj = await _panel_request(xui, endpoint.format(key=quote(key, safe="")))
-        return _traffic_rows(obj)
+        if obj is not None and not isinstance(obj, dict | list):
+            raise ValueError("3x-ui: некорректная статистика трафика")
+        if isinstance(obj, list) and any(not isinstance(row, dict) for row in obj):
+            raise ValueError("3x-ui: неполная статистика трафика")
+        rows = _traffic_rows(obj)
+        if any(type(row.get(field)) is not int or row[field] < 0 for row in rows for field in ("up", "down")):
+            raise ValueError("3x-ui: некорректные счётчики трафика")
+        return rows
     except httpx.HTTPStatusError as error:
         if error.response.status_code == 404:
             return None
@@ -544,12 +551,16 @@ async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str, email: str | 
             if len(matching) == 1:
                 email = matching[0].get("email")
         rows = await _fetch_traffic(xui, _MODERN_TRAFFIC_ENDPOINT, email) if email else None
+        scope = "client"
         if rows is None:
             rows = await _fetch_traffic(xui, _LEGACY_TRAFFIC_ENDPOINT, client_id)
+            scope = "inbound"
         if rows is None:
             raise ValueError("Маршруты получения трафика недоступны")
         if any(row.get("uuid") and row["uuid"] != client_id for row in rows):
             raise ValueError("UUID в статистике клиента не совпадает с ожидаемым")
+        if email and any(row.get("email") and row["email"] != email for row in rows):
+            raise ValueError("Email в статистике клиента не совпадает с ожидаемым")
 
         if not rows:
             logger.warning(f"Трафик для клиента {client_id} не найден.")
@@ -557,7 +568,7 @@ async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str, email: str | 
 
         used_bytes = sum(int(row.get("up") or 0) + int(row.get("down") or 0) for row in rows)
         logger.info(f"Трафик для клиента {client_id} успешно получен: {used_bytes} байт.")
-        return {"status": "success", "client_id": client_id, "used_bytes": used_bytes, "traffic": rows}
+        return {"status": "success", "client_id": client_id, "used_bytes": used_bytes, "traffic": rows, "scope": scope}
 
     except httpx.ConnectTimeout as e:
         logger.error(f"Ошибка при получении трафика клиента {client_id}: {e}")
@@ -621,71 +632,6 @@ async def change_client_email(
         return False
 
 
-def build_vless_link_from_inbound(
-    inbound: py3xui.Inbound,
-    user_uuid: str,
-    email: str,
-    external_host: str,
-    port: int,
-    remark: str | None = None,
-    client_flow: str | None = None,
-) -> str:
-    name = remark or email
-    stream = _stream_settings_dict(inbound)
-    security = (stream.get("security") or "").lower()
-    network = (stream.get("network") or "").lower()
-
-    def _first(val):
-        if isinstance(val, list) and val:
-            return val[0]
-        return val or ""
-
-    rs = stream.get("realitySettings") or {}
-    rs_settings = rs.get("settings") or {}
-
-    pbk = rs_settings.get("publicKey") or rs.get("publicKey") or ""
-    sni = _first(
-        rs.get("serverNames") or rs_settings.get("serverNames") or rs.get("serverName") or rs_settings.get("serverName")
-    )
-    sid = _first(rs.get("shortIds") or rs_settings.get("shortIds") or rs.get("shortId") or rs_settings.get("shortId"))
-    fp = rs.get("fingerprint") or rs_settings.get("fingerprint") or ""
-
-    if security == "reality" and network in ("tcp", "raw"):
-        parts = [
-            f"vless://{user_uuid}@{external_host}:{port}",
-            "?type=tcp&security=reality",
-            f"&pbk={pbk}" if pbk else "",
-            f"&fp={fp}" if fp else "",
-            f"&sni={sni}" if sni else "",
-            f"&sid={sid}" if sid else "",
-            "&spx=%2F",
-            f"&flow={client_flow}" if client_flow else "",
-            f"#{name}",
-        ]
-        return "".join(parts)
-
-    if network == "ws":
-        ws = stream.get("wsSettings") or {}
-        path = (ws.get("path") or "/").strip() or "/"
-        host_hdr = external_host
-        if security == "tls":
-            parts = [
-                f"vless://{user_uuid}@{external_host}:{port}",
-                "?type=ws&security=tls",
-                f"&host={host_hdr}",
-                f"&sni={external_host}",
-                f"&path={path}",
-                f"#{name}",
-            ]
-            return "".join(parts)
-        return f"vless://{user_uuid}@{external_host}:{port}?type=ws&path={path}#{name}"
-
-    if security == "tls":
-        return f"vless://{user_uuid}@{external_host}:{port}?type=tcp&security=tls&sni={external_host}#{name}"
-
-    return f"vless://{user_uuid}@{external_host}:{port}?type=tcp#{name}"
-
-
 async def get_vless_link_for_client(
     xui: py3xui.AsyncApi,
     inbound_id: int,
@@ -693,35 +639,45 @@ async def get_vless_link_for_client(
     external_host: str,
     port: int,
     remark: str | None = None,
+    *,
+    client_id: str,
 ) -> str | None:
+    """Получает готовую VLESS-ссылку панели для проверенной привязки клиента."""
     try:
-        inbound = await xui.inbound.get_by_id(inbound_id)
-        if not inbound:
-            logger.warning(f"Не удалось собрать VLESS ссылку: inbound_id={inbound_id}, email={email}")
+        obj = await _panel_request(xui, f"panel/api/clients/get/{quote(email, safe='')}")
+        if not isinstance(obj, dict) or not isinstance(obj.get("client"), dict):
+            raise ValueError("Некорректный ответ клиента")
+        client, inbound_ids = obj["client"], obj.get("inboundIds")
+        if (
+            client.get("email") != email
+            or client.get("uuid") != client_id
+            or not client_id
+            or not isinstance(inbound_ids, list)
+            or any(type(value) is not int or value <= 0 for value in inbound_ids)
+            or int(inbound_id) not in inbound_ids
+        ):
+            raise ValueError("Клиент не привязан к запрошенному inbound")
+        links = await _panel_request(xui, f"panel/api/clients/links/{quote(email, safe='')}")
+        if not isinstance(links, list) or any(not isinstance(link, str) for link in links):
+            raise ValueError("Некорректный список ссылок клиента")
+        candidates = []
+        for link in links:
+            parsed = urlsplit(link)
+            if parsed.scheme.lower() != "vless" or parsed.username != client["uuid"]:
+                continue
+            if not parsed.hostname or not parsed.port:
+                raise ValueError("Некорректный адрес VLESS-ссылки")
+            if len(set(inbound_ids)) == 1:
+                candidates = [link]
+                break
+            if parsed.hostname.lower() == external_host.strip("[]").lower() and parsed.port == port:
+                if link not in candidates:
+                    candidates.append(link)
+        if len(candidates) != 1:
+            logger.warning(f"Не найдена однозначная VLESS-ссылка: inbound_id={inbound_id}, email={email}")
             return None
-
-        true_uuid = None
-        client_flow = None
-        if getattr(inbound, "settings", None) and getattr(inbound.settings, "clients", None):
-            for c in inbound.settings.clients:
-                if getattr(c, "email", None) == email:
-                    true_uuid = _client_identity(c)
-                    client_flow = getattr(c, "flow", None)
-                    break
-
-        if not true_uuid:
-            logger.warning(f"Не удалось получить UUID клиента: inbound_id={inbound_id}, email={email}")
-            return None
-
-        return build_vless_link_from_inbound(
-            inbound,
-            true_uuid,
-            email,
-            external_host,
-            port,
-            remark,
-            client_flow,
-        )
+        parsed = urlsplit(candidates[0])
+        return urlunsplit(parsed._replace(fragment=quote(remark, safe="") if remark else parsed.fragment))
     except Exception as e:
-        logger.error(f"Ошибка при сборке VLESS ссылки: {e}")
+        logger.error(f"Ошибка получения VLESS-ссылки: {e}")
         return None

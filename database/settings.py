@@ -7,12 +7,10 @@ from .models import Setting
 
 
 async def get_setting(session: AsyncSession, key: str, default: Any = None) -> Any:
-    stmt = select(Setting).where(Setting.key == key)
+    stmt = select(Setting.value).where(Setting.key == key)
     result = await session.execute(stmt)
-    setting = result.scalar_one_or_none()
-    if setting is None or setting.value is None:
-        return default
-    return setting.value
+    value = result.scalar_one_or_none()
+    return default if value is None else value
 
 
 async def set_setting(

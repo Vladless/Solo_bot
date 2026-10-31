@@ -18,9 +18,7 @@ from database.tariffs import get_active_tariff_by_id
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
-    PANEL_XUI,
 )
-from panels._3xui import ClientConfig, add_client, extend_client_key, get_xui_instance
 from panels.remnawave_runtime import invalidate_remnawave_profile, with_remnawave_api
 from services.clusters import ALLOWED_GROUP_CODES, select_cluster
 from services.subscription_links import preserve_saved_public_link, saved_public_subscription_tail
@@ -28,7 +26,8 @@ from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 from settings.config import PUBLIC_LINK, SUPERNODE
 
 from .aggregated_links import make_aggregated_link
-from .deletion import delete_key_from_cluster
+from .creation import create_client_on_server
+from .deletion import delete_on_3xui, delete_on_remnawave
 
 
 async def update_key_on_cluster(
@@ -97,6 +96,8 @@ async def update_key_on_cluster(
 
         remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
         xui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
+        if len(remnawave_servers) + len(xui_servers) != len(cluster):
+            raise ValueError("Неизвестный тип панели при перевыпуске подписки")
 
         remnawave_client_id = None
         remnawave_link_value = None
@@ -197,72 +198,29 @@ async def update_key_on_cluster(
             remnawave_client_id = client_id
 
         tasks = []
+        semaphore = asyncio.Semaphore(2)
         for server_info in xui_servers:
-            server_name = server_info.get("server_name", "unknown")
-            inbound_id = server_info.get("inbound_id")
-
-            if not inbound_id:
-                logger.warning(f"{PANEL_XUI} INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
-                continue
-
-            try:
-                xui = await get_xui_instance(server_info["api_url"])
-            except Exception as e:
-                logger.warning(f"{PANEL_XUI} [{server_name}] недоступна панель 3x-ui при перевыпуске: {e}")
-                continue
-
-            sub_id = email
-            unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
-
-            group_code = server_info.get("tariff_group")
-            if not group_code:
-                raise ValueError(f"У сервера {server_name} отсутствует tariff_group")
-
-            total_gb_bytes = int(traffic_limit * 1024**3) if traffic_limit is not None else 0
-            device_limit_value = device_limit if device_limit is not None else 0
-
-            config = ClientConfig(
-                client_id=remnawave_client_id,
-                email=unique_email,
-                tg_id=panel_tg if panel_tg and int(panel_tg) > 0 else "",
-                limit_ip=device_limit_value,
-                total_gb=total_gb_bytes,
-                expiry_time=expiry_time,
-                enable=True,
-                inbound_id=int(inbound_id),
-                sub_id=sub_id,
+            tasks.append(
+                create_client_on_server(
+                    server_info,
+                    owner,
+                    remnawave_client_id,
+                    email,
+                    expiry_time,
+                    semaphore,
+                    total_traffic_limit_bytes=int(traffic_limit * 1024**3) if traffic_limit is not None else 0,
+                    device_limit_value=device_limit if device_limit is not None else 0,
+                    panel_tg_id=panel_tg,
+                    reset_traffic=True,
+                )
             )
 
-            async def create_or_update(api, client):
-                result = await add_client(api, client)
-                if not isinstance(result, dict):
-                    return False
-                if result.get("status") == "success":
-                    return str(result.get("client_id") or "") == client.client_id
-                if result.get("status") == "duplicate":
-                    return bool(
-                        await extend_client_key(
-                            xui=api,
-                            inbound_id=client.inbound_id,
-                            email=client.email,
-                            new_expiry_time=client.expiry_time,
-                            client_id=client.client_id,
-                            total_gb=client.total_gb,
-                            sub_id=client.sub_id,
-                            tg_id=client.tg_id,
-                            limit_ip=client.limit_ip,
-                        )
-                    )
-                return False
-
-            tasks.append(create_or_update(xui, config))
-
-        xui_confirmed = False
+        xui_confirmed = not xui_servers
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            xui_confirmed = any(result is True for result in results)
-        if not (remna_confirmed or xui_confirmed):
-            raise ValueError("Перевыпуск не подтверждён ни на одном сервере")
+            xui_confirmed = all(result is True for result in results)
+        if (remnawave_servers and not remna_confirmed) or not xui_confirmed:
+            raise ValueError("Перевыпуск не подтверждён на всех серверах")
 
         logger.info(f"[Update] Ключ {remnawave_client_id} обновлён на серверах подгруппы в {cluster_id}")
         return remnawave_client_id, remnawave_link_value
@@ -291,6 +249,8 @@ async def update_subscription(
     record: Key | None = await get_key_by_user_and_email(session, uid, email)
     if not record:
         raise ValueError(f"The key {email} does not exist in database")
+    if record.is_frozen:
+        raise ValueError("Сначала разморозьте подписку для перевыпуска")
 
     expiry_time = record.expiry_time
     client_id = record.client_id
@@ -331,7 +291,6 @@ async def update_subscription(
     if user_id is None:
         raise ValueError(f"Исходная подписка {email} удалена или её владелец неоднозначен")
     await release_session_early(session)
-    await delete_key_from_cluster(old_cluster_id, email, client_id, session=session)
 
     def log_reissue_failure(reason: str) -> None:
         logger.warning(f"[Update] Перевыпуск {email} не завершён ({reason}), прежняя запись сохранена")
@@ -347,6 +306,12 @@ async def update_subscription(
             new_cluster_id = old_cluster_id
 
     servers = await get_servers(session)
+    old_servers = servers.get(old_cluster_id) or [
+        server
+        for cluster in servers.values()
+        for server in cluster
+        if str(server.get("server_name") or "").lower() == old_cluster_id.lower()
+    ]
     cluster_servers = servers.get(new_cluster_id)
 
     if cluster_servers is None:
@@ -375,7 +340,7 @@ async def update_subscription(
 
     if not cluster_servers:
         log_reissue_failure(f"нет серверов после фильтрации в {new_cluster_id}")
-        return
+        raise ValueError(f"Нет серверов для перевыпуска в кластере {new_cluster_id}")
 
     if tariff:
         gc = (getattr(tariff, "group_code", None) or "").lower()
@@ -388,7 +353,7 @@ async def update_subscription(
 
     if not cluster_servers:
         log_reissue_failure(f"нет серверов после фильтрации по спецгруппам в {new_cluster_id}")
-        return
+        raise ValueError(f"Нет серверов для перевыпуска в кластере {new_cluster_id}")
 
     traffic_limit_gb = None
     device_limit = 0
@@ -448,6 +413,45 @@ async def update_subscription(
         raise
 
     final_key_link = preserve_saved_public_link(aggregated or public_link, old_key_link, email, PUBLIC_LINK)
+
+    target_xui = {
+        (
+            str(server.get("api_url") or "").rstrip("/"),
+            str(server.get("inbound_id") or ""),
+            str(server.get("server_name") or "").lower() if SUPERNODE else "",
+        )
+        for server in cluster_servers
+        if server.get("panel_type", "3x-ui").lower() == "3x-ui"
+    }
+    target_remna = {
+        str(server.get("api_url") or "").rstrip("/")
+        for server in cluster_servers
+        if server.get("panel_type", "3x-ui").lower() == "remnawave"
+    }
+    old_xui = [
+        server
+        for server in old_servers
+        if server.get("panel_type", "3x-ui").lower() == "3x-ui"
+        and (
+            str(server.get("api_url") or "").rstrip("/"),
+            str(server.get("inbound_id") or ""),
+            str(server.get("server_name") or "").lower() if SUPERNODE else "",
+        )
+        not in target_xui
+    ]
+    old_remna = [
+        server
+        for server in old_servers
+        if server.get("panel_type", "3x-ui").lower() == "remnawave"
+        and str(server.get("api_url") or "").rstrip("/") not in target_remna
+    ]
+    cleanup = await asyncio.gather(
+        delete_on_3xui(old_xui, email, client_id),
+        delete_on_remnawave(old_remna, client_id, username=email, subscription_url=remnawave_link),
+        return_exceptions=True,
+    )
+    if any(result is not True for result in cleanup):
+        logger.warning(f"[Update] Не удалось удалить все прежние подключения {email} после перевыпуска")
 
     user_id = await resolve_current_key_owner(session, client_id, email)
     if user_id is None:

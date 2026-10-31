@@ -252,11 +252,12 @@ async def renew_on_3xui(
                     traffic_resource_id(
                         "3x-ui",
                         server.get("api_url") or "",
-                        server.get("inbound_id"),
+                        inbound_id,
                         f"{email}_{str(server.get('server_name') or '').lower()}" if SUPERNODE else email,
                     )
                     for server in cluster
                     if server.get("server_name") in succeeded
+                    for inbound_id in (None, server.get("inbound_id"))
                 }
                 await reset_traffic_notification_state(session, current_owner, client_id, resource_ids)
         logger.info(f"{PANEL_XUI} продлено на: {', '.join(succeeded)}")

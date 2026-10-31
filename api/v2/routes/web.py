@@ -3567,12 +3567,10 @@ async def set_web_maintenance(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_designer),
 ):
-    from core.settings.web_config import WEB_CONFIG, update_web_config
+    from core.settings.web_config import update_web_config
 
     enabled = bool((payload or {}).get("enabled"))
-    new_config = dict(WEB_CONFIG)
-    new_config["WEB_MAINTENANCE_MODE"] = enabled
-    await update_web_config(session, new_config)
+    await update_web_config(session, {"WEB_MAINTENANCE_MODE": enabled})
     return {"enabled": enabled}
 
 

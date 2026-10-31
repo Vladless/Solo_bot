@@ -7,9 +7,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.defaults import DEFAULT_WEB_CONFIG
-from core.settings.web_config import WEB_CONFIG, update_web_config
+from core.settings.web_config import WEB_CONFIG, refresh_web_config, update_web_config
 from database import async_session_maker
 from settings.config import PROJECT_NAME
 
@@ -173,7 +174,8 @@ def _category_text(cat_id: str) -> str:
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_email"))
-async def open_email_settings(callback: CallbackQuery) -> None:
+async def open_email_settings(callback: CallbackQuery, session: AsyncSession) -> None:
+    await refresh_web_config(session)
     await callback.message.edit_text(
         text=_email_main_text(),
         reply_markup=build_email_main_kb().as_markup(),
@@ -182,8 +184,9 @@ async def open_email_settings(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(EmailFieldCallback.filter(F.action == "open"))
-async def back_to_email_main(callback: CallbackQuery, state: FSMContext) -> None:
+async def back_to_email_main(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     await state.clear()
+    await refresh_web_config(session)
     await callback.message.edit_text(
         text=_email_main_text(),
         reply_markup=build_email_main_kb().as_markup(),
@@ -192,11 +195,12 @@ async def back_to_email_main(callback: CallbackQuery, state: FSMContext) -> None
 
 
 @router.callback_query(EmailFieldCallback.filter(F.action == "cat"))
-async def open_category(callback: CallbackQuery, callback_data: EmailFieldCallback) -> None:
+async def open_category(callback: CallbackQuery, callback_data: EmailFieldCallback, session: AsyncSession) -> None:
     cat_id = callback_data.key
     if cat_id not in CATEGORIES:
         await callback.answer()
         return
+    await refresh_web_config(session)
     await callback.message.edit_text(
         text=menu_text("Письма", _category_text(cat_id)),
         reply_markup=build_category_kb(cat_id).as_markup(),
@@ -205,11 +209,14 @@ async def open_category(callback: CallbackQuery, callback_data: EmailFieldCallba
 
 
 @router.callback_query(EmailFieldCallback.filter(F.action == "edit"))
-async def prompt_field(callback: CallbackQuery, callback_data: EmailFieldCallback, state: FSMContext) -> None:
+async def prompt_field(
+    callback: CallbackQuery, callback_data: EmailFieldCallback, state: FSMContext, session: AsyncSession
+) -> None:
     key = callback_data.key
     if key not in FIELD_LABELS:
         await callback.answer()
         return
+    await refresh_web_config(session)
 
     vars_hint = FIELD_VARS.get(key)
     hint_line = f"Доступные переменные: <code>{html_escape(vars_hint)}</code>\n\n" if vars_hint else ""
@@ -240,13 +247,13 @@ async def save_field(message: Message, state: FSMContext) -> None:
         return
 
     raw = (message.text or "").strip()
+    if not raw:
+        await message.answer("Пришлите текст шаблона. Чтобы вернуть значение по умолчанию, отправьте «-».")
+        return
     value = "" if raw == "-" else raw
 
-    new_config = dict(WEB_CONFIG)
-    new_config[key] = value
-
     async with async_session_maker() as session:
-        await update_web_config(session, new_config)
+        await update_web_config(session, {key: value})
 
     await state.clear()
     cat_id = CATEGORY_BY_FIELD.get(key)

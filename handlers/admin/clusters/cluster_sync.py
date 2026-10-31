@@ -5,24 +5,20 @@ from typing import Any
 
 from aiogram import F, types
 from aiogram.types import CallbackQuery
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MODES_CONFIG
 from database import get_servers
 from database.access.resolution import UserId, panel_identity_fields
-from database.keys import get_key_by_server, update_key_link
+from database.keys import invalidate_key_details, update_key_link
 from database.models import Key, Server, Tariff, User
 from filters.admin import IsAdminFilter
 from logger import logger
 from panels import remnawave as remnawave_panel
 from panels._3xui import get_inbound_node, get_xui_instance
 from services.cluster_access import is_server_configured, resolve_tariff_servers
-from services.operations import (
-    create_client_on_server,
-    create_key_on_cluster,
-    delete_key_from_cluster,
-)
+from services.operations import create_client_on_server
 from services.operations.aggregated_links import make_aggregated_link
 from services.subscription_links import preserve_saved_public_link
 from settings.config import (
@@ -40,15 +36,6 @@ from .keyboard import AdminClusterCallback, build_availability_kb, build_sync_cl
 
 
 SYNC_CONCURRENCY = 200
-
-
-async def _preserve_synced_public_link(session: AsyncSession, key: dict) -> None:
-    recreated = await get_key_by_server(session, UserId(key["user_id"]), key["client_id"])
-    if recreated is None:
-        return
-    link = preserve_saved_public_link(recreated.key, key.get("key"), key["email"], PUBLIC_LINK)
-    if link != recreated.key:
-        await update_key_link(session, recreated.email, link)
 
 
 async def _fetch_all_panel_uuids(remna: "remnawave_panel.RemnawaveAPI") -> set[str]:
@@ -375,7 +362,7 @@ async def handle_sync_server(
                 )
                 .join(Key, Server.server_name == Key.server_id)
                 .join(User, Key.user_id == User.id)
-                .where(Server.server_name == server_name)
+                .where(Server.server_name == server_name, Key.is_frozen.is_(False))
             )
         else:
             stmt = (
@@ -400,7 +387,7 @@ async def handle_sync_server(
                 )
                 .join(Key, Server.cluster_name == Key.server_id)
                 .join(User, Key.user_id == User.id)
-                .where(Server.server_name == server_name)
+                .where(Server.server_name == server_name, Key.is_frozen.is_(False))
             )
 
         result = await session.execute(stmt)
@@ -469,6 +456,10 @@ async def handle_sync_server(
                     logger.warning(f"[Sync] Ключ {key['client_id']} пропущен: сервер {server_name} не настроен")
                     continue
 
+                traffic_limit_bytes, hwid_limit, expire_iso, _ = _compute_user_fields(
+                    key, tariff, cluster_servers, use_country_selection, binding_scope=binding_scope
+                )
+
                 if str(target_server.get("panel_type") or key["panel_type"]).lower() == "remnawave":
                     inbound_ids = list(
                         dict.fromkeys(
@@ -484,38 +475,11 @@ async def handle_sync_server(
                         logger.warning(f"[Sync] Ключ {key['client_id']} пропущен: разрешённые squads не определены")
                         continue
 
-                    expire_iso = (
-                        datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
-                    )
-
                     async with remnawave_api(panel_api_url) as remna:
                         if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                             logger.error(f"Не удалось авторизоваться в Remnawave для сервера {server_name}")
                             failed_count += 1
                             continue
-
-                        traffic_limit_bytes = 0
-                        hwid_limit = 0
-
-                        current_device_limit_from_key = key.get("current_device_limit")
-                        current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
-                        selected_device_limit_from_key = key.get("selected_device_limit")
-                        selected_traffic_limit_gb_from_key = key.get("selected_traffic_limit")
-
-                        if tariff:
-                            if current_traffic_limit_gb_from_key is not None:
-                                traffic_limit_bytes = int(current_traffic_limit_gb_from_key * 1024**3)
-                            elif selected_traffic_limit_gb_from_key is not None:
-                                traffic_limit_bytes = int(selected_traffic_limit_gb_from_key * 1024**3)
-                            elif tariff.get("traffic_limit") is not None:
-                                traffic_limit_bytes = int(tariff.get("traffic_limit") * 1024**3)
-
-                            if current_device_limit_from_key is not None:
-                                hwid_limit = int(current_device_limit_from_key)
-                            elif selected_device_limit_from_key is not None:
-                                hwid_limit = int(selected_device_limit_from_key)
-                            else:
-                                hwid_limit = tariff.get("device_limit")
 
                         _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
                         success = await remna.update_user(
@@ -571,7 +535,8 @@ async def handle_sync_server(
                         semaphore,
                         plan=key["tariff_id"],
                         session=session,
-                        reuse_existing=True,
+                        total_traffic_limit_bytes=traffic_limit_bytes,
+                        device_limit_value=hwid_limit,
                     )
                     if confirmed is not True:
                         raise ValueError(f"Синхронизация ключа {key['client_id']} не подтверждена")
@@ -991,10 +956,9 @@ async def handle_sync_cluster(
                 await remna.aclose()
 
         else:
+            semaphore = asyncio.Semaphore(2)
             for key in keys_to_sync:
                 try:
-                    traffic_limit_bytes = 0
-                    hwid_limit = 0
                     tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
                     allowed_servers = _allowed_sync_servers(
                         key, tariff, cluster_servers, use_country_selection, binding_scope=binding_scope
@@ -1012,56 +976,117 @@ async def handle_sync_cluster(
                         )
                         continue
 
-                    current_device_limit_from_key = key.get("current_device_limit")
-                    current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
-                    selected_device_limit_from_key = key.get("selected_device_limit")
-                    selected_traffic_limit_gb_from_key = key.get("selected_traffic_limit")
-
-                    if tariff:
-                        if current_traffic_limit_gb_from_key is not None:
-                            traffic_limit_bytes = int(current_traffic_limit_gb_from_key * 1024**3)
-                        elif selected_traffic_limit_gb_from_key is not None:
-                            traffic_limit_bytes = int(selected_traffic_limit_gb_from_key * 1024**3)
-                        elif tariff.get("traffic_limit") is not None:
-                            traffic_limit_bytes = int(tariff.get("traffic_limit") * 1024**3)
-                        else:
-                            traffic_limit_bytes = 0
-
-                        if current_device_limit_from_key is not None:
-                            hwid_limit = int(current_device_limit_from_key)
-                        elif selected_device_limit_from_key is not None:
-                            hwid_limit = int(selected_device_limit_from_key)
-                        else:
-                            hwid_limit = tariff.get("device_limit")
-
-                    await delete_key_from_cluster(cluster_name, key["email"], key["client_id"], session)
-
-                    await session.execute(
-                        delete(Key).where(Key.user_id == key["user_id"], Key.client_id == key["client_id"])
+                    traffic_limit_bytes, hwid_limit, expire_iso, _ = _compute_user_fields(
+                        key, tariff, cluster_servers, use_country_selection, binding_scope=binding_scope
                     )
-
-                    cluster_id_for_recreate = key["server_id"] if use_country_selection else cluster_name
-                    await create_key_on_cluster(
-                        cluster_id_for_recreate,
-                        UserId(key["user_id"]),
-                        key["client_id"],
-                        key["email"],
-                        key["expiry_time"],
-                        plan=key["tariff_id"],
+                    new_remnawave_link = key.get("remnawave_link")
+                    confirmations = []
+                    for server in allowed_servers:
+                        if str(server.get("panel_type") or "").lower() != "3x-ui":
+                            continue
+                        try:
+                            confirmations.append(
+                                await create_client_on_server(
+                                    server,
+                                    UserId(key["user_id"]),
+                                    key["client_id"],
+                                    key["email"],
+                                    key["expiry_time"],
+                                    semaphore,
+                                    session=session,
+                                    total_traffic_limit_bytes=traffic_limit_bytes,
+                                    device_limit_value=hwid_limit,
+                                )
+                            )
+                        except Exception as e:
+                            confirmations.append(False)
+                            logger.warning(f"[Sync] Сервер {server['server_name']} недоступен для {key['email']}: {e}")
+                    if allowed_remna_urls:
+                        api_url = next(iter(allowed_remna_urls))
+                        _, _, _, inbound_ids = _compute_user_fields(
+                            key,
+                            tariff,
+                            cluster_servers,
+                            use_country_selection,
+                            binding_scope=binding_scope,
+                            api_url=api_url,
+                        )
+                        remna = remnawave_panel.RemnawaveAPI(api_url)
+                        try:
+                            if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                                raise ValueError("Не удалось авторизоваться в Remnawave")
+                            existing = await remna.get_user_by_uuid(key["client_id"], username=key["email"])
+                            _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
+                            if existing:
+                                if (
+                                    str(existing.get("vlessUuid") or existing.get("uuid") or "")
+                                    != str(key["client_id"])
+                                    or existing.get("username") != key["email"]
+                                ):
+                                    raise ValueError("Клиент Remnawave не совпадает с подпиской")
+                                confirmed = await remna.update_user(
+                                    uuid=key["client_id"],
+                                    lookup_username=key["email"],
+                                    expire_at=expire_iso,
+                                    telegram_id=_ptg,
+                                    email=_pemail or None,
+                                    active_user_inbounds=inbound_ids,
+                                    traffic_limit_bytes=traffic_limit_bytes,
+                                    hwid_device_limit=hwid_limit,
+                                )
+                            else:
+                                payload = {
+                                    "uuid": str(key["client_id"]),
+                                    "username": key["email"],
+                                    "expireAt": expire_iso,
+                                    "status": "ACTIVE",
+                                    "trafficLimitStrategy": "NO_RESET",
+                                    "trafficLimitBytes": traffic_limit_bytes,
+                                    "hwidDeviceLimit": hwid_limit,
+                                    "activeInternalSquads": inbound_ids,
+                                }
+                                if _ptg is not None:
+                                    payload["telegramId"] = _ptg
+                                if _pemail:
+                                    payload["email"] = _pemail
+                                if key.get("remnawave_link"):
+                                    payload["shortUuid"] = key["remnawave_link"].rstrip("/").split("/")[-1]
+                                created = await remna.create_user(payload)
+                                confirmed = bool(
+                                    isinstance(created, dict)
+                                    and str(created.get("vlessUuid") or created.get("uuid") or "")
+                                    == str(key["client_id"])
+                                    and created.get("username") == key["email"]
+                                )
+                            if confirmed:
+                                subscription = await remna.get_subscription_by_username(key["email"])
+                                if subscription and subscription.get("subscriptionUrl"):
+                                    new_remnawave_link = subscription["subscriptionUrl"]
+                            confirmations.append(confirmed)
+                        finally:
+                            await remna.aclose()
+                    if not confirmations or not all(result is True for result in confirmations):
+                        raise ValueError("Синхронизация подтверждена не на всех разрешённых серверах")
+                    if new_remnawave_link != key.get("remnawave_link"):
+                        await session.execute(
+                            update(Key)
+                            .where(Key.user_id == key["user_id"], Key.client_id == key["client_id"])
+                            .values(remnawave_link=new_remnawave_link)
+                        )
+                        await invalidate_key_details(key["email"])
+                    key_value = await make_aggregated_link(
                         session=session,
-                        remnawave_link=key["remnawave_link"],
-                        hwid_limit=hwid_limit,
-                        traffic_limit_bytes=traffic_limit_bytes,
-                        selected_device_limit=key.get("selected_device_limit"),
-                        selected_traffic_limit_gb=key.get("selected_traffic_limit"),
-                        current_device_limit=key.get("current_device_limit"),
-                        current_traffic_limit_gb=key.get("current_traffic_limit"),
-                        selected_price_rub=key.get("selected_price_rub"),
+                        cluster_all=allowed_servers,
+                        cluster_id=key["server_id"],
+                        email=key["email"],
+                        client_id=key["client_id"],
+                        tg_id=UserId(key["user_id"]),
+                        plan=tariff,
                     )
-                    await _preserve_synced_public_link(session, key)
+                    key_value = preserve_saved_public_link(key_value, key.get("key"), key["email"], PUBLIC_LINK)
+                    if key_value and key_value != key.get("key"):
+                        await update_key_link(session, key["email"], key_value)
                     stats["updated"] += 1
-
-                    await asyncio.sleep(0.5)
 
                 except Exception as e:
                     stats["failed"] += 1

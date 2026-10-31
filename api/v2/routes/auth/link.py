@@ -82,7 +82,7 @@ async def link_email_send_code(
             detail="Не удалось сохранить код. Попробуйте позже.",
         )
     try:
-        await send_email_link_code_email(email_norm, code)
+        await send_email_link_code_email(email_norm, code, session=session)
     except Exception:
         await email_link_code.release_cooldown(email_norm)
         await email_link_code.delete_code(email_norm)

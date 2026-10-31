@@ -94,7 +94,7 @@ async def _webpush_client(session: AsyncSession, identity_id: str, title: str, b
         pass
 
 
-async def _email_client_reply(client: Identity, ticket: Ticket, body: str) -> None:
+async def _email_client_reply(client: Identity, ticket: Ticket, body: str, *, session: AsyncSession) -> None:
     email = (getattr(client, "email", None) or "").strip()
     if not email or not getattr(client, "email_verified", False):
         return
@@ -103,7 +103,9 @@ async def _email_client_reply(client: Identity, ticket: Ticket, body: str) -> No
 
         if not smtp_configured():
             return
-        await send_support_reply_email(email, ticket.id.split("-")[0][:8], body or "Новый ответ по вашему обращению")
+        await send_support_reply_email(
+            email, ticket.id.split("-")[0][:8], body or "Новый ответ по вашему обращению", session=session
+        )
     except Exception:
         pass
 
@@ -138,7 +140,7 @@ async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: 
         return
     tg_id = client.tg_id or 0
     if tg_id <= 0:
-        await _email_client_reply(client, ticket, body)
+        await _email_client_reply(client, ticket, body, session=session)
         return
     from .queue import queue_message
 

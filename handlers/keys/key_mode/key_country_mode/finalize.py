@@ -1,5 +1,6 @@
 from database.servers import get_servers
 from services.cluster_access import is_server_configured, resolve_tariff_servers
+from settings.config import SUPERNODE
 
 from ._common import *
 
@@ -78,11 +79,15 @@ async def finalize_key_creation(
 
     if old_key_details:
         if selected_traffic_gb is None:
-            stored_traffic = old_key_details.get("selected_traffic_limit")
+            stored_traffic = old_key_details.get("current_traffic_limit")
+            if stored_traffic is None:
+                stored_traffic = old_key_details.get("selected_traffic_limit")
             if stored_traffic is not None:
                 selected_traffic_gb = int(stored_traffic)
         if selected_device_limit is None:
-            stored_devices = old_key_details.get("selected_device_limit")
+            stored_devices = old_key_details.get("current_device_limit")
+            if stored_devices is None:
+                stored_devices = old_key_details.get("selected_device_limit")
             if stored_devices is not None:
                 selected_device_limit = int(stored_devices)
 
@@ -116,6 +121,8 @@ async def finalize_key_creation(
     created_at = int(datetime.now(moscow_tz).timestamp() * 1000)
 
     try:
+        if old_key_details and old_key_details.get("is_frozen"):
+            raise ValueError("Сначала разморозьте подписку для смены локации")
         result = await session.execute(select(Server).where(Server.server_name == selected_country))
         server_info = result.scalar_one_or_none()
         if not server_info:
@@ -155,7 +162,8 @@ async def finalize_key_creation(
             same_api
             and old_panel_type == panel_type
             and (
-                panel_type == "remnawave" or str(old_server_info.inbound_id or "") == str(server_info.inbound_id or "")
+                panel_type == "remnawave"
+                or (not SUPERNODE and str(old_server_info.inbound_id or "") == str(server_info.inbound_id or ""))
             )
         )
 
@@ -252,7 +260,6 @@ async def finalize_key_creation(
                 is_trial=is_trial,
                 total_traffic_limit_bytes=traffic_limit_bytes,
                 device_limit_value=device_limit,
-                reuse_existing=bool(old_key_name),
             )
             if confirmed is not True:
                 raise ValueError("Создание подписки не подтверждено в выбранной локации")

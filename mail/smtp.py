@@ -6,6 +6,9 @@ from html import escape as html_escape
 
 import aiosmtplib
 
+from core.defaults import DEFAULT_WEB_CONFIG
+from core.settings.web_config import refresh_web_config
+from database import async_session_maker
 from logger import logger
 from settings.config import (
     EMAIL_FROM,
@@ -14,6 +17,7 @@ from settings.config import (
     EMAIL_SMTP_PORT,
     EMAIL_SMTP_USER,
     PROJECT_NAME,
+    SITE_URL,
 )
 
 
@@ -25,29 +29,31 @@ def smtp_configured() -> bool:
     return bool(EMAIL_SMTP_HOST and (EMAIL_FROM or EMAIL_SMTP_USER))
 
 
-def _get_email_template(key: str, default: str) -> str:
-    """Читает шаблон из WEB_CONFIG (настраиваемый админом), fallback на default."""
-    try:
-        from core.settings.web_config import WEB_CONFIG
+async def _load_email_config(session=None) -> dict:
+    """Читает актуальные шаблоны писем из базы данных."""
+    if session is None:
+        async with async_session_maker() as current:
+            return await _load_email_config(current)
+    return await refresh_web_config(session)
 
-        val = WEB_CONFIG.get(key)
-        return str(val).strip() if val else default
-    except Exception:
-        return default
+
+def _get_email_template(config: dict, key: str, default: str) -> str:
+    """Возвращает сохранённый шаблон или значение по умолчанию."""
+    value = config.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return str(DEFAULT_WEB_CONFIG.get(key) or default)
 
 
 def _render(template: str, **kwargs: str) -> str:
-    try:
-        return template.format(**kwargs)
-    except (KeyError, ValueError):
-        return template
+    return re.sub(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", lambda match: str(kwargs.get(match[1], match[0])), template)
 
 
-def _apply_sender(msg: EmailMessage) -> None:
+def _apply_sender(msg: EmailMessage, config: dict) -> None:
     addr = EMAIL_FROM or EMAIL_SMTP_USER
-    name = _get_email_template("EMAIL_FROM_NAME", PROJECT_NAME)
+    name = _get_email_template(config, "EMAIL_FROM_NAME", PROJECT_NAME)
     msg["From"] = f"{name} <{addr}>"
-    reply_to = _get_email_template("EMAIL_REPLY_TO", "").strip()
+    reply_to = _get_email_template(config, "EMAIL_REPLY_TO", "").strip()
     if reply_to:
         msg["Reply-To"] = reply_to
 
@@ -70,17 +76,18 @@ def _smtp_kwargs() -> dict:
     return kwargs
 
 
-async def send_login_code_email(to_addr: str, code: str) -> None:
+async def send_login_code_email(to_addr: str, code: str, *, session=None) -> None:
     if not smtp_configured():
         raise RuntimeError("smtp_not_configured")
+    config = await _load_email_config(session)
     project = PROJECT_NAME
     subject = _render(
-        _get_email_template("EMAIL_LOGIN_SUBJECT", "{project}: код для входа"), project=project, code=code
+        _get_email_template(config, "EMAIL_LOGIN_SUBJECT", "{project}: код для входа"), project=project, code=code
     )
-    body = _render(_get_email_template("EMAIL_LOGIN_BODY", "Код для входа: {code}"), project=project, code=code)
+    body = _render(_get_email_template(config, "EMAIL_LOGIN_BODY", "Код для входа: {code}"), project=project, code=code)
     msg = EmailMessage()
     msg["Subject"] = subject
-    _apply_sender(msg)
+    _apply_sender(msg, config)
     msg["To"] = to_addr
     msg.set_content(body)
     try:
@@ -90,17 +97,20 @@ async def send_login_code_email(to_addr: str, code: str) -> None:
         raise
 
 
-async def send_support_reply_email(to_addr: str, ticket_ref: str, reply: str) -> None:
+async def send_support_reply_email(to_addr: str, ticket_ref: str, reply: str, *, session=None) -> None:
     if not smtp_configured():
         raise RuntimeError("smtp_not_configured")
+    config = await _load_email_config(session)
     project = PROJECT_NAME
     subject = _render(
-        _get_email_template("EMAIL_SUPPORT_REPLY_SUBJECT", "{project}: ответ поддержки"),
+        _get_email_template(config, "EMAIL_SUPPORT_REPLY_SUBJECT", "{project}: ответ поддержки"),
         project=project,
         ref=ticket_ref,
+        reply=reply,
     )
     body = _render(
         _get_email_template(
+            config,
             "EMAIL_SUPPORT_REPLY_BODY",
             "Поддержка ответила по вашему обращению {ref}:\n\n{reply}\n\nОткройте личный кабинет, чтобы продолжить диалог.",
         ),
@@ -110,7 +120,7 @@ async def send_support_reply_email(to_addr: str, ticket_ref: str, reply: str) ->
     )
     msg = EmailMessage()
     msg["Subject"] = subject
-    _apply_sender(msg)
+    _apply_sender(msg, config)
     msg["To"] = to_addr
     msg.set_content(body)
     try:
@@ -120,15 +130,20 @@ async def send_support_reply_email(to_addr: str, ticket_ref: str, reply: str) ->
         raise
 
 
-async def send_password_reset_code_email(to_addr: str, code: str) -> None:
+async def send_password_reset_code_email(to_addr: str, code: str, *, session=None) -> None:
     if not smtp_configured():
         raise RuntimeError("smtp_not_configured")
+    config = await _load_email_config(session)
     project = PROJECT_NAME
-    subject = _render(_get_email_template("EMAIL_RESET_SUBJECT", "{project}: сброс пароля"), project=project, code=code)
-    body = _render(_get_email_template("EMAIL_RESET_BODY", "Код для сброса пароля: {code}"), project=project, code=code)
+    subject = _render(
+        _get_email_template(config, "EMAIL_RESET_SUBJECT", "{project}: сброс пароля"), project=project, code=code
+    )
+    body = _render(
+        _get_email_template(config, "EMAIL_RESET_BODY", "Код для сброса пароля: {code}"), project=project, code=code
+    )
     msg = EmailMessage()
     msg["Subject"] = subject
-    _apply_sender(msg)
+    _apply_sender(msg, config)
     msg["To"] = to_addr
     msg.set_content(body)
     try:
@@ -138,19 +153,22 @@ async def send_password_reset_code_email(to_addr: str, code: str) -> None:
         raise
 
 
-async def send_email_verify_code_email(to_addr: str, code: str) -> None:
+async def send_email_verify_code_email(to_addr: str, code: str, *, session=None) -> None:
     if not smtp_configured():
         raise RuntimeError("smtp_not_configured")
+    config = await _load_email_config(session)
     project = PROJECT_NAME
     subject = _render(
-        _get_email_template("EMAIL_VERIFY_SUBJECT", "{project}: подтверждение email"), project=project, code=code
+        _get_email_template(config, "EMAIL_VERIFY_SUBJECT", "{project}: подтверждение email"),
+        project=project,
+        code=code,
     )
     body = _render(
-        _get_email_template("EMAIL_VERIFY_BODY", "Код подтверждения email: {code}"), project=project, code=code
+        _get_email_template(config, "EMAIL_VERIFY_BODY", "Код подтверждения email: {code}"), project=project, code=code
     )
     msg = EmailMessage()
     msg["Subject"] = subject
-    _apply_sender(msg)
+    _apply_sender(msg, config)
     msg["To"] = to_addr
     msg.set_content(body)
     try:
@@ -194,20 +212,16 @@ def _telegram_html_to_email(html: str) -> str:
     return body
 
 
-def build_broadcast_email(text_html: str, image_url: str | None = None) -> tuple[str, str, str]:
+def build_broadcast_email(text_html: str, image_url: str | None = None, *, config: dict) -> tuple[str, str, str]:
     project = PROJECT_NAME
     plain = _html_to_text(text_html)
     first_line = plain.split("\n", 1)[0].strip()
     title = first_line or project
-    subject = _render(_get_email_template("EMAIL_BROADCAST_SUBJECT", "{project}: {title}"), project=project, title=title)
+    subject = _render(
+        _get_email_template(config, "EMAIL_BROADCAST_SUBJECT", "{project}: {title}"), project=project, title=title
+    )
 
-    site_url = ""
-    try:
-        from core.settings.web_config import get_site_url, is_web_enabled
-
-        site_url = get_site_url() if is_web_enabled() else ""
-    except Exception:
-        site_url = ""
+    site_url = str(config.get("SITE_URL") or SITE_URL or "").strip().rstrip("/") if config.get("WEB_ENABLED") else ""
 
     image_block = (
         f'<tr><td style="padding:0;"><img src="{html_escape(image_url)}" alt="" '
@@ -223,41 +237,47 @@ def build_broadcast_email(text_html: str, image_url: str | None = None) -> tuple
         else ""
     )
 
-    template = _get_email_template("EMAIL_BROADCAST_TEMPLATE", DEFAULT_BROADCAST_TEMPLATE)
-    html = (
-        template.replace("{project}", html_escape(project))
-        .replace("{image}", image_block)
-        .replace("{cta}", cta_block)
-        .replace("{site_url}", html_escape(site_url))
-        .replace("{year}", str(datetime.now().year))
-        .replace("{content}", _telegram_html_to_email(text_html))
+    template = _get_email_template(config, "EMAIL_BROADCAST_TEMPLATE", DEFAULT_BROADCAST_TEMPLATE)
+    html = _render(
+        template,
+        project=html_escape(project),
+        image=image_block,
+        cta=cta_block,
+        site_url=html_escape(site_url),
+        year=str(datetime.now().year),
+        content=_telegram_html_to_email(text_html),
     )
     return subject, html, plain
 
 
-async def send_broadcast_email(to_addr: str, subject: str, html_body: str, text_body: str) -> None:
+async def send_broadcast_email(to_addr: str, subject: str, html_body: str, text_body: str, *, config: dict) -> None:
     if not smtp_configured():
         raise RuntimeError("smtp_not_configured")
     msg = EmailMessage()
     msg["Subject"] = subject
-    _apply_sender(msg)
+    _apply_sender(msg, config)
     msg["To"] = to_addr
     msg.set_content(text_body or " ")
     msg.add_alternative(html_body, subtype="html")
     await aiosmtplib.send(msg, **_smtp_kwargs())
 
 
-async def send_email_link_code_email(to_addr: str, code: str) -> None:
+async def send_email_link_code_email(to_addr: str, code: str, *, session=None) -> None:
     if not smtp_configured():
         raise RuntimeError("smtp_not_configured")
+    config = await _load_email_config(session)
     project = PROJECT_NAME
     subject = _render(
-        _get_email_template("EMAIL_LINK_SUBJECT", "{project}: подтверждение привязки email"), project=project, code=code
+        _get_email_template(config, "EMAIL_LINK_SUBJECT", "{project}: подтверждение привязки email"),
+        project=project,
+        code=code,
     )
-    body = _render(_get_email_template("EMAIL_LINK_BODY", "Код для привязки email: {code}"), project=project, code=code)
+    body = _render(
+        _get_email_template(config, "EMAIL_LINK_BODY", "Код для привязки email: {code}"), project=project, code=code
+    )
     msg = EmailMessage()
     msg["Subject"] = subject
-    _apply_sender(msg)
+    _apply_sender(msg, config)
     msg["To"] = to_addr
     msg.set_content(body)
     try:

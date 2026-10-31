@@ -2,9 +2,11 @@ from database.access.resolution import UserId
 from database.keys import lock_owned_key_for_operation
 from filters.admin_actions import admin_action_allowed
 from filters.permissions import PERM_KEY_VIEW
+from logger import logger
 from middlewares.session import operation_session
 
 from ...panel.headers import card, menu_text, quote, section
+from ..keyboard import build_editor_kb
 from ._common import *
 from .edit import handle_key_edit
 
@@ -342,7 +344,17 @@ async def handle_recreate_key_confirm(
             return
 
         remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
-        threexui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() != "remnawave"]
+        threexui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
+
+        if remnawave_servers and threexui_servers:
+            await callback_query.message.edit_text(
+                text=menu_text(
+                    "Подписка",
+                    "Смена ссылки для смешанного кластера Remnawave и 3x-ui не поддерживается. Изменения не внесены.",
+                ),
+                reply_markup=build_editor_kb(user_id),
+            )
+            return
 
         if remnawave_servers:
             api_url = remnawave_servers[0].get("api_url")
@@ -382,30 +394,68 @@ async def handle_recreate_key_confirm(
 
         elif threexui_servers:
             from database.keys import update_key_email_and_link
-            from panels._3xui import change_client_email, get_xui_instance
+            from panels._3xui import _client_snapshot, change_client_email, get_xui_instance
             from settings.config import PUBLIC_LINK, SUPERNODE
 
             new_email = await generate_random_email(session=session)
-            changed_any = False
+            prepared = []
+            attempted = []
+            failed = []
             for server in threexui_servers:
                 api_url = server.get("api_url")
                 inbound_id = server.get("inbound_id")
                 server_name = server.get("server_name", "unknown")
                 if not api_url or not inbound_id:
+                    failed.append(server_name)
                     continue
                 old_unique = f"{old_email}_{server_name.lower()}" if SUPERNODE else old_email
                 new_unique = f"{new_email}_{server_name.lower()}" if SUPERNODE else new_email
                 try:
                     xui = await get_xui_instance(api_url)
-                    if await change_client_email(xui, int(inbound_id), old_unique, new_unique, new_email, client_id):
-                        changed_any = True
+                    client, _ = await _client_snapshot(xui, int(inbound_id), old_unique, client_id)
+                    prepared.append((
+                        xui,
+                        int(inbound_id),
+                        old_unique,
+                        new_unique,
+                        client.get("subId") or "",
+                        server_name,
+                    ))
                 except Exception as e:
+                    failed.append(server_name)
                     logger.error(f"[3x-ui revoke] сервер {server_name}: {e}")
 
-            if not changed_any:
+            if not failed:
+                for item in prepared:
+                    xui, inbound_id, old_unique, new_unique, _old_sub_id, server_name = item
+                    attempted.append(item)
+                    try:
+                        if not await change_client_email(xui, inbound_id, old_unique, new_unique, new_email, client_id):
+                            failed.append(server_name)
+                    except Exception as error:
+                        failed.append(server_name)
+                        logger.error("[3x-ui revoke] сервер {}: {}", server_name, error)
+                    if failed:
+                        break
+
+            if failed:
+                rollback_failed = []
+                for xui, inbound_id, old_unique, new_unique, old_sub_id, server_name in reversed(attempted):
+                    try:
+                        if not await change_client_email(
+                            xui, inbound_id, new_unique, old_unique, old_sub_id, client_id
+                        ):
+                            rollback_failed.append(server_name)
+                    except Exception as error:
+                        rollback_failed.append(server_name)
+                        logger.error("[3x-ui revoke] откат на {}: {}", server_name, error)
                 await callback_query.message.edit_text(
                     text=menu_text(
-                        "Подписка", "❌ Не удалось сменить ссылку ни на одном 3x-ui сервере. Проверьте логи."
+                        "Подписка",
+                        "❌ Смена ссылки подтверждена не на всех 3x-ui серверах. Прежняя запись сохранена.",
+                        f"⚠️ Не удалось восстановить прежнюю ссылку на: {', '.join(rollback_failed)}. Проверьте логи."
+                        if rollback_failed
+                        else "",
                     ),
                     reply_markup=build_editor_kb(user_id),
                 )

@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+
 from database.access.resolution import subscription_owner_ref
 from settings.config import SUPERNODE
 
@@ -55,6 +57,8 @@ async def user_key_change_location(
     ).scalar_one_or_none()
     if db_key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
+    if bool(getattr(db_key, "is_frozen", False)):
+        raise HTTPException(status_code=400, detail="Сначала разморозьте подписку для смены локации")
     current_server = str(getattr(db_key, "server_id", "") or "")
     if not current_server:
         raise HTTPException(status_code=400, detail="У подписки не указан текущий сервер")
@@ -81,8 +85,12 @@ async def user_key_change_location(
     tariff = await get_tariff_by_id(session, int(tariff_id)) if tariff_id else None
     need_vless_key = bool(tariff.get("vless")) if tariff else False
     external_squad_uuid = (tariff.get("external_squad") if tariff else None) or None
-    selected_traffic_gb = getattr(db_key, "selected_traffic_limit", None)
-    selected_device_limit = getattr(db_key, "selected_device_limit", None)
+    selected_traffic_gb = getattr(db_key, "current_traffic_limit", None)
+    if selected_traffic_gb is None:
+        selected_traffic_gb = getattr(db_key, "selected_traffic_limit", None)
+    selected_device_limit = getattr(db_key, "current_device_limit", None)
+    if selected_device_limit is None:
+        selected_device_limit = getattr(db_key, "selected_device_limit", None)
     if selected_traffic_gb is not None:
         traffic_limit_bytes = int(selected_traffic_gb) * GB
     else:
@@ -110,8 +118,11 @@ async def user_key_change_location(
         and old_panel_type == panel_type
         and (
             panel_type == "remnawave"
-            or str(getattr(old_server_info, "inbound_id", "") or "")
-            == str(getattr(target_server_info, "inbound_id", "") or "")
+            or (
+                not SUPERNODE
+                and str(getattr(old_server_info, "inbound_id", "") or "")
+                == str(getattr(target_server_info, "inbound_id", "") or "")
+            )
         )
     )
     remnawave_link = None
@@ -195,7 +206,6 @@ async def user_key_change_location(
             is_trial=False,
             total_traffic_limit_bytes=traffic_limit_bytes,
             device_limit_value=device_limit,
-            reuse_existing=True,
         )
         if confirmed is not True:
             raise HTTPException(status_code=502, detail="Не удалось создать подписку в новой локации")

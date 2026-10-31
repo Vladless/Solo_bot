@@ -53,7 +53,7 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
     remnawave_checked = False
     remnawave_server_ref = None
 
-    async def fetch_traffic(server_info: dict, client_id: str) -> tuple[str, Any]:
+    async def fetch_traffic(server_info: dict, client_id: str) -> tuple[str, Any, str | None]:
         server_name = server_info["server_name"]
         api_url = server_info["api_url"]
         panel_type = server_info.get("panel_type", "3x-ui").lower()
@@ -65,13 +65,19 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
                 traffic_info = await get_client_traffic(xui, client_id, unique_email)
                 if traffic_info["status"] == "success":
                     used_gb = int(traffic_info.get("used_bytes") or 0) / 1073741824
-                    return server_name, round(used_gb, 2)
+                    resource_id = traffic_resource_id(
+                        panel_type,
+                        api_url,
+                        None if traffic_info.get("scope") == "client" else server_info.get("inbound_id"),
+                        unique_email,
+                    )
+                    return server_name, round(used_gb, 2), resource_id
                 else:
-                    return server_name, "Ошибка получения трафика"
+                    return server_name, "Ошибка получения трафика", None
             else:
-                return server_name, f"Неизвестная панель: {panel_type}"
+                return server_name, f"Неизвестная панель: {panel_type}", None
         except Exception as e:
-            return server_name, f"Ошибка: {e}"
+            return server_name, f"Ошибка: {e}", None
 
     for client_id, server_id in unique_rows:
         matched_servers = [
@@ -88,8 +94,21 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
                 tasks.append(fetch_traffic(server_info, client_id))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    for server, result in results:
-        user_traffic_data[server] = result
+    counters = {}
+    for entry in results:
+        if isinstance(entry, Exception):
+            logger.warning("[Traffic] Ошибка получения счётчика: {}", entry)
+            continue
+        server, result, resource_id = entry
+        if resource_id is None:
+            user_traffic_data[server] = result
+            continue
+        names, used_gb = counters.get(resource_id, ([], 0))
+        names.append(server)
+        counters[resource_id] = (names, max(used_gb, result))
+    for names, used_gb in counters.values():
+        label = ", ".join(names) + " (общий)" if len(names) > 1 else names[0]
+        user_traffic_data[label] = used_gb
 
     if remnawave_client_id and remnawave_server_ref:
         key = await get_key_details(session, email)
@@ -129,6 +148,8 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
         key = await get_key_details(session, email)
         if not key:
             raise ValueError("Ключ для сброса трафика не найден")
+        if key.get("is_frozen"):
+            raise ValueError("Сначала разморозьте подписку для сброса трафика")
         client_id = key["client_id"]
         user_id = UserId(key["user_id"])
         if await lock_owned_key_for_operation(session, user_id, client_id, email) is None:
@@ -149,6 +170,7 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
 
         tasks = []
         resources = []
+        global_resources = {}
         remnawave_done = set()
         skipped_servers = set()
 
@@ -193,11 +215,9 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
 
                 unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
                 tasks.append(_reset_xui_traffic(api_url, int(inbound_id), unique_email, client_id))
-                resources.append((
-                    panel_type,
-                    traffic_resource_id(panel_type, api_url or "", inbound_id, unique_email),
-                    server_name,
-                ))
+                resource_id = traffic_resource_id(panel_type, api_url or "", inbound_id, unique_email)
+                resources.append((panel_type, resource_id, server_name))
+                global_resources[resource_id] = traffic_resource_id(panel_type, api_url or "", None, unique_email)
             else:
                 logger.warning(f"[Reset Traffic] Неизвестный тип панели '{panel_type}' на {server_name}")
                 skipped_servers.add(server_name)
@@ -219,6 +239,9 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
             for (panel, resource_id, _server_name), result in zip(resources, results, strict=True)
             if result is True
         }
+        reset_resources.update(
+            global_resources[resource_id] for resource_id in tuple(reset_resources) if resource_id in global_resources
+        )
         if not reset_resources:
             raise ValueError(TRAFFIC_RESET_FAILED)
         owner = await resolve_key_operation_owner(session, user_id, client_id, email)
