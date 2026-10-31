@@ -111,7 +111,7 @@ def _configs(specs: list[InstallSpec], artifacts: dict) -> list[dict]:
     for spec in specs:
         try:
             result.append(build_profile(spec, artifacts))
-        except (KeyError, ValueError, TypeError):
+        except (InstallError, KeyError, ValueError, TypeError):
             continue
     return [item for item in result if isinstance(item, dict)]
 
@@ -128,44 +128,81 @@ def _entry(kind: str, panel_ref: str, identifier, expected: dict, **extra: objec
     }
 
 
+def _route_states(specs: list[InstallSpec], artifacts: dict) -> list[tuple[list[InstallSpec], dict]]:
+    """Собирает действующие и сохранённые направления установки."""
+    result = [([item.cascade_specs()[0] for item in specs], artifacts)]
+    children = [*(artifacts.get("cascade_routes") or {}).items()]
+    children.extend((item.get("exit_install_id"), item) for item in artifacts.get("retired_cascade_routes", []))
+    for identifier, child in children:
+        if not isinstance(child, dict):
+            raise _blocked("Некорректные артефакты направления каскада")
+        choices = [route for item in specs for route in item.cascade_specs()[1:] if route.exit_install_id == identifier]
+        if isinstance(child.get("params"), dict):
+            try:
+                saved = InstallSpec.from_dict(child["params"])
+            except (ValueError, TypeError) as error:
+                raise _blocked("Некорректные сохранённые параметры направления") from error
+            if saved.exit_install_id != identifier or saved.address != specs[0].address or saved.role != specs[0].role:
+                raise _blocked("Сохранённое направление принадлежит другой установке")
+            choices.append(saved)
+        if not choices and any(child.get(key) for key in ("host_uuid", "inbound_uuid", "cascade", "haproxy")):
+            raise _blocked("Не сохранены параметры собственного направления каскада")
+        if choices:
+            result.append((choices, child))
+    return result
+
+
+def _host_plan(choices: list[InstallSpec], scoped: dict, inventory: dict) -> tuple[list[dict], list[str]]:
+    """Доказывает принадлежность одного хоста направления."""
+    if scoped.get("host_removed"):
+        if scoped.get("host_uuid") in inventory["hosts"]:
+            raise _blocked("Удалённый хост направления появился снова")
+        return [], []
+    bodies = [InstallerPanel._host_body(item, scoped) for item in choices]
+    host_id = _uuid(scoped["host_uuid"], "хост") if scoped.get("host_uuid") else None
+    if host_id:
+        host = inventory["hosts"].get(host_id)
+        bodies.extend(InstallerPanel._update_intents(scoped, "host", host_id))
+    else:
+        candidates = [
+            item
+            for item in inventory["hosts"].values()
+            if any(item.get("address") == body["address"] and item.get("port") == body["port"] for body in bodies)
+        ]
+        if len(candidates) > 1:
+            raise _blocked("Найдены несколько хостов одного направления")
+        host = candidates[0] if candidates else None
+        host_id = host.get("uuid") if host else None
+    if not host:
+        return [], []
+    approved = [body for body in bodies if _matches(host, body)]
+    if not approved or host.get("nodes", []):
+        raise _blocked("Параметры или связи хоста изменены вне установщика")
+    return [_entry("host", choices[0].panel_ref, host_id, {**approved[0], "uuid": host_id})], [host_id]
+
+
 def _main_plan(spec: InstallSpec, artifacts: dict, inventory: dict) -> tuple[list[dict], dict]:
-    """Доказывает принадлежность профиля, ноды и хоста."""
+    """Доказывает принадлежность профиля, ноды и хостов."""
     specs = _specs(spec, artifacts)
+    states = _route_states(specs, artifacts)
     install_id = artifacts.get("install_id")
-    explicit = any(artifacts.get(key) for key in ("profile_uuid", "node_uuid", "host_uuid", "inbound_uuid"))
+    explicit = any(
+        child.get(key) for _, child in states for key in ("profile_uuid", "node_uuid", "host_uuid", "inbound_uuid")
+    )
     if not isinstance(install_id, str) or not re.fullmatch(r"[a-fA-F0-9-]{32,36}", install_id):
         if explicit:
             raise _blocked("Не сохранён идентификатор владельца объектов панели")
         return [], {}
     if spec.role == "haproxy_entry":
-        if any(artifacts.get(key) for key in ("profile_uuid", "inbound_uuid", "node_uuid", "squad_uuid")):
+        if any(
+            child.get(key) for _, child in states for key in ("profile_uuid", "inbound_uuid", "node_uuid", "squad_uuid")
+        ):
             raise _blocked("Вход HAProxy не должен владеть объектами выходной ноды")
-        host_id = _uuid(artifacts["host_uuid"], "хост") if artifacts.get("host_uuid") else None
-        if not artifacts.get("haproxy") and not host_id:
-            return [], {}
-        choices = [InstallerPanel._host_body(item, artifacts) for item in specs]
-        if host_id:
-            host = inventory["hosts"].get(host_id)
-            choices.extend(InstallerPanel._update_intents(artifacts, "host", host_id))
-        else:
-            candidates = [
-                item
-                for item in inventory["hosts"].values()
-                if any(
-                    item.get("address") == choice["address"] and item.get("port") == choice["port"]
-                    for choice in choices
-                )
-            ]
-            if len(candidates) > 1:
-                raise _blocked("Найдены несколько хостов входа HAProxy")
-            host = candidates[0] if candidates else None
-            host_id = host.get("uuid") if host else None
         entries = []
-        if host:
-            approved = [choice for choice in choices if _matches(host, choice)]
-            if not approved or host.get("nodes", []):
-                raise _blocked("Параметры или связи хоста HAProxy изменены вне установщика")
-            entries.append(_entry("host", spec.panel_ref, host_id, {**approved[0], "uuid": host_id}))
+        for choices, child in states:
+            if child.get("haproxy") or child.get("host_uuid"):
+                owned, _ = _host_plan(choices, child, inventory)
+                entries.extend(owned)
         return entries, {}
     configs = _configs(specs, artifacts)
     profiles = inventory["profiles"]
@@ -194,45 +231,56 @@ def _main_plan(spec: InstallSpec, artifacts: dict, inventory: dict) -> tuple[lis
             item.get("name") in {candidate.profile_name for candidate in specs} for item in profiles.values()
         ):
             raise _blocked("Профиль с указанным именем найден без отметки владельца установки")
-    inbound_id = artifacts.get("inbound_uuid")
-    if inbound_id:
-        inbound_id = _uuid(inbound_id, "инбаунд")
     entries = []
+    inbound_ids = []
+    inbound_tags = {}
     if profile:
         names = {item.profile_name for item in specs}
         names.update(item.get("name") for item in InstallerPanel._update_intents(artifacts, "profile", identifier))
-        inbound_ids = _ids(profile.get("inbounds"), "инбаунды профиля")
-        if len(inbound_ids) != 1:
+        metadata_ids = _ids(profile.get("inbounds"), "инбаунды профиля")
+        configured = profile.get("config", {}).get("inbounds")
+        if not isinstance(configured, list) or not configured or len(configured) != len(metadata_ids):
             raise _blocked("Состав собственного профиля изменён вне установщика")
-        inbound = profile["inbounds"][0]
-        tag = inbound.get("tag")
+        configured_tags = [item.get("tag") for item in configured if isinstance(item, dict)]
+        saved_tags = {}
+        for _, child in states:
+            if child.get("inbound_tag"):
+                saved_tags.setdefault(child["inbound_tag"], set())
+                if child.get("inbound_uuid"):
+                    saved_tags[child["inbound_tag"]].add(child["inbound_uuid"])
+        for inbound in profile["inbounds"]:
+            tag = inbound.get("tag")
+            if (
+                not isinstance(tag, str)
+                or not tag.endswith("_" + install_id[:10])
+                or tag not in configured_tags
+                or inbound.get("profileUuid") != identifier
+                or (saved_tags and tag not in saved_tags)
+                or (saved_tags.get(tag) and inbound["uuid"] not in saved_tags[tag])
+            ):
+                raise _blocked("Принадлежность или конфигурация профиля не подтверждена")
+            inbound_ids.append(inbound["uuid"])
+            inbound_tags[inbound["uuid"]] = tag
         if (
-            not isinstance(tag, str)
-            or not tag.endswith("_" + install_id[:10])
-            or (artifacts.get("inbound_tag") and tag != artifacts["inbound_tag"])
-            or inbound.get("profileUuid") != identifier
-            or (inbound_id and inbound_id != inbound_ids[0])
+            len(set(configured_tags)) != len(configured)
+            or set(configured_tags) != set(inbound_tags.values())
             or profile.get("name") not in names
             or profile.get("config") not in configs
         ):
             raise _blocked("Принадлежность или конфигурация профиля не подтверждена")
-        inbound_id = inbound_ids[0]
-        config_inbounds = profile["config"].get("inbounds")
-        if not isinstance(config_inbounds, list) or len(config_inbounds) != 1 or config_inbounds[0].get("tag") != tag:
-            raise _blocked("Тег инбаунда не соответствует конфигурации профиля")
         entries.append(
             _entry(
                 "profile",
                 spec.panel_ref,
                 identifier,
                 {"uuid": identifier, "name": profile["name"], "config": profile["config"]},
-                inbound_uuid=inbound_id,
-                inbound_tag=tag,
+                inbound_uuid=inbound_ids[0],
+                inbound_tag=inbound_tags[inbound_ids[0]],
+                inbound_tags=inbound_tags,
             )
         )
     elif not identifier and explicit:
         raise _blocked("Нельзя определить собственный профиль панели")
-    artifacts_ids = {**artifacts, "profile_uuid": identifier, "inbound_uuid": inbound_id}
     node_id = artifacts.get("node_uuid")
     if node_id:
         node_id = _uuid(node_id, "нода")
@@ -250,55 +298,35 @@ def _main_plan(spec: InstallSpec, artifacts: dict, inventory: dict) -> tuple[lis
     if node:
         choices = [{"name": item.name, "address": item.address, "port": item.node_port} for item in specs]
         choices.extend(InstallerPanel._update_intents(artifacts, "node", node_id))
-        if not any(_matches(node, choice) for choice in choices):
+        binding = node.get("configProfile") or {}
+        active_ids = _ids(binding.get("activeInbounds"), "инбаунды ноды")
+        known_ids = set(inbound_ids) | {child.get("inbound_uuid") for _, child in states if child.get("inbound_uuid")}
+        if (
+            not any(_matches(node, choice) for choice in choices)
+            or binding.get("activeConfigProfileUuid") != identifier
+            or not active_ids
+            or any(item not in known_ids for item in active_ids)
+        ):
             raise _blocked("Параметры ноды изменены вне установщика")
-        actual = copy.copy(spec)
-        actual.name, actual.address, actual.node_port = node["name"], node["address"], node["port"]
-        InstallerPanel._validate_node(actual, {**artifacts_ids, "node_uuid": node_id}, node)
-        entries.append(
-            _entry(
-                "node",
-                spec.panel_ref,
-                node_id,
-                {
-                    "uuid": node_id,
-                    "name": node["name"],
-                    "address": node["address"],
-                    "port": node["port"],
-                    "configProfile": {"activeConfigProfileUuid": identifier, "activeInbounds": [{"uuid": inbound_id}]},
-                },
-            )
-        )
-    host_id = artifacts.get("host_uuid")
-    if host_id:
-        host_id = _uuid(host_id, "хост")
-        host = inventory["hosts"].get(host_id)
-    else:
-        candidates = [
-            item
-            for item in inventory["hosts"].values()
-            if identifier and (item.get("inbound") or {}).get("configProfileUuid") == identifier
-        ]
-        if len(candidates) > 1:
-            raise _blocked("Собственный профиль опубликован несколькими хостами")
-        host = candidates[0] if candidates else None
-        host_id = host.get("uuid") if host else None
-    if host:
-        if not identifier or not inbound_id:
-            raise _blocked("Не определена связь собственного хоста с инбаундом")
-        choices = [InstallerPanel._host_body(item, artifacts_ids) for item in specs]
-        choices.extend(InstallerPanel._update_intents(artifacts, "host", host_id))
-        approved = [choice for choice in choices if _matches(host, choice)]
-        if not approved or host.get("nodes", []):
-            raise _blocked("Параметры или связи хоста изменены вне установщика")
-        expected = {**approved[0], "uuid": host_id}
-        entries.append(_entry("host", spec.panel_ref, host_id, expected))
-    allowed_squads = {item.squad_uuid for item in specs if item.squad_uuid}
-    if artifacts.get("squad_uuid"):
-        allowed_squads.add(_uuid(artifacts["squad_uuid"], "сквад"))
+        entries.append(_entry("node", spec.panel_ref, node_id, _node_snapshot(node)))
+    host_ids = []
+    for choices, child in states:
+        scoped = {"profile_uuid": identifier, **child}
+        if not scoped.get("inbound_uuid"):
+            recovered = [identifier for identifier, tag in inbound_tags.items() if tag == child.get("inbound_tag")]
+            if len(recovered) == 1:
+                scoped["inbound_uuid"] = recovered[0]
+        if scoped.get("inbound_uuid") or scoped.get("host_uuid"):
+            owned, ids = _host_plan(choices, scoped, inventory)
+            entries.extend(owned)
+            host_ids.extend(ids)
+    allowed_squads = {item.squad_uuid for choices, _ in states for item in choices if item.squad_uuid}
+    allowed_squads.update(child["squad_uuid"] for _, child in states if child.get("squad_uuid"))
+    detach_ids = set(inbound_ids) | {child["inbound_uuid"] for _, child in states if child.get("inbound_uuid")}
     for squad in inventory["squads"].values():
         ids = _ids(squad.get("inbounds"), "инбаунды сквада")
-        if inbound_id not in ids:
+        owned = [item for item in ids if item in detach_ids]
+        if not owned:
             continue
         if squad["uuid"] not in allowed_squads:
             raise _blocked("Инбаунд используется дополнительным сквадом вне установщика")
@@ -309,16 +337,18 @@ def _main_plan(spec: InstallSpec, artifacts: dict, inventory: dict) -> tuple[lis
                 squad["uuid"],
                 {},
                 before=ids,
-                after=[item for item in ids if item != inbound_id],
-                inbound_uuid=inbound_id,
+                after=[item for item in ids if item not in detach_ids],
+                inbound_uuid=owned[0],
             )
         )
     metadata = {
         "panel_ref": spec.panel_ref,
         "profile_uuid": identifier,
-        "inbound_uuid": inbound_id,
+        "inbound_uuid": artifacts.get("inbound_uuid") or (inbound_ids[0] if inbound_ids else None),
+        "inbound_uuids": inbound_ids,
         "node_uuid": node_id,
-        "host_uuid": host_id,
+        "host_uuid": artifacts.get("host_uuid"),
+        "host_uuids": host_ids,
         "allowed_squads": sorted(allowed_squads),
     }
     return entries, metadata
@@ -450,30 +480,32 @@ def _references(plan: dict, inventories: dict) -> None:
     if not main:
         return
     inventory = inventories[main["panel_ref"]]
-    profile_id, inbound_id = main["profile_uuid"], main["inbound_uuid"]
-    node_id, host_id = main["node_uuid"], main["host_uuid"]
+    profile_id = main["profile_uuid"]
+    inbound_ids = set(main.get("inbound_uuids", [main["inbound_uuid"]]))
+    node_id = main["node_uuid"]
+    host_ids = set(main.get("host_uuids", [main["host_uuid"]]))
     for node in inventory["nodes"].values():
         profile = node.get("configProfile")
         if not isinstance(profile, dict):
             raise _blocked("Панель не вернула привязки ноды к профилю")
         ids = _ids(profile.get("activeInbounds"), "инбаунды ноды")
         if node.get("uuid") != node_id and (
-            (profile_id and profile.get("activeConfigProfileUuid") == profile_id) or (inbound_id and inbound_id in ids)
+            (profile_id and profile.get("activeConfigProfileUuid") == profile_id) or bool(inbound_ids.intersection(ids))
         ):
             raise _blocked("Собственный профиль используется чужой нодой")
     for host in inventory["hosts"].values():
         binding = host.get("inbound")
         if not isinstance(binding, dict) or not isinstance(host.get("nodes", []), list):
             raise _blocked("Панель не вернула привязки хоста")
-        if host.get("uuid") != host_id and (
+        if host.get("uuid") not in host_ids and (
             (profile_id and binding.get("configProfileUuid") == profile_id)
-            or (inbound_id and binding.get("configProfileInboundUuid") == inbound_id)
+            or binding.get("configProfileInboundUuid") in inbound_ids
             or (node_id and node_id in host.get("nodes", []))
         ):
             raise _blocked("Нода или инбаунд используются чужим хостом")
     for squad in inventory["squads"].values():
         ids = _ids(squad.get("inbounds"), "инбаунды сквада")
-        if inbound_id and inbound_id in ids and squad["uuid"] not in main["allowed_squads"]:
+        if inbound_ids.intersection(ids) and squad["uuid"] not in main["allowed_squads"]:
             raise _blocked("Инбаунд добавлен в другой сквад вне установщика")
     profile = inventory["profiles"].get(profile_id)
     if profile and any(item != node_id for item in _ids(profile.get("nodes"), "ноды профиля")):
@@ -491,7 +523,7 @@ def _node_snapshot(node: dict) -> dict:
         "configProfile": {
             "activeConfigProfileUuid": profile.get("activeConfigProfileUuid"),
             "activeInbounds": [
-                {"uuid": identifier} for identifier in _ids(profile.get("activeInbounds"), "инбаунды ноды")
+                {"uuid": identifier} for identifier in sorted(_ids(profile.get("activeInbounds"), "инбаунды ноды"))
             ],
         },
     }
@@ -529,7 +561,8 @@ async def _validate(plan: dict, panels: dict) -> dict:
             raise _blocked("Сохранённый объект изменён вне установщика: " + kind)
         if kind == "profile":
             ids = _ids(actual.get("inbounds"), "инбаунды профиля")
-            if ids != [entry["inbound_uuid"]] or actual["inbounds"][0].get("tag") != entry["inbound_tag"]:
+            tags = entry.get("inbound_tags", {entry["inbound_uuid"]: entry["inbound_tag"]})
+            if set(ids) != set(tags) or any(item.get("tag") != tags.get(item["uuid"]) for item in actual["inbounds"]):
                 raise _blocked("Состав удаляемого профиля изменён вне установщика")
         elif kind == "host" and actual.get("nodes", []):
             raise _blocked("Связи удаляемого хоста изменены вне установщика")
@@ -571,10 +604,24 @@ async def _delete(panel: InstallerPanel, path: str) -> None:
 
 
 async def cleanup_panel(
-    spec: InstallSpec, artifacts: dict, checkpoint: Checkpoint, log, *, preflight_only: bool = False
+    spec: InstallSpec,
+    artifacts: dict,
+    checkpoint: Checkpoint,
+    log,
+    *,
+    preflight_only: bool = False,
+    cascade_only: bool = False,
 ) -> None:
     """Удаляет только доказанно собственные объекты панели."""
     cascades = [item for item in [artifacts.get("cascade"), *artifacts.get("retained_cascades", [])] if item]
+    children = [*(artifacts.get("cascade_routes") or {}).values()]
+    children.extend(
+        child
+        for child in artifacts.get("retired_cascade_routes", [])
+        if not (child.get("host_removed") and (child.get("panel_cleanup") or {}).get("completed"))
+    )
+    for child in children:
+        cascades.extend(item for item in [child.get("cascade"), *child.get("retained_cascades", [])] if item)
     if any(not isinstance(item, dict) for item in cascades):
         raise _blocked("Некорректная история технических каскадов")
     contexts = [_cascade_context(item, artifacts) for item in cascades]
@@ -586,6 +633,7 @@ async def cleanup_panel(
             or saved.get("version") != PANEL_VERSION
             or saved.get("install_id") != artifacts.get("install_id")
             or saved.get("panel_ref") != spec.panel_ref
+            or bool(saved.get("cascade_only")) != cascade_only
             or not isinstance(saved.get("steps"), list)
             or not isinstance(saved.get("done"), list)
         ):
@@ -599,7 +647,7 @@ async def cleanup_panel(
             panels[ref] = panel
         if saved is None:
             inventories = {key: await _inventory(panel) for key, panel in panels.items()}
-            entries, main = _main_plan(spec, artifacts, inventories[spec.panel_ref])
+            entries, main = ([], {}) if cascade_only else _main_plan(spec, artifacts, inventories[spec.panel_ref])
             for cascade, context in zip(cascades, contexts, strict=True):
                 entries.extend(
                     await _cascade_plan(
@@ -616,6 +664,7 @@ async def cleanup_panel(
                 "version": PANEL_VERSION,
                 "install_id": artifacts.get("install_id"),
                 "panel_ref": spec.panel_ref,
+                "cascade_only": cascade_only,
                 "main": main,
                 "steps": sorted(unique.values(), key=lambda item: (ordered[item["kind"]], item["key"])),
                 "done": [],

@@ -44,6 +44,7 @@ class Key(DictLikeMixin, Base):
 
     current_device_limit = Column(Integer, nullable=True)
     current_traffic_limit = Column(BigInteger, nullable=True)
+    last_tariff_change_at = Column(DateTime, nullable=True)
 
 
 class KeyTrafficHistory(DictLikeMixin, Base):

@@ -119,6 +119,25 @@ def build_profile(spec: InstallSpec, artifacts: dict) -> dict:
     """Собирает профиль транспорта, каскада и дополнений."""
     if spec.role == "haproxy_entry":
         raise InstallError("profile", "Вход HAProxy использует профиль выходной ноды", retryable=False)
+    if spec.cascade_routes:
+        routes = spec.cascade_specs()
+        profile = build_profile(routes[0], artifacts)
+        for route in routes[1:]:
+            child = artifacts.setdefault("cascade_routes", {}).setdefault(route.exit_install_id, {})
+            suffix = "_" + artifacts["install_id"][:10] if artifacts.get("install_id") else ""
+            child.setdefault("inbound_tag", profile["inbounds"][0]["tag"] + "_" + route.exit_install_id[:10] + suffix)
+            scoped = {**artifacts, **child, "cascade": child.get("cascade") or {}}
+            extra = build_profile(route, scoped)
+            outbound = next(item for item in extra["outbounds"] if item["tag"] == "CASCADE")
+            outbound["tag"] = "CASCADE_" + route.exit_install_id[:10]
+            profile["inbounds"].extend(extra["inbounds"])
+            profile["outbounds"].append(outbound)
+            profile["routing"]["rules"].append({
+                "type": "field",
+                "inboundTag": [extra["inbounds"][0]["tag"]],
+                "outboundTag": outbound["tag"],
+            })
+        return profile
     inbound = {
         "tag": artifacts.get("inbound_tag")
         or spec.name.replace(" ", "_")

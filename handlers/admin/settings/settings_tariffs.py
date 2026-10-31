@@ -1,7 +1,9 @@
 from typing import Any
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,8 +17,13 @@ from ..panel.keyboard import AdminPanelCallback
 
 router = Router()
 router.callback_query.filter(IsAdminFilter())
+router.message.filter(IsAdminFilter())
 
 PACK_MODES = ["", "traffic", "devices", "all"]
+
+
+class TariffsSettingsState(StatesGroup):
+    waiting_switch_cooldown = State()
 
 
 def format_pack_mode_label(mode: str | None) -> str:
@@ -38,6 +45,7 @@ def build_tariffs_settings_kb() -> InlineKeyboardMarkup:
     pack_mode = TARIFFS_CONFIG.get("KEY_ADDONS_PACK_MODE") or ""
     recalc_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False))
     carry_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_CARRY_ON_RENEWAL", False))
+    switch_cooldown = TARIFFS_CONFIG.get("TARIFF_SWITCH_COOLDOWN_DAYS", 0)
 
     builder = InlineKeyboardBuilder()
 
@@ -45,6 +53,13 @@ def build_tariffs_settings_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text=f"Понижение: {'вкл' if allow_downgrade else 'выкл'}",
             callback_data=AdminPanelCallback(action="settings_tariffs_toggle_downgrade").pack(),
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"Смена тарифа: раз в {switch_cooldown} дн." if switch_cooldown else "Смена тарифа: без ограничений",
+            callback_data=AdminPanelCallback(action="settings_tariffs_switch_cooldown").pack(),
         )
     )
 
@@ -86,22 +101,21 @@ def build_tariffs_settings_text() -> str:
     pack_mode = TARIFFS_CONFIG.get("KEY_ADDONS_PACK_MODE") or ""
     recalc_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False))
     carry_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_CARRY_ON_RENEWAL", False))
+    switch_cooldown = TARIFFS_CONFIG.get("TARIFF_SWITCH_COOLDOWN_DAYS", 0)
 
     rules = [
         f"Понижение: {'да' if allow_downgrade else 'нет'}",
+        f"Смена тарифа: раз в {switch_cooldown} дн." if switch_cooldown else "Смена тарифа: без ограничений",
         f"Доплаты: {format_pack_mode_label(pack_mode)}",
         f"Перерасчёт: {'да' if recalc_enabled else 'нет'}",
     ]
     if pack_mode:
         rules.append(f"Перенос опций: {'да' if carry_enabled else 'нет'}")
 
-    packs_note = (
-        "Трафик и устройства докупаются к активной подписке сколько угодно раз. "
-        + (
-            "При продлении опции сохраняются, их цена входит в стоимость продления."
-            if carry_enabled
-            else "При продлении всё возвращается к исходному тарифу."
-        )
+    packs_note = "Трафик и устройства докупаются к активной подписке сколько угодно раз. " + (
+        "При продлении опции сохраняются, их цена входит в стоимость продления."
+        if carry_enabled
+        else "При продлении всё возвращается к исходному тарифу."
     )
 
     return menu_text(
@@ -200,9 +214,45 @@ async def refresh_tariffs_packs_screen(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_tariffs"))
-async def open_tariffs_settings(callback: CallbackQuery, session: AsyncSession) -> None:
+async def open_tariffs_settings(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
     """Открывает основной экран настроек тарификации."""
+    await state.clear()
     await refresh_tariffs_settings_screen(callback)
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_tariffs_switch_cooldown"))
+async def edit_tariffs_switch_cooldown(callback: CallbackQuery, state: FSMContext) -> None:
+    """Запрашивает интервал смены тарифа."""
+    await state.set_state(TariffsSettingsState.waiting_switch_cooldown)
+    await callback.message.edit_text(
+        menu_text(
+            "Интервал смены тарифа",
+            "Введите целое число дней от 0.",
+            quote(
+                "Ограничивает смену тарифа одной подписки в боте и на сайте.",
+                "0 — без ограничений. Обычное продление и повторная покупка тарифа не меняются.",
+            ),
+        ),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings_tariffs").pack())]
+            ]
+        ),
+    )
+    await callback.answer()
+
+
+@router.message(TariffsSettingsState.waiting_switch_cooldown)
+async def save_tariffs_switch_cooldown(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    """Сохраняет интервал смены тарифа."""
+    try:
+        days = int((message.text or "").strip())
+        await update_tariffs_config(session, {**TARIFFS_CONFIG, "TARIFF_SWITCH_COOLDOWN_DAYS": days})
+    except ValueError:
+        await message.answer("Введите целое число дней от 0; 0 — без ограничений.")
+        return
+    await state.clear()
+    await message.answer(build_tariffs_settings_text(), reply_markup=build_tariffs_settings_kb())
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_tariffs_toggle_downgrade"))

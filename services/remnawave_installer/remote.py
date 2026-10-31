@@ -421,7 +421,8 @@ def transport_ports(spec: InstallSpec) -> list[int]:
         return [80, 443]
     if spec.transport == "cdn_yandex":
         return [80, 7443]
-    return [spec.client_port, 80] if spec.transport in {"vless_tcp_selfsteal", "hysteria2"} else [spec.client_port]
+    ports = spec.client_ports()
+    return [*ports, 80] if spec.transport in {"vless_tcp_selfsteal", "hysteria2"} else ports
 
 
 def transport_bindings(spec: InstallSpec) -> list[tuple[int, str]]:
@@ -826,7 +827,7 @@ async def prepare_remote_changes(
     old_spec._owner_id = artifacts["remote_owner_id"]
     new_spec._owner_id = artifacts["remote_owner_id"]
     remote.spec._owner_id = artifacts["remote_owner_id"]
-    if changed.intersection({"transport", "client_port", "node_port"}):
+    if changed.intersection({"transport", "client_port", "node_port", "cascade_routes"}):
 
         def reserved(spec):
             ports = set(transport_bindings(spec))
@@ -1015,7 +1016,7 @@ async def apply_remote_changes(
     if new_spec.role == "haproxy_entry":
         from .haproxy import deploy_haproxy
 
-        if changed.intersection({"client_port", "exit_install_id"}):
+        if changed.intersection({"client_port", "exit_install_id", "cascade_routes"}):
             await deploy_haproxy(remote, new_spec, artifacts, log, checkpoint)
     elif new_spec.role == "haproxy_exit" and changed.intersection({"haproxy_sources", "client_port"}):
         from .haproxy import protect_haproxy_exit
@@ -1048,12 +1049,37 @@ async def apply_remote_changes(
     firewall_fields = {
         "transport",
         "client_port",
+        "cascade_routes",
         "node_port",
         "ssh_port",
         "panel_sources",
         "trusted_ssh_sources",
         "haproxy_sources",
     }
+    if new_spec.role == "entry" and "cascade_routes" in changed:
+        await log("Проверка клиентских портов всех выходов каскада")
+        ports = set(new_spec.client_ports())
+        removed = set(old_spec.client_ports()) - ports
+        for attempt in range(20):
+            pids = await _node_listener_pids(remote, new_spec)
+            listeners = await remote.run("ss -tlnpH", step="cascade_verify")
+            present = {
+                int(line.split()[3].rsplit(":", 1)[-1])
+                for line in listeners.splitlines()
+                if len(line.split()) >= 4 and line.split()[3].rsplit(":", 1)[-1].isdecimal()
+            }
+            if (
+                ports.issubset(present)
+                and not removed.intersection(present)
+                and not any(_listener_conflict(listeners, port, pids) for port in ports)
+            ):
+                break
+            if attempt < 19:
+                await remote.run("sleep 2", step="cascade_verify", timeout=5)
+        else:
+            raise InstallError(
+                "cascade_verify", "Нода ещё не подтвердила порты всех выходов каскада; повторите применение"
+            )
     if changed.intersection(firewall_fields):
         await _change_firewall(remote, old_spec, new_spec, artifacts)
     old_tls, new_tls = _uses_tls(old_spec), _uses_tls(new_spec)
@@ -1094,7 +1120,8 @@ async def apply_remote_changes(
     if "antitorrent" in installed.intersection(old_spec.addons) and changed.intersection(firewall_fields):
         await _nft_service(remote, "antitorrent", _antitorrent_rules(new_spec))
     if "shaping" in changed or (
-        artifacts.get("shaping", {}).get("enabled") and changed.intersection({"transport", "client_port"})
+        artifacts.get("shaping", {}).get("enabled")
+        and changed.intersection({"transport", "client_port", "cascade_routes"})
     ):
         await _shaping(remote, new_spec, artifacts, new_spec.shaping or {"enabled": False})
     if changed.intersection({"exit_ip", "exit_interface"}):

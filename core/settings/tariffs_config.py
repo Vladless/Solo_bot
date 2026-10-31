@@ -15,6 +15,7 @@ TARIFFS_CONFIG: dict[str, Any] = {
     "KEY_ADDONS_PRICE_BASE_MODE": "current",
     "KEY_ADDONS_RECALC_PRICE": False,
     "KEY_ADDONS_CARRY_ON_RENEWAL": False,
+    "TARIFF_SWITCH_COOLDOWN_DAYS": 0,
 }
 register_runtime_config("TARIFFS_CONFIG", TARIFFS_CONFIG)
 
@@ -46,6 +47,10 @@ async def load_tariffs_config(session: AsyncSession) -> None:
 
 async def update_tariffs_config(session: AsyncSession, new_values: dict[str, Any]) -> None:
     """Обновляет конфиг тарифов."""
+    if "TARIFF_SWITCH_COOLDOWN_DAYS" in new_values:
+        days = new_values["TARIFF_SWITCH_COOLDOWN_DAYS"]
+        if isinstance(days, bool) or not isinstance(days, int) or days < 0:
+            raise ValueError("Интервал смены тарифа: целое число дней от 0; 0 — без ограничений.")
     stmt = select(Setting).where(Setting.key == "TARIFFS_CONFIG")
     result = await session.execute(stmt)
     setting = result.scalar_one_or_none()

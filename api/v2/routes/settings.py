@@ -189,7 +189,8 @@ _FIELD_OPTIONS: dict[str, list[dict[str, str]]] = {
 }
 
 _FIELD_NUMBER_LIMITS: dict[str, dict[str, int | float]] = {
-    key: {"min": minimum, "max": maximum} for key, (minimum, maximum) in AUTOPAY_SETTING_LIMITS.items()
+    **{key: {"min": minimum, "max": maximum} for key, (minimum, maximum) in AUTOPAY_SETTING_LIMITS.items()},
+    "TARIFF_SWITCH_COOLDOWN_DAYS": {"min": 0, "step": 1},
 }
 
 
@@ -433,7 +434,10 @@ async def update_config_scope(
         if "KEY_ADDONS_PACK_MODE" in cleaned:
             mode = str(cleaned.get("KEY_ADDONS_PACK_MODE") or "").strip().lower()
             cleaned["KEY_ADDONS_PACK_MODE"] = mode if mode in {"", "traffic", "devices", "all"} else ""
-        await update_tariffs_config(session, cleaned)
+        try:
+            await update_tariffs_config(session, cleaned)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"tariffs": dict(TARIFFS_CONFIG)}
     if normalized == BONUS_SECTION_SLUG:
         merged = dict(BONUS_CONFIG)
@@ -494,6 +498,15 @@ async def upsert_setting(
     session: AsyncSession = Depends(get_session),
 ):
     """Создание или обновление настройки по ключу."""
+    if key == "TARIFFS_CONFIG":
+        if not isinstance(payload.value, dict):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        try:
+            await update_tariffs_config(session, {**TARIFFS_CONFIG, **payload.value})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        result = await session.execute(select(Setting).where(Setting.key == key))
+        return result.scalar_one()
     if key in {KASSAI_AUTOPAY_SETTING_KEY, OVERPAY_AUTOPAY_SETTING_KEY, PAYHOT_AUTOPAY_SETTING_KEY}:
         await require_full_admin(session, identity)
         try:

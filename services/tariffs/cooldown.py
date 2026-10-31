@@ -1,10 +1,34 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from math import ceil
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.settings.tariffs_config import TARIFFS_CONFIG
 from database.access.resolution import UserId, resolve_user_optional
 from database.models import SubscriptionEvent
+from services.errors import ValidationError
+
+
+def ensure_tariff_switch_available(key, *, now_ms: int | None = None) -> None:
+    """Проверяет интервал между сменами тарифа подписки."""
+    days = int(TARIFFS_CONFIG.get("TARIFF_SWITCH_COOLDOWN_DAYS", 0) or 0)
+    if days <= 0:
+        return
+    last_change = (
+        key.get("last_tariff_change_at") if isinstance(key, dict) else getattr(key, "last_tariff_change_at", None)
+    )
+    if last_change is None:
+        return
+    if last_change.tzinfo is None:
+        last_change = last_change.replace(tzinfo=UTC)
+    now = datetime.now(UTC) if now_ms is None else datetime.fromtimestamp(now_ms / 1000, UTC)
+    remaining = ceil((last_change - now).total_seconds() + days * 86400)
+    if remaining > 0:
+        left = format_cooldown_left(remaining) if remaining >= 60 else "меньше минуты"
+        raise ValidationError(
+            f"Менять тариф этой подписки можно раз в {days} дн. Следующая смена доступна через {left}."
+        )
 
 
 async def get_tariff_cooldown_remaining(session: AsyncSession, tg_id: int, tariff_id: int, cooldown_days: int) -> int:

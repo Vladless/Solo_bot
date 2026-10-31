@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import ipaddress
 import json
@@ -105,6 +106,7 @@ class InstallSpec:
     host_remark: str = ""
     squad_uuid: str | None = None
     exit_install_id: str | None = None
+    cascade_routes: list[dict[str, Any]] = field(default_factory=list)
     exit_ip: str = ""
     exit_interface: str = ""
     panel_sources: list[str] = field(default_factory=list)
@@ -145,6 +147,39 @@ class InstallSpec:
             port = getattr(spec, name)
             if type(port) is not int or not 1 <= port <= 65535:
                 raise ValueError("Порты должны быть целыми числами от 1 до 65535")
+        if not isinstance(spec.cascade_routes, list):
+            raise ValueError("Направления каскада передаются списком")
+        if spec.cascade_routes and spec.role not in ENTRY_ROLES:
+            raise ValueError("Дополнительные направления доступны только для входа каскада")
+        if spec.cascade_routes and spec.transport.startswith("cdn_"):
+            raise ValueError("Несколько выходов каскада недоступны для транспорта CDN")
+        exit_ids = {spec.exit_install_id} if spec.exit_install_id else set()
+        client_ports = {spec.client_port}
+        for route in spec.cascade_routes:
+            if not isinstance(route, dict) or set(route) != {"exit_install_id", "client_port", "host_remark"}:
+                raise ValueError("Укажите выход, клиентский порт и название каждого направления каскада")
+            exit_id = route["exit_install_id"]
+            if not isinstance(exit_id, str) or not re.fullmatch(r"[a-f0-9]{32}", exit_id):
+                raise ValueError("Некорректный ID выходной ноды направления каскада")
+            if exit_id in exit_ids:
+                raise ValueError("Выходные ноды направлений каскада должны различаться")
+            exit_ids.add(exit_id)
+            port = route["client_port"]
+            if type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError("Порт направления каскада должен быть числом от 1 до 65535")
+            management_ports = {spec.ssh_port, *({spec.node_port} if spec.role != "haproxy_entry" else set())}
+            if spec.transport == "vless_tcp_selfsteal":
+                management_ports.add(8443)
+            if port in client_ports or port in management_ports or needs_certificate(spec) and port == 80:
+                raise ValueError("Клиентские порты направлений, SSH и управления должны различаться")
+            client_ports.add(port)
+            if (
+                not isinstance(route["host_remark"], str)
+                or not route["host_remark"].strip()
+                or len(route["host_remark"].strip()) > 100
+            ):
+                raise ValueError("Название хоста направления: 1–100 символов")
+        spec.cascade_routes = [{**route, "host_remark": route["host_remark"].strip()} for route in spec.cascade_routes]
         if not isinstance(spec.addons, list) or any(addon not in ADDONS for addon in spec.addons):
             raise ValueError("Неизвестное дополнение")
         spec.addons = list(dict.fromkeys(spec.addons))
@@ -285,11 +320,29 @@ class InstallSpec:
         """Возвращает параметры для сохранения задачи."""
         return asdict(self)
 
+    def cascade_specs(self) -> list["InstallSpec"]:
+        """Возвращает параметры отдельных направлений входной ноды."""
+        primary = copy.deepcopy(self)
+        primary.cascade_routes = []
+        result = [primary]
+        for route in self.cascade_routes:
+            current = copy.deepcopy(primary)
+            for name, value in route.items():
+                setattr(current, name, value)
+            result.append(current)
+        return result
+
+    def client_ports(self) -> list[int]:
+        """Возвращает клиентские порты всех направлений ноды."""
+        return [spec.client_port for spec in self.cascade_specs()]
+
     def fingerprint(self) -> str:
         """Привязывает снимок установки к неизменным параметрам."""
         values = self.to_dict()
         if not values["haproxy_sources"]:
             values.pop("haproxy_sources")
+        if not values["cascade_routes"]:
+            values.pop("cascade_routes")
         payload = json.dumps(values, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()
 

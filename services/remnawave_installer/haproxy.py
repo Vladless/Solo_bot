@@ -26,7 +26,7 @@ _COMPOSE = _DIRECTORY + "/compose.json"
 
 def _target(artifacts: dict) -> tuple[str, int]:
     """Проверяет сохранённый адрес выхода каскада."""
-    value = artifacts.get("haproxy") or {}
+    value = artifacts.get("haproxy") if isinstance(artifacts, dict) else None
     try:
         address = str(ipaddress.ip_address(value["address"]))
         port = value["port"]
@@ -37,15 +37,29 @@ def _target(artifacts: dict) -> tuple[str, int]:
     return address, port
 
 
-def build_haproxy_config(spec: InstallSpec, artifacts: dict) -> str:
-    """Собирает прозрачный TCP-прокси с PROXY v2."""
+def _route_targets(spec: InstallSpec, artifacts: dict) -> list[tuple[InstallSpec, str, int]]:
+    """Проверяет адреса и отдельные порты всех направлений."""
     if spec.role != "haproxy_entry" or spec.transport != "vless_tcp_reality":
         raise InstallError("haproxy", "HAProxy поддерживает только вход TCP Reality", retryable=False)
-    if type(spec.client_port) is not int or not 1 <= spec.client_port <= 65535:
-        raise InstallError("haproxy", "Некорректный клиентский порт HAProxy", retryable=False)
-    address, port = _target(artifacts)
-    endpoint = f"[{address}]:{port}" if ipaddress.ip_address(address).version == 6 else f"{address}:{port}"
-    return (
+    result = []
+    ports = set()
+    children = artifacts.get("cascade_routes") or {}
+    if not isinstance(children, dict):
+        raise InstallError("haproxy", "Некорректные сохранённые направления каскада", retryable=False)
+    for index, route in enumerate(spec.cascade_specs()):
+        if type(route.client_port) is not int or not 1 <= route.client_port <= 65535 or route.client_port in ports:
+            raise InstallError("haproxy", "Некорректный или повторяющийся клиентский порт HAProxy", retryable=False)
+        child = artifacts if index == 0 else children.get(route.exit_install_id, {})
+        address, port = _target(child)
+        ports.add(route.client_port)
+        result.append((route, address, port))
+    return result
+
+
+def build_haproxy_config(spec: InstallSpec, artifacts: dict) -> str:
+    """Собирает прозрачный TCP-прокси с PROXY v2."""
+    routes = _route_targets(spec, artifacts)
+    config = (
         "global\n"
         "    log stdout format raw local0\n"
         "    maxconn 65535\n"
@@ -58,13 +72,19 @@ def build_haproxy_config(spec: InstallSpec, artifacts: dict) -> str:
         "    timeout connect 10s\n"
         "    timeout client 24h\n"
         "    timeout server 24h\n"
-        "frontend reality\n"
-        f"    bind 0.0.0.0:{spec.client_port}\n"
-        f"    bind [::]:{spec.client_port} v6only\n"
-        "    default_backend reality_exit\n"
-        "backend reality_exit\n"
-        f"    server exit {endpoint} send-proxy-v2 check inter 5s fall 3 rise 2\n"
     )
+    for index, (route, address, port) in enumerate(routes):
+        name = "reality" if index == 0 else f"reality_{route.client_port}"
+        endpoint = f"[{address}]:{port}" if ipaddress.ip_address(address).version == 6 else f"{address}:{port}"
+        config += (
+            f"frontend {name}\n"
+            f"    bind 0.0.0.0:{route.client_port}\n"
+            f"    bind [::]:{route.client_port} v6only\n"
+            f"    default_backend {name}_exit\n"
+            f"backend {name}_exit\n"
+            f"    server exit {endpoint} send-proxy-v2 check inter 5s fall 3 rise 2\n"
+        )
+    return config
 
 
 def _compose(spec: InstallSpec) -> dict:
@@ -90,11 +110,11 @@ def _compose(spec: InstallSpec) -> dict:
 
 async def check_haproxy(remote: RemoteServer, spec: InstallSpec, artifacts: dict) -> None:
     """Проверяет контейнер, собственный listener и доступность выхода."""
-    address, port = _target(artifacts)
+    routes = _route_targets(spec, artifacts)
     expected = hashlib.sha256(build_haproxy_config(spec, artifacts).encode()).hexdigest()
     script = (
         "import hashlib,json,socket,subprocess,sys\n"
-        "owner,address,port,expected=sys.argv[1:]\n"
+        "owner,expected,targets=sys.argv[1:]\n"
         f"data=json.loads(subprocess.run(['docker','inspect',{HAPROXY_CONTAINER!r}],capture_output=True,check=True).stdout)[0]\n"
         "if (data.get('Config',{}).get('Labels') or {}).get('io.solobot.remnawave.owner')!=owner: raise SystemExit(33)\n"
         "if not data.get('State',{}).get('Running'): raise SystemExit(34)\n"
@@ -105,24 +125,30 @@ async def check_haproxy(remote: RemoteServer, spec: InstallSpec, artifacts: dict
         f"runtime=subprocess.run(['docker','exec',{HAPROXY_CONTAINER!r},'cat','/usr/local/etc/haproxy/haproxy.cfg'],check=True,capture_output=True)\n"
         "if hashlib.sha256(runtime.stdout).hexdigest()!=expected: raise SystemExit(37)\n"
         f"subprocess.run(['docker','exec',{HAPROXY_CONTAINER!r},'haproxy','-c','-f','/usr/local/etc/haproxy/haproxy.cfg'],check=True,capture_output=True)\n"
-        "with socket.create_connection((address,int(port)),timeout=10): pass\n"
+        "for address,port in json.loads(targets):\n"
+        " with socket.create_connection((address,int(port)),timeout=10): pass\n"
     )
+    targets = json.dumps([[address, port] for _route, address, port in routes])
     await remote.run(
-        f"python3 -c {shlex.quote(script)} {owner_id(spec)} {shlex.quote(address)} {port} {expected}",
+        f"python3 -c {shlex.quote(script)} {owner_id(spec)} {expected} {shlex.quote(targets)}",
         step="haproxy_verify",
         timeout=30,
     )
     for _attempt in range(6):
         pids = await _node_listener_pids(remote, spec, name=HAPROXY_CONTAINER)
         listeners = await remote.run("ss -tlnpH", step="haproxy_verify")
-        present = any(
-            len(line.split()) >= 4 and line.split()[3].rsplit(":", 1)[-1] == str(spec.client_port)
+        present = {
+            int(line.split()[3].rsplit(":", 1)[-1])
             for line in listeners.splitlines()
-        )
-        if present and not _listener_conflict(listeners, spec.client_port, pids):
+            if len(line.split()) >= 4 and line.split()[3].rsplit(":", 1)[-1].isdecimal()
+        }
+        if all(
+            route.client_port in present and not _listener_conflict(listeners, route.client_port, pids)
+            for route, _, _ in routes
+        ):
             return
         await remote.run("sleep 2", step="haproxy_verify", timeout=5)
-    raise InstallError("haproxy_verify", "Собственный контейнер HAProxy не подтвердил клиентский TCP-порт")
+    raise InstallError("haproxy_verify", "Собственный контейнер HAProxy не подтвердил все клиентские TCP-порты")
 
 
 async def deploy_haproxy(remote: RemoteServer, spec: InstallSpec, artifacts: dict, log, checkpoint=None) -> None:

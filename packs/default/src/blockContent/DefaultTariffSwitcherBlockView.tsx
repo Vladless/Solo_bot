@@ -3,6 +3,7 @@
 import { formatDurationLabel } from "@/components/constructor/blockContent/cabinetKit/blockHelpers";
 import { useCallback, useEffect, useState } from "react";
 import { useViewportIsMobile } from "@/lib/responsive";
+import { isApiError } from "@/lib/api";
 import useSWR from "swr";
 import type { TypedBlockViewProps } from "@/components/constructor/blockContent/viewTypes";
 import { useScreenFlip } from "@/components/constructor/blockContent/pageFlip";
@@ -119,7 +120,7 @@ export function DefaultTariffSwitcherBlockView({ block, context }: TypedBlockVie
   const [configTariff, setConfigTariff] = useState<WebTariffPublic | null>(null);
   const [sel, setSel] = useState<{ device?: number; traffic?: number }>({});
   const [switchTarget, setSwitchTarget] = useState<SwitchTarget | null>(null);
-  const [switchPreview, setSwitchPreview] = useState<{ busy: boolean; data: RenewSwitchPreview | null; error?: boolean }>({ busy: false, data: null });
+  const [switchPreview, setSwitchPreview] = useState<{ busy: boolean; data: RenewSwitchPreview | null; error?: boolean; message?: string }>({ busy: false, data: null });
   const [switchResult, setSwitchResult] = useState<SwitchResult>({ busy: false, done: false, error: "", credited: 0, balance: null });
   const refreshApi = useBlockApiMutate();
   const setMode = setModeRaw;
@@ -239,8 +240,8 @@ export function DefaultTariffSwitcherBlockView({ block, context }: TypedBlockVie
         balance: typeof res?.balance_rub === "number" ? res.balance_rub : null,
       });
       await refreshApi("*");
-    } catch {
-      setSwitchResult({ busy: false, done: false, error: cfg.switchErrorText, credited: 0, balance: null });
+    } catch (error) {
+      setSwitchResult({ busy: false, done: false, error: isApiError(error) && error.message ? error.message : cfg.switchErrorText, credited: 0, balance: null });
     }
   };
 
@@ -289,8 +290,8 @@ export function DefaultTariffSwitcherBlockView({ block, context }: TypedBlockVie
           }),
         });
         if (!cancelled) setSwitchPreview({ busy: false, data, error: false });
-      } catch {
-        if (!cancelled) setSwitchPreview({ busy: false, data: null, error: true });
+      } catch (error) {
+        if (!cancelled) setSwitchPreview({ busy: false, data: null, error: true, message: isApiError(error) && error.status >= 400 && error.status < 500 ? error.message : undefined });
       }
     })();
     return () => {
@@ -586,16 +587,16 @@ export function DefaultTariffSwitcherBlockView({ block, context }: TypedBlockVie
         ) : null}
         <span style={{ fontSize: t.font.xs, color: t.inkMute }}>{cfg.switchProceedHint}</span>
         {switchPreview.error && !switchPreview.busy ? (
-          <span style={{ fontSize: t.font.xs, color: t.inkMute }}>{cfg.switchPreviewUnavailableText}</span>
+          <span style={{ fontSize: t.font.xs, color: switchPreview.message ? t.error : t.inkMute }}>{switchPreview.message || cfg.switchPreviewUnavailableText}</span>
         ) : null}
         {switchResult.error ? (
           <span style={{ fontSize: t.font.sm, color: t.error }}>{switchResult.error}</span>
         ) : null}
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || Boolean(switchPreview.message)}
           onClick={() => void confirmSwitch(switchTarget, pv)}
-          style={{ ...btnSolid(t), width: "100%", justifyContent: "center", marginTop: "auto", opacity: busy ? 0.6 : 1 }}
+          style={{ ...btnSolid(t), width: "100%", justifyContent: "center", marginTop: "auto", opacity: busy || switchPreview.message ? 0.6 : 1 }}
         >
           {switchResult.busy ? cfg.priceComputingText : cfg.switchPrimaryLabel}
         </button>

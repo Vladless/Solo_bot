@@ -483,6 +483,8 @@ def _shaper_rules(spec: InstallSpec, config: dict) -> str:
     """Создаёт отдельные ограничения скорости для IPv4 и IPv6."""
     ceiling = config["ceiling_mbps"] * 125000
     penalty = config["penalty_mbps"] * 125000
+    ports = spec.client_ports()
+    port_set = str(ports[0]) if len(ports) == 1 else "{ " + ", ".join(map(str, ports)) + " }"
     chunks = [
         "table inet solobot_shaper {",
         "set penalty4 { type ipv4_addr; flags timeout; }",
@@ -495,7 +497,7 @@ def _shaper_rules(spec: InstallSpec, config: dict) -> str:
         chunks.append(f"chain {direction} {{ type filter hook {hook} priority -5; policy accept;")
         for family, number in [("ip", 4), ("ip6", 6)]:
             key = f"{family} {address}"
-            match = f"tcp {port} {spec.client_port}"
+            match = f"tcp {port} {port_set}"
             chunks.append(
                 f"{match} {key} @penalty{number} meter p{number}{direction} "
                 f"{{ {key} timeout 1m limit rate over {penalty} bytes/second burst 1048576 bytes }} drop"
@@ -518,7 +520,7 @@ import time
 
 root=pathlib.Path("/opt/solobot-remnawave/addons")
 config=json.loads((root/"shaping.json").read_text())
-port=int(config["client_port"])
+ports={str(port) for port in config["client_ports"]}
 previous={}
 saturated={}
 volume={}
@@ -526,7 +528,7 @@ penalties={}
 last=time.monotonic()
 while True:
  now=time.monotonic(); elapsed=max(now-last,1); last=now
- result=subprocess.run(["conntrack","-L","-p","tcp","--dport",str(port),"-o","extended"],capture_output=True,text=True)
+ result=subprocess.run(["conntrack","-L","-p","tcp","-o","extended"],capture_output=True,text=True)
  current={}
  rates=collections.defaultdict(int)
  if result.returncode not in (0,1):
@@ -535,6 +537,7 @@ while True:
   match=re.search(r"src=(\S+) dst=(\S+) sport=(\d+) dport=(\d+).*?bytes=(\d+).*?bytes=(\d+)",line)
   if not match: continue
   address,dest,sport,dport,upload,download=match.groups()
+  if dport not in ports: continue
   try: ipaddress.ip_address(address)
   except ValueError: continue
   key=(address,dest,sport,dport)
@@ -580,7 +583,7 @@ async def _shaping(remote: RemoteServer, spec: InstallSpec, artifacts: dict, val
         ).strip()
     await remote.write("/etc/sysctl.d/90-solobot-conntrack.conf", "net.netfilter.nf_conntrack_acct=1\n", mode=0o644)
     await remote.run("sysctl -p /etc/sysctl.d/90-solobot-conntrack.conf", step="shaping")
-    await remote.write(ROOT + "/addons/shaping.json", json.dumps({**config, "client_port": spec.client_port}))
+    await remote.write(ROOT + "/addons/shaping.json", json.dumps({**config, "client_ports": spec.client_ports()}))
     await remote.write(ROOT + "/addons/traffic-shaper.py", _SHAPER_DAEMON)
     await _nft_service(remote, "shaper", _shaper_rules(spec, config))
     await remote.write(

@@ -25,6 +25,7 @@ LABELS = {
     "host_remark": "Название хоста",
     "squad_uuid": "Сквад",
     "exit_install_id": "Выход каскада",
+    "cascade_routes": "Дополнительные выходы каскада",
     "exit_ip": "Выходной IP",
     "exit_interface": "Интерфейс выходного IP",
     "panel_sources": "Адреса панели",
@@ -57,6 +58,7 @@ PROFILE_FIELDS = {
     "addons",
     "exit_ip",
     "exit_install_id",
+    "cascade_routes",
 }
 REMOTE_FIELDS = {
     "transport",
@@ -73,9 +75,10 @@ REMOTE_FIELDS = {
     "addons",
     "shaping",
     "haproxy_sources",
+    "cascade_routes",
 }
 CLOUD_FIELDS = {"transport", "domain", "cdn_domain", "email", "cloud"}
-HOST_FIELDS = {"host_remark", "transport", "client_port", "domain", "cdn_domain", "publish_host"}
+HOST_FIELDS = {"host_remark", "transport", "client_port", "domain", "cdn_domain", "publish_host", "cascade_routes"}
 CONNECTION_FIELDS = {"ssh_username", "ssh_port", "host_fingerprint"}
 
 
@@ -122,18 +125,21 @@ def build_change_plan(
     if (
         artifacts.get("profile_uuid")
         and old.role == "entry"
-        and "exit_install_id" in changed
+        and changed & {"exit_install_id", "cascade_routes"}
         or old.role == "haproxy_entry"
         and artifacts.get("haproxy")
-        and "exit_install_id" in changed
+        and changed & {"exit_install_id", "cascade_routes"}
     ):
         operations.append("cascade")
     if artifacts.get("profile_uuid") and changed & PROFILE_FIELDS:
         operations.append("profile")
     if remote_needed:
         operations.append("remote")
-    if artifacts.get("node_uuid") and changed & {"name", "node_port"}:
+    if artifacts.get("node_uuid") and changed & {"name", "node_port", "cascade_routes"}:
         operations.append("node")
+    if "cascade_routes" in changed and {"node", "remote"}.issubset(operations):
+        operations.remove("node")
+        operations.insert(operations.index("remote"), "node")
     if (
         artifacts.get("remote_deployed")
         and changed & CLOUD_FIELDS
@@ -156,13 +162,14 @@ def build_change_plan(
             "addons",
             "exit_install_id",
             "haproxy_sources",
+            "cascade_routes",
         }
     ):
         operations.append("verify")
     if (
         (artifacts.get("inbound_uuid") or old.role == "haproxy_entry")
         and (artifacts.get("remote_deployed") or artifacts.get("squad_uuid"))
-        and "squad_uuid" in changed
+        and changed & {"squad_uuid", "cascade_routes"}
     ):
         operations.append("squad")
     host_fields = HOST_FIELDS | ({"exit_install_id"} if old.role == "haproxy_entry" else set())

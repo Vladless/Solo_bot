@@ -54,10 +54,12 @@ async def capture_payment_checkout(session: AsyncSession | None, owner: int, met
     cluster = await select_cluster(
         session, tariff_id=int(tariff_id), is_trial=data.get("payment_flow") == "trial_purchase"
     )
+    from handlers.utils import generate_random_email
+
     operation_id = uuid.uuid4()
     captured[PAYMENT_CHECKOUT_OPERATION] = {
         "client_id": str(operation_id),
-        "email": f"pay{operation_id.hex[:16]}",
+        "email": await generate_random_email(session=session),
         "cluster": cluster.cluster_name,
     }
     return captured

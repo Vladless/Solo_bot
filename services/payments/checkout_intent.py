@@ -344,9 +344,11 @@ async def freeze_checkout_intent(
             selected_duration_days=duration,
         )
         if flow != "gift_create":
+            from handlers.utils import generate_random_email
+
             operation_id = uuid.uuid4()
             data["created_client_id"] = str(operation_id)
-            data["created_email"] = f"yk{operation_id.hex[:16]}"
+            data["created_email"] = await generate_random_email(session=session)
             data["created_cluster"] = (
                 await select_cluster(session, tariff_id=tariff_id, is_trial=flow == "trial_purchase")
             ).cluster_name

@@ -657,9 +657,12 @@ async def update_key_renewal_snapshot(
     selected_traffic_limit: int | None = None,
     current_traffic_limit: int | None = None,
     apply_limits: bool = True,
+    last_tariff_change_at: datetime | None = None,
 ) -> None:
     """Обновляет тариф и при необходимости лимиты ключа."""
     values: dict = {"tariff_id": tariff_id}
+    if last_tariff_change_at is not None:
+        values["last_tariff_change_at"] = last_tariff_change_at
     if apply_limits:
         values["selected_device_limit"] = selected_device_limit
         values["current_device_limit"] = current_device_limit

@@ -1,5 +1,7 @@
 from datetime import UTC
 
+from fastapi import HTTPException
+
 from api.shared.billing_actor import resolve_billing_user_id
 from api.shared.http import resolve_default_web_payment_provider, resolve_public_base_url
 from services.errors import ValidationError
@@ -129,22 +131,25 @@ async def user_key_renew(
 
     from services.keys import compute_renewal_quote
 
-    quote = await compute_renewal_quote(
-        session,
-        billing_user_id=billing_user_id,
-        key_email=key_email,
-        current_tariff_id=getattr(db_key, "tariff_id", None),
-        current_selected_device=getattr(db_key, "selected_device_limit", None),
-        current_selected_traffic=getattr(db_key, "selected_traffic_limit", None),
-        current_device_limit=getattr(db_key, "current_device_limit", None),
-        current_traffic_limit=getattr(db_key, "current_traffic_limit", None),
-        current_expiry_ms=normalize_expiry_ms(getattr(db_key, "expiry_time", None)),
-        now_ms=int(datetime.now(UTC).timestamp() * 1000),
-        new_tariff_id=effective_tariff_id,
-        new_selected_device=body.selected_device_limit,
-        new_selected_traffic=body.selected_traffic_limit,
-        coupon_code=body.coupon_code,
-    )
+    try:
+        quote = await compute_renewal_quote(
+            session,
+            billing_user_id=billing_user_id,
+            key_email=key_email,
+            current_tariff_id=getattr(db_key, "tariff_id", None),
+            current_selected_device=getattr(db_key, "selected_device_limit", None),
+            current_selected_traffic=getattr(db_key, "selected_traffic_limit", None),
+            current_device_limit=getattr(db_key, "current_device_limit", None),
+            current_traffic_limit=getattr(db_key, "current_traffic_limit", None),
+            current_expiry_ms=normalize_expiry_ms(getattr(db_key, "expiry_time", None)),
+            now_ms=int(datetime.now(UTC).timestamp() * 1000),
+            new_tariff_id=effective_tariff_id,
+            new_selected_device=body.selected_device_limit,
+            new_selected_traffic=body.selected_traffic_limit,
+            coupon_code=body.coupon_code,
+        )
+    except ServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from None
     if not quote.is_switch and not _is_renew_available(int(key_expiry_ms)):
         available_msk = datetime.fromtimestamp(
             _renew_available_from_ms(int(key_expiry_ms)) / 1000, tz=timezone(timedelta(hours=3))

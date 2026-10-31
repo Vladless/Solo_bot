@@ -140,13 +140,15 @@ async def create_key_api(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
+    from handlers.utils import generate_random_email
+
     await require_admin_action(session, admin, PERM_KEY_CREATE)
     try:
         await create_key_on_cluster(
             cluster_id=payload.cluster_id,
             tg_id=TelegramId(payload.tg_id),
             client_id=payload.client_id,
-            email=payload.email or f"{payload.tg_id}_key",
+            email=payload.email or await generate_random_email(session=session),
             expiry_timestamp=payload.expiry_timestamp,
             plan=payload.tariff_id,
             session=session,

@@ -30,8 +30,10 @@ async def ensure_on_remnawave(
     session=None,
     billing_user_id: int | None = None,
     subscription_url: str | None = None,
+    old_device_limit: int | None = None,
 ) -> tuple[str | None, str | None]:
     from panels.remnawave_runtime import remnawave_api
+    from services.operations.renewal import renew_on_remnawave
     from services.operations.utils import bytes_from_gb
 
     if not servers:
@@ -83,23 +85,24 @@ async def ensure_on_remnawave(
 
         async def do_update():
             try:
-                updated = await api.update_user(
-                    uuid=client_id,
-                    lookup_username=email,
-                    expire_at=expire_iso,
-                    active_user_inbounds=inbounds,
-                    traffic_limit_bytes=traffic_bytes,
+                updated = await renew_on_remnawave(
+                    cluster=servers,
+                    client_id=client_id,
+                    email=email,
+                    tg_id=tg_id,
+                    new_expiry_time=new_expiry_time,
+                    total_gb=total_gb,
                     hwid_device_limit=hwid_device_limit,
+                    session=session,
+                    reset_traffic=reset_traffic,
                     external_squad_uuid=external_squad_uuid,
+                    old_device_limit=old_device_limit,
+                    billing_user_id=billing_user_id,
+                    subscription_url=subscription_url,
+                    api=api,
                 )
                 if not updated:
                     return None, None
-
-                if reset_traffic:
-                    try:
-                        await api.reset_user_traffic(client_id, username=email)
-                    except Exception:
-                        pass
 
                 remna_link = None
                 try:
@@ -276,6 +279,7 @@ async def migrate_between_subgroups(
     external_squad_uuid: str | None = None,
     billing_user_id: int | None = None,
     subscription_url: str | None = None,
+    old_device_limit: int | None = None,
 ) -> tuple[str, str | None]:
     from services.operations.deletion import delete_on_3xui, delete_on_remnawave
     from services.operations.utils import norm_name, split_by_panel
@@ -330,6 +334,7 @@ async def migrate_between_subgroups(
             session=session,
             billing_user_id=billing_user_id,
             subscription_url=subscription_url,
+            old_device_limit=old_device_limit,
         )
         if not new_remna_id:
             raise ValueError("Перенос подписки не подтверждён на серверах целевой подгруппы")
@@ -357,6 +362,7 @@ async def migrate_between_subgroups(
         session=session,
         billing_user_id=billing_user_id,
         subscription_url=subscription_url,
+        old_device_limit=old_device_limit,
     )
 
     if new_remna_id and new_remna_id != old_id:

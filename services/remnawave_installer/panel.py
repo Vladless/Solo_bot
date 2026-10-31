@@ -16,6 +16,25 @@ Checkpoint = Callable[[dict], Awaitable[None]]
 _SQUAD_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 
 
+def _route_artifacts(spec: InstallSpec, artifacts: dict) -> list[tuple[InstallSpec, dict]]:
+    """Сопоставляет направления с собственными артефактами."""
+    routes = spec.cascade_specs()
+    return [
+        (
+            route,
+            artifacts
+            if index == 0
+            else artifacts.setdefault("cascade_routes", {}).setdefault(route.exit_install_id, {}),
+        )
+        for index, route in enumerate(routes)
+    ]
+
+
+def _inbound_ids(spec: InstallSpec, artifacts: dict) -> list[str]:
+    """Возвращает собственные инбаунды активных направлений."""
+    return [_uuid(child.get("inbound_uuid"), "инбаунд") for _, child in _route_artifacts(spec, artifacts)]
+
+
 def _uuid(value: Any, label: str) -> str:
     """Проверяет идентификатор объекта панели."""
     try:
@@ -126,6 +145,55 @@ class InstallerPanel:
         if callback:
             await callback(artifacts)
 
+    @asynccontextmanager
+    async def _route_scope(self, artifacts: dict, child: dict):
+        """Сохраняет направление внутри общей установки."""
+        if child is artifacts:
+            yield artifacts
+            return
+        callback = self.checkpoint
+        shared = {"install_id": artifacts.get("install_id"), "profile_uuid": artifacts.get("profile_uuid")}
+        scoped = {**shared, **child}
+
+        async def save(value):
+            child.update({key: item for key, item in value.items() if key not in shared})
+            if callback:
+                await callback(artifacts)
+
+        self.checkpoint = save
+        try:
+            yield scoped
+        finally:
+            child.update({key: item for key, item in scoped.items() if key not in shared})
+            self.checkpoint = callback
+
+    @staticmethod
+    def _bind_inbounds(spec: InstallSpec, artifacts: dict, profile: dict, config: dict) -> None:
+        """Подтверждает UUID собственных инбаундов по тегам."""
+        metadata = profile.get("inbounds")
+        configured = config.get("inbounds")
+        if not isinstance(metadata, list) or not isinstance(configured, list) or len(metadata) != len(configured):
+            raise InstallError("panel_profile", "Панель не вернула все инбаунды профиля")
+        tags = [item.get("tag") for item in configured if isinstance(item, dict)]
+        if (
+            len(tags) != len(configured)
+            or len(set(tags)) != len(tags)
+            or not all(isinstance(tag, str) and tag for tag in tags)
+        ):
+            raise InstallError("panel_profile", "Теги инбаундов профиля некорректны", retryable=False)
+        if len(tags) != len(spec.cascade_specs()):
+            raise InstallError("panel_profile", "Состав профиля не соответствует направлениям", retryable=False)
+        for (_, child), tag in zip(_route_artifacts(spec, artifacts), tags, strict=True):
+            matches = [item for item in metadata if isinstance(item, dict) and item.get("tag") == tag]
+            if len(matches) != 1 or matches[0].get("profileUuid") != profile.get("uuid"):
+                raise InstallError("panel_profile", "Инбаунд профиля не определён однозначно")
+            identifier = _uuid(matches[0].get("uuid"), "инбаунд")
+            if child.get("inbound_uuid") and child["inbound_uuid"] != identifier:
+                raise InstallError("panel_profile", "UUID сохранённого инбаунда изменился", retryable=False)
+            if child.get("inbound_tag") and child["inbound_tag"] != tag:
+                raise InstallError("panel_profile", "Тег сохранённого инбаунда изменился", retryable=False)
+            child.update(inbound_uuid=identifier, inbound_tag=tag)
+
     @staticmethod
     def _update_intents(artifacts: dict, kind: str, identifier: str) -> list[dict]:
         """Возвращает сохранённые разрешённые записи одного объекта."""
@@ -210,8 +278,8 @@ class InstallerPanel:
         """Создаёт собственный профиль и сохраняет UUID инбаунда."""
         await self._ready()
         inbounds = config.get("inbounds")
-        if not isinstance(inbounds, list) or len(inbounds) != 1 or not isinstance(inbounds[0], dict):
-            raise InstallError("panel_profile", "Профиль установки должен содержать один инбаунд", retryable=False)
+        if not isinstance(inbounds, list) or not inbounds or any(not isinstance(item, dict) for item in inbounds):
+            raise InstallError("panel_profile", "Профиль установки должен содержать инбаунды", retryable=False)
         tag = inbounds[0].get("tag")
         if not isinstance(tag, str) or not tag:
             raise InstallError("panel_profile", "У инбаунда отсутствует тег", retryable=False)
@@ -244,23 +312,12 @@ class InstallerPanel:
         if profile.get("config") != config:
             raise InstallError("panel_profile", "Конфигурация своего профиля изменена вне установщика", retryable=False)
         profile_uuid = _uuid(profile.get("uuid"), "профиль")
-        raw_inbounds = profile.get("inbounds")
-        if not isinstance(raw_inbounds, list):
-            raise InstallError("panel_profile", "Панель не вернула инбаунды профиля")
-        matches = [item for item in raw_inbounds if isinstance(item, dict) and item.get("tag") == tag]
-        if len(matches) != 1:
-            raise InstallError("panel_profile", "Инбаунд созданного профиля не определён однозначно")
-        inbound = matches[0]
-        inbound_uuid = _uuid(inbound.get("uuid"), "инбаунд")
-        if inbound.get("profileUuid") != profile_uuid:
-            raise InstallError("panel_profile", "Инбаунд принадлежит другому профилю", retryable=False)
-        if artifacts.get("inbound_uuid") and artifacts["inbound_uuid"] != inbound_uuid:
-            raise InstallError("panel_profile", "UUID сохранённого инбаунда изменился", retryable=False)
-        artifacts.update(profile_uuid=profile_uuid, inbound_uuid=inbound_uuid, inbound_tag=tag)
+        self._bind_inbounds(spec, artifacts, profile, config)
+        artifacts["profile_uuid"] = profile_uuid
         artifacts["profile_config"] = copy.deepcopy(config)
         artifacts["xhttp_extra"] = inbounds[0].get("streamSettings", {}).get("xhttpSettings", {}).get("extra", {})
         await self._save(artifacts)
-        return {"profile_uuid": profile_uuid, "inbound_uuid": inbound_uuid}
+        return {"profile_uuid": profile_uuid, "inbound_uuid": artifacts["inbound_uuid"]}
 
     async def update_profile(
         self, spec: InstallSpec, artifacts: dict, config: dict, *, previous_spec: InstallSpec | None = None
@@ -280,10 +337,10 @@ class InstallerPanel:
             or saved.get("uuid") != profile_uuid
             or saved.get("name") not in approved_names
             or not isinstance(configured, list)
-            or len(configured) != 1
-            or not isinstance(configured[0], dict)
+            or not configured
+            or any(not isinstance(item, dict) for item in configured)
             or not isinstance(saved.get("inbounds"), list)
-            or len(saved["inbounds"]) != 1
+            or not saved["inbounds"]
         ):
             raise InstallError("panel_profile", "Обновление чужого или изменённого профиля запрещено", retryable=False)
         matches = [
@@ -303,8 +360,32 @@ class InstallerPanel:
             raise InstallError(
                 "panel_profile", "Профиль изменён вне установщика; обновление остановлено", retryable=False
             )
+        previous_inbounds = (saved.get("config") or {}).get("inbounds")
+        previous_tags = [item.get("tag") for item in previous_inbounds or [] if isinstance(item, dict)]
+        owned = [
+            artifacts,
+            *(artifacts.get("cascade_routes") or {}).values(),
+            *artifacts.get("retired_cascade_routes", []),
+        ]
+        identifiers = {}
+        for item in owned:
+            if item.get("inbound_tag") and item.get("inbound_uuid"):
+                identifiers.setdefault(item["inbound_tag"], set()).add(item["inbound_uuid"])
+        if (
+            not isinstance(previous_inbounds, list)
+            or len(previous_tags) != len(saved["inbounds"])
+            or set(previous_tags) != {item.get("tag") for item in saved["inbounds"] if isinstance(item, dict)}
+            or any(
+                not isinstance(item, dict)
+                or item.get("profileUuid") != profile_uuid
+                or (identifiers.get(item.get("tag")) and item.get("uuid") not in identifiers[item["tag"]])
+                for item in saved["inbounds"]
+            )
+        ):
+            raise InstallError("panel_profile", "Состав собственного профиля изменён вне установщика", retryable=False)
         body = {"uuid": profile_uuid, "name": spec.profile_name, "config": config}
         if saved.get("name") == spec.profile_name and saved.get("config") == config:
+            self._bind_inbounds(spec, artifacts, saved, config)
             artifacts.update(inbound_tag=tag, profile_config=config)
             await self._record_update(artifacts, "profile", profile_uuid, body)
             return {"profile_uuid": profile_uuid, "inbound_uuid": inbound_uuid}
@@ -329,6 +410,7 @@ class InstallerPanel:
             or updated.get("config") != config
         ):
             raise InstallError("panel_profile", "Обновление собственного профиля не подтверждено")
+        self._bind_inbounds(spec, artifacts, updated, config)
         artifacts.update(inbound_tag=tag, profile_config=config)
         await self._record_update(artifacts, "profile", profile_uuid, body)
         return {"profile_uuid": profile_uuid, "inbound_uuid": inbound_uuid}
@@ -349,8 +431,27 @@ class InstallerPanel:
             raise InstallError("panel_node", "Параметры ноды не относятся к подтверждённому изменению", retryable=False)
         actual = copy.copy(spec)
         actual.name, actual.address, actual.node_port = node["name"], node["address"], node["port"]
-        self._validate_node(actual, artifacts, node)
+        profile = node.get("configProfile") or {}
+        current_ids = [item.get("uuid") for item in profile.get("activeInbounds", []) if isinstance(item, dict)]
+        known_ids = {artifacts.get("inbound_uuid")}
+        known_ids.update(item.get("inbound_uuid") for item in (artifacts.get("cascade_routes") or {}).values())
+        known_ids.update(item.get("inbound_uuid") for item in artifacts.get("retired_cascade_routes", []))
+        if (
+            profile.get("activeConfigProfileUuid") != artifacts.get("profile_uuid")
+            or not current_ids
+            or len(current_ids) != len(profile.get("activeInbounds", []))
+            or len(set(current_ids)) != len(current_ids)
+            or artifacts.get("inbound_uuid") not in current_ids
+            or any(identifier not in known_ids for identifier in current_ids)
+        ):
+            raise InstallError("panel_node", "Состав инбаундов ноды изменён вне установщика", retryable=False)
+        desired_profile = {
+            "activeConfigProfileUuid": artifacts["profile_uuid"],
+            "activeInbounds": _inbound_ids(spec, artifacts),
+        }
         body = {"uuid": node_uuid, "name": spec.name, "address": spec.address, "port": spec.node_port}
+        if set(current_ids) != set(desired_profile["activeInbounds"]):
+            body["configProfile"] = desired_profile
         if any(node.get(key) != value for key, value in body.items()):
             before = {key: node[key] for key in body}
             await self._record_update(artifacts, "node", node_uuid, before, body)
@@ -363,7 +464,7 @@ class InstallerPanel:
         """Создаёт только собственную ноду панели."""
         await self._ready()
         profile_uuid = _uuid(artifacts.get("profile_uuid"), "профиль")
-        inbound_uuid = _uuid(artifacts.get("inbound_uuid"), "инбаунд")
+        inbound_uuids = _inbound_ids(spec, artifacts)
         if artifacts.get("node_uuid"):
             node = await self._call("GET", f"/nodes/{_uuid(artifacts['node_uuid'], 'нода')}")
         else:
@@ -396,7 +497,7 @@ class InstallerPanel:
                         "name": spec.name,
                         "address": spec.address,
                         "port": spec.node_port,
-                        "configProfile": {"activeConfigProfileUuid": profile_uuid, "activeInbounds": [inbound_uuid]},
+                        "configProfile": {"activeConfigProfileUuid": profile_uuid, "activeInbounds": inbound_uuids},
                     },
                 )
             if not isinstance(node, dict):
@@ -420,12 +521,19 @@ class InstallerPanel:
             or node.get("address") != spec.address
             or node.get("port") != spec.node_port
             or profile.get("activeConfigProfileUuid") != artifacts.get("profile_uuid")
-            or ids != [artifacts.get("inbound_uuid")]
+            or len(ids) != len(inbounds)
+            or len(set(ids)) != len(ids)
+            or set(ids) != set(_inbound_ids(spec, artifacts))
         ):
             raise InstallError("panel_node", "Сохранённая нода не соответствует задаче", retryable=False)
 
     async def ensure_host(self, spec: InstallSpec, artifacts: dict) -> dict:
         """Публикует хост после готовности транспорта."""
+        if spec.cascade_routes:
+            for route, child in _route_artifacts(spec, artifacts):
+                async with self._route_scope(artifacts, child) as scoped:
+                    await self.ensure_host(route, scoped)
+            return {"host_uuid": artifacts["host_uuid"]} if artifacts.get("host_uuid") else {}
         await self._ready()
         if not spec.publish_host or spec.role in {"exit", "haproxy_exit"}:
             return {}
@@ -505,9 +613,34 @@ class InstallerPanel:
 
     async def update_host(self, previous_spec: InstallSpec, spec: InstallSpec, artifacts: dict) -> dict:
         """Изменяет или отключает собственный хост без дубликатов."""
+        if spec.cascade_routes:
+            previous = {route.exit_install_id: route for route in previous_spec.cascade_specs()}
+            for index, (route, child) in enumerate(_route_artifacts(spec, artifacts)):
+                before = previous_spec.cascade_specs()[0] if index == 0 else previous.get(route.exit_install_id, route)
+                async with self._route_scope(artifacts, child) as scoped:
+                    await self.update_host(before, route, scoped)
+            return {"host_uuid": artifacts["host_uuid"]} if artifacts.get("host_uuid") else {}
         await self._ready()
         if not artifacts.get("host_uuid"):
-            return await self.ensure_host(spec, artifacts)
+            if not spec.publish_host:
+                previous = self._host_body(previous_spec, artifacts)
+                hosts = await self._call("GET", "/hosts")
+                if not isinstance(hosts, list) or any(not isinstance(item, dict) for item in hosts):
+                    raise InstallError("panel_host", "Панель вернула некорректный список хостов")
+                collisions = [
+                    item
+                    for item in hosts
+                    if item.get("address") == previous["address"] and item.get("port") == previous["port"]
+                ]
+                owned = [item for item in collisions if all(item.get(key) == value for key, value in previous.items())]
+                if not collisions:
+                    return {}
+                if len(owned) != 1 or len(collisions) != 1:
+                    raise InstallError("panel_host", "Адрес хоста занят изменённым или чужим хостом", retryable=False)
+                artifacts["host_uuid"] = _uuid(owned[0].get("uuid"), "хост")
+                await self._save(artifacts)
+            else:
+                return await self.ensure_host(spec, artifacts)
         host_uuid = _uuid(artifacts["host_uuid"], "хост")
         host = await self._call("GET", f"/hosts/{host_uuid}")
         previous = self._host_body(previous_spec, artifacts)
@@ -551,8 +684,49 @@ class InstallerPanel:
         await self._record_update(artifacts, "host", host_uuid, desired)
         return {"host_uuid": host_uuid}
 
+    async def retire_host(self, spec: InstallSpec, artifacts: dict) -> None:
+        """Удаляет подтверждённый хост снятого направления."""
+        from .panel_cleanup import _delete
+
+        await self._ready()
+        identifier = artifacts.get("host_uuid")
+        if artifacts.get("host_removed") and not identifier:
+            return
+        if identifier:
+            host = await self._call("GET", f"/hosts/{_uuid(identifier, 'хост')}", missing=True)
+            if host is None:
+                artifacts["host_removed"] = True
+                await self._save(artifacts)
+                return
+            if artifacts.get("host_removed"):
+                raise InstallError("panel_host", "Удалённый хост направления появился снова", retryable=False)
+        disabled = copy.copy(spec)
+        disabled.publish_host = False
+        await self.update_host(spec, disabled, artifacts)
+        if artifacts.get("host_uuid"):
+            await _delete(self, f"/hosts/{_uuid(artifacts['host_uuid'], 'хост')}")
+        artifacts["host_removed"] = True
+        await self._save(artifacts)
+
     async def move_to_squad(self, previous_spec: InstallSpec, spec: InstallSpec, artifacts: dict) -> None:
         """Переносит свой инбаунд между сквадами, сохраняя остальные."""
+        if spec.cascade_routes or previous_spec.cascade_routes:
+            previous = {route.exit_install_id: route for route in previous_spec.cascade_specs()}
+            active = set()
+            for index, (route, child) in enumerate(_route_artifacts(spec, artifacts)):
+                active.add(child.get("inbound_uuid"))
+                before = previous_spec.cascade_specs()[0] if index == 0 else previous.get(route.exit_install_id, route)
+                async with self._route_scope(artifacts, child) as scoped:
+                    await self.move_to_squad(before, route, scoped)
+            for child in artifacts.get("retired_cascade_routes", []):
+                identifier = child.get("exit_install_id")
+                if identifier not in previous or child.get("inbound_uuid") in active or not child.get("inbound_uuid"):
+                    continue
+                detached = copy.copy(previous[identifier])
+                detached.squad_uuid = None
+                async with self._route_scope(artifacts, child) as scoped:
+                    await self.move_to_squad(previous[identifier], detached, scoped)
+            return
         if spec.role == "haproxy_entry":
             await self.add_to_squad(spec, artifacts)
             return
@@ -605,6 +779,11 @@ class InstallerPanel:
 
     async def add_to_squad(self, spec: InstallSpec, artifacts: dict) -> None:
         """Дополняет выбранный сквад, сохраняя его инбаунды."""
+        if spec.cascade_routes:
+            for route, child in _route_artifacts(spec, artifacts):
+                async with self._route_scope(artifacts, child) as scoped:
+                    await self.add_to_squad(route, scoped)
+            return
         await self._ready()
         if spec.role == "haproxy_entry":
             target = artifacts.get("haproxy") or {}
@@ -655,6 +834,12 @@ class InstallerPanel:
 
     async def check_online(self, spec: InstallSpec, artifacts: dict) -> bool:
         """Подтверждает подключение ноды с нужным профилем."""
+        if spec.role == "haproxy_entry" and spec.cascade_routes:
+            results = []
+            for route, child in _route_artifacts(spec, artifacts):
+                async with self._route_scope(artifacts, child) as scoped:
+                    results.append(await self.check_online(route, scoped))
+            return all(results)
         await self._ready()
         target = artifacts.get("haproxy") if spec.role == "haproxy_entry" else artifacts
         target = target or {}

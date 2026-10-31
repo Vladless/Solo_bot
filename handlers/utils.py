@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
+from core.client_origin import ORIGIN_BOT, ORIGIN_WEBAPP, client_origin
 from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import Key, Notification
 from logger import logger
@@ -71,13 +72,16 @@ async def safe_answer_inline_query(inline_query: InlineQuery, *args: object, **k
 
 
 async def generate_random_email(
-    length: int = 8,
+    length: int = 16,
     session: AsyncSession | None = None,
     max_attempts: int = 20,
 ) -> str:
-    alphabet = string.ascii_lowercase + string.digits
+    """Создаёт уникальное имя подписки с префиксом канала."""
+    if length <= 0:
+        raise ValueError("Длина номера подписки должна быть положительной")
+    prefix = {ORIGIN_BOT: "bot", ORIGIN_WEBAPP: "wapp"}.get(client_origin(), "site")
     for _ in range(max_attempts):
-        candidate = "".join(secrets.choice(alphabet) for _ in range(length)) if length > 0 else ""
+        candidate = prefix + "-" + "".join(secrets.choice(string.digits) for _ in range(length))
         if not session:
             return candidate
         exists = await session.execute(select(Key.email).where(Key.email == candidate).limit(1))

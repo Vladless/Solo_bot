@@ -50,6 +50,8 @@ async def renew_on_remnawave(
     subscription_url: str | None = None,
     preserve_placement: bool = False,
     expiry_only: bool = False,
+    *,
+    api=None,
 ) -> bool:
     remnawave_nodes = [
         s for s in cluster if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
@@ -108,12 +110,19 @@ async def renew_on_remnawave(
 
     async def _renew(api):
         nonlocal traffic_was_reset
-        if not expiry_only and old_device_limit is not None and hwid_device_limit < old_device_limit:
+        if (
+            not expiry_only
+            and old_device_limit is not None
+            and hwid_device_limit > 0
+            and (old_device_limit == 0 or hwid_device_limit < old_device_limit)
+        ):
             try:
-                await api.clear_all_hwid_devices(client_id, username=email)
-                logger.info(
-                    f"{PANEL_REMNA} HWID устройства сброшены для {client_id} (лимит {old_device_limit} → {hwid_device_limit})"
-                )
+                if await api.clear_all_hwid_devices(client_id, username=email):
+                    logger.info(
+                        f"{PANEL_REMNA} HWID устройства сброшены для {client_id} (лимит {old_device_limit} → {hwid_device_limit})"
+                    )
+                else:
+                    logger.warning(f"{PANEL_REMNA} Ошибка сброса HWID: панель не подтвердила удаление устройств")
             except Exception as e:
                 logger.warning(f"{PANEL_REMNA} Ошибка сброса HWID: {e}")
 
@@ -125,16 +134,19 @@ async def renew_on_remnawave(
                 logger.warning(f"{PANEL_REMNA} reset_user_traffic: {e}")
         return bool(updated_local)
 
-    updated = await with_remnawave_api(
-        session,
-        str(server_ref),
-        _renew,
-        timeout_sec=12.0,
-        client_id=client_id,
-        username=email,
-        subscription_url=subscription_url,
-        api_url=api_url,
-    )
+    if api is None:
+        updated = await with_remnawave_api(
+            session,
+            str(server_ref),
+            _renew,
+            timeout_sec=12.0,
+            client_id=client_id,
+            username=email,
+            subscription_url=subscription_url,
+            api_url=api_url,
+        )
+    else:
+        updated = await _renew(api)
     if updated:
         try:
             await invalidate_remnawave_profile_cache(api_url=api_url, client_id=str(client_id))
@@ -299,7 +311,9 @@ async def renew_key_in_cluster(
         single_server = scope.selected_server
         server_id = single_server or server_id
 
-        old_device_limit = kd.get("current_device_limit") or kd.get("selected_device_limit")
+        old_device_limit = kd.get("current_device_limit")
+        if old_device_limit is None:
+            old_device_limit = kd.get("selected_device_limit")
         if old_device_limit is None and old_tariff:
             old_device_limit = old_tariff.get("device_limit")
 
@@ -355,6 +369,7 @@ async def renew_key_in_cluster(
                 subscription_url=kd.get("remnawave_link") or kd.get("link"),
                 target_servers=cluster_scope,
                 old_servers=old_servers,
+                old_device_limit=old_device_limit,
             )
 
             billing_user_id = await resolve_key_operation_owner(

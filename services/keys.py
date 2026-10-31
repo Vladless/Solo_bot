@@ -60,6 +60,7 @@ class RenewalPricing:
     carried_addons_rub: int = 0
     carried_device_limit: int | None = None
     carried_traffic_limit: int | None = None
+    last_tariff_change_at: datetime | None = None
 
 
 @dataclass
@@ -277,6 +278,7 @@ async def calculate_renewal_pricing(
         carried_addons_rub=carried.price_rub,
         carried_device_limit=carried.device_limit,
         carried_traffic_limit=carried.traffic_gb,
+        last_tariff_change_at=getattr(current_key, "last_tariff_change_at", None),
     )
 
 
@@ -473,6 +475,10 @@ async def compute_renewal_quote(
         new_selected_device=eff_dev,
         new_selected_traffic=eff_trf,
     )
+    if is_switch:
+        from services.tariffs.cooldown import ensure_tariff_switch_available
+
+        ensure_tariff_switch_available(pricing, now_ms=now_ms)
 
     new_expiry = await compute_renewal_expiry(
         session,
@@ -667,6 +673,19 @@ async def execute_renewal(
         selected_device_limit,
         selected_traffic_limit,
     )
+    is_switch = not await _is_same_config(
+        session,
+        current_tariff_id=current_key.tariff_id,
+        current_selected_device=current_key.selected_device_limit,
+        current_selected_traffic=current_key.selected_traffic_limit,
+        new_tariff_id=tariff_id,
+        new_selected_device=final_device,
+        new_selected_traffic=final_traffic,
+    )
+    if is_switch:
+        from services.tariffs.cooldown import ensure_tariff_switch_available
+
+        ensure_tariff_switch_available(current_key)
 
     from services.addons import CarriedAddons, resolve_carried_addons
     from services.operations import renew_key_in_cluster
@@ -747,6 +766,7 @@ async def execute_renewal(
 
     new_dev = tariff.get("device_limit")
     new_trf = tariff.get("traffic_limit")
+    last_tariff_change_at = datetime.now(UTC).replace(tzinfo=None) if is_switch else None
 
     if tariff.get("configurable"):
         await update_key_renewal_snapshot(
@@ -754,6 +774,7 @@ async def execute_renewal(
             key_email,
             tariff_id=tariff_id,
             apply_limits=False,
+            last_tariff_change_at=last_tariff_change_at,
         )
     else:
         await update_key_renewal_snapshot(
@@ -765,6 +786,7 @@ async def execute_renewal(
             selected_traffic_limit=None if new_trf is None else new_trf,
             current_traffic_limit=None if new_trf is None else carried_traffic,
             apply_limits=True,
+            last_tariff_change_at=last_tariff_change_at,
         )
     if cost:
         debited = await update_balance(session, billing_user_id, -cost)

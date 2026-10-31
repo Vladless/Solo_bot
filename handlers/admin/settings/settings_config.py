@@ -170,6 +170,7 @@ MONEY_FIELDS: Final[dict[str, str]] = {
 
 TARIFFS_TITLES: Final[dict[str, str]] = {
     "ALLOW_DOWNGRADE": "Разрешить даунгрейд",
+    "TARIFF_SWITCH_COOLDOWN_DAYS": "Интервал смены тарифа, дней",
     "KEY_ADDONS_PACK_MODE": "Режим докупки опций",
     "KEY_ADDONS_PRICE_BASE_MODE": "База цены докупки",
     "KEY_ADDONS_RECALC_PRICE": "Перерасчёт цены докупки",

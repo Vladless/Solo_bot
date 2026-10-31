@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from .types import DELETABLE_STATUSES
+from .types import DELETABLE_STATUSES, ENTRY_ROLES
 
 
 _INSTALL_LABELS = {
@@ -63,6 +63,7 @@ _EXTRA_LABELS = {
     "shaping": "Настройка ограничений скорости",
     "haproxy": "Настройка каскада HAProxy",
     "haproxy_verify": "Проверка TCP-соединения через HAProxy",
+    "waiting_exit": "Ожидание сервера 2 — выхода каскада",
     "cloud_auth": "Проверка доступа к облаку",
     "snapshot": "Проверка сохранённых параметров",
     "validation": "Проверка параметров",
@@ -207,6 +208,13 @@ def job_status_text(view: dict) -> str:
         "<b>" + escape(str(params.get("name") or "Новая нода")[:80]) + "</b> · " + label,
         "Сервер: <code>" + escape(str(params.get("address") or "не задано")[:64]) + "</code>",
     ]
+    pair = view.get("cascade_pair") or {}
+    if pair:
+        entry = view.get("id") == pair.get("entry_id")
+        lines.insert(1, "Нода 1 — вход HAProxy" if entry else "Нода 2 — выход HAProxy")
+        lines.append("Связанный сервер: нода 2 — выход" if entry else "Связанный сервер: нода 1 — вход")
+    if params.get("cascade_routes"):
+        lines.append("Направлений каскада: " + str(1 + len(params["cascade_routes"])))
     if progress:
         lines.append(
             "<code>" + escape(str(progress.get("bar", ""))) + "</code> " + escape(str(progress.get("label", "")))
@@ -241,6 +249,9 @@ def job_actions(view: dict) -> list[tuple[str, str, str]]:
     status = view.get("status", "draft")
     editable = {"draft", "failed", "waiting_dns", "paused", "succeeded", "warning"}
     actions = []
+    pair = view.get("cascade_pair") or {}
+    if pair:
+        actions.append(("Нода 2 — выход" if view.get("id") == pair.get("entry_id") else "Нода 1 — вход", "partner", ""))
     can_delete = view.get("can_delete", status in DELETABLE_STATUSES)
     if view.get("deletion"):
         if status in {"failed", "paused", "canceled", "interrupted"}:
@@ -254,9 +265,14 @@ def job_actions(view: dict) -> list[tuple[str, str, str]]:
         actions.extend([("Обновить", "show", ""), ("Все установки", "list", "")])
         return actions
     if status == "draft":
-        actions.extend([("Продолжить мастер установки", "step", "1"), ("Сводка", "summary", "")])
+        params = view.get("params") or {}
+        step = "type" if params.get("role", "normal") == "normal" and not params.get("address") else "1"
+        actions.extend([("Продолжить мастер установки", "step", step), ("Сводка", "summary", "")])
     if status in editable or status in {"queued", "running"}:
         actions.append(("Изменить настройки", "edit", ""))
+    params = view.get("pending_params") or view.get("params") or {}
+    if status in editable and params.get("role") in ENTRY_ROLES:
+        actions.append(("Выходы и страны", "routes", ""))
     if status in editable and (
         view.get("stage") == "ssh_host_key"
         or ("ключ" in str(view.get("error") or "").lower() and "измен" in str(view.get("error") or "").lower())
