@@ -1,6 +1,6 @@
 aiocryptopay==0.4.7
 aiofiles==24.1.0
-aiogram==3.24.0
+aiogram==3.31.0
 aiosmtplib==3.0.2
 aiohappyeyeballs==2.5.0
 aiohttp==3.13.3
