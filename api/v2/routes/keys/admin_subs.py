@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.admin_permissions import require_admin_action
 from api.depends import get_session, verify_identity_admin
 from database.access.resolution import UserId, public_tg_id
-from database.keys import get_key_details
+from database.keys import get_key_details, lock_owned_key_for_operation
 from database.models import Key, Tariff, User
 from database.tariffs import get_tariff_by_id
 from filters.permissions import (
@@ -161,7 +161,7 @@ async def subscription_detail(
 
 
 async def _renew_apply(
-    session: AsyncSession, key: Key, *, new_expiry: int, total_gb, hwid, reset_traffic: bool
+    session: AsyncSession, key: Key, *, new_expiry: int, total_gb, hwid, reset_traffic: bool, expiry_only: bool = False
 ) -> None:
     from services.operations import renew_key_in_cluster
 
@@ -175,6 +175,7 @@ async def _renew_apply(
         hwid_device_limit=hwid,
         reset_traffic=reset_traffic,
         plan=key.tariff_id,
+        expiry_only=expiry_only,
     )
 
     if not renewed:
@@ -205,7 +206,14 @@ async def sub_change_expiry(
     """Изменение срока: op = add | take | set (без сброса трафика)."""
     await require_admin_action(session, identity, PERM_KEY_EXPIRY)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
+    if key.is_frozen:
+        raise HTTPException(status_code=400, detail="Сначала разморозьте подписку для изменения срока")
     op = str(payload.get("op") or "add")
+    if op not in {"add", "take", "set"}:
+        raise HTTPException(status_code=400, detail="Некорректная операция")
     now_ms = int(time.time() * 1000)
     cur = int(key.expiry_time or 0)
     if op == "set":
@@ -219,10 +227,9 @@ async def sub_change_expiry(
         delta = days * 86_400_000
         base = cur if cur > now_ms else now_ms
         new_expiry = base + delta if op == "add" else max(now_ms, cur - delta)
-    tariff = await get_tariff_by_id(session, key.tariff_id) if key.tariff_id else None
-    total_gb, hwid = _limits_for(key, tariff)
-    key.expiry_time = new_expiry
-    await _renew_apply(session, key, new_expiry=new_expiry, total_gb=total_gb, hwid=hwid, reset_traffic=False)
+    await _renew_apply(
+        session, key, new_expiry=new_expiry, total_gb=0, hwid=None, reset_traffic=False, expiry_only=True
+    )
     logger.info(f"[Site:Subs] Срок подписки {client_id} изменён ({op}) → {new_expiry}")
     return {"expiry_time": new_expiry}
 

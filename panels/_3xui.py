@@ -407,18 +407,23 @@ async def extend_client_key(
     sub_id: str,
     tg_id: int,
     limit_ip: int = 0,
+    *,
+    reset_traffic: bool = True,
+    expiry_only: bool = False,
 ) -> bool | None:
     try:
-        await reset_client_traffic(xui, inbound_id, email, client_id)
         client, _ = await _client_snapshot(xui, inbound_id, email, client_id)
-        client.update(
-            expiryTime=new_expiry_time,
-            subId=sub_id,
-            totalGB=total_gb,
-            enable=True,
-            limitIp=limit_ip,
-            tgId=_telegram_id(tg_id),
-        )
+        if reset_traffic and not expiry_only:
+            await reset_client_traffic(xui, inbound_id, email, client_id)
+        client["expiryTime"] = new_expiry_time
+        if not expiry_only:
+            client.update(
+                subId=sub_id,
+                totalGB=total_gb,
+                enable=True,
+                limitIp=limit_ip,
+                tgId=_telegram_id(tg_id),
+            )
         await _update_client(xui, email, client)
         logger.info(f"Ключ клиента {email} успешно продлён до {new_expiry_time}")
         return True

@@ -48,6 +48,8 @@ async def renew_on_remnawave(
     old_device_limit: int | None = None,
     billing_user_id: int | None = None,
     subscription_url: str | None = None,
+    preserve_placement: bool = False,
+    expiry_only: bool = False,
 ) -> bool:
     remnawave_nodes = [
         s for s in cluster if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
@@ -78,8 +80,20 @@ async def renew_on_remnawave(
         "hwid_device_limit": hwid_device_limit,
         "external_squad_uuid": external_squad_uuid,
     }
+    if preserve_placement:
+        update_kwargs.pop("active_user_inbounds")
+        update_kwargs.pop("external_squad_uuid")
+    if expiry_only:
+        update_kwargs = {
+            "uuid": client_id,
+            "lookup_username": email,
+            "expire_at": expire_iso,
+            "status": None,
+            "traffic_limit_bytes": None,
+            "traffic_limit_strategy": None,
+        }
 
-    if session is not None:
+    if session is not None and not expiry_only:
         try:
             owner = UserId(billing_user_id) if billing_user_id is not None else tg_id
             _panel_tg, _panel_email = await panel_identity_fields(session, owner)
@@ -94,7 +108,7 @@ async def renew_on_remnawave(
 
     async def _renew(api):
         nonlocal traffic_was_reset
-        if old_device_limit is not None and hwid_device_limit < old_device_limit:
+        if not expiry_only and old_device_limit is not None and hwid_device_limit < old_device_limit:
             try:
                 await api.clear_all_hwid_devices(client_id, username=email)
                 logger.info(
@@ -104,7 +118,7 @@ async def renew_on_remnawave(
                 logger.warning(f"{PANEL_REMNA} Ошибка сброса HWID: {e}")
 
         updated_local = await api.update_user(**update_kwargs)
-        if updated_local and reset_traffic:
+        if updated_local and reset_traffic and not expiry_only:
             try:
                 traffic_was_reset = bool(await api.reset_user_traffic(client_id, username=email))
             except Exception as e:
@@ -149,10 +163,12 @@ async def renew_on_3xui(
     target_server_name: str | None = None,
     session: AsyncSession | None = None,
     billing_user_id: int | None = None,
+    reset_traffic: bool = True,
+    expiry_only: bool = False,
 ):
     """Продлевает подписку на 3x-ui серверах кластера."""
     panel_tg = tg_id
-    if session is not None:
+    if session is not None and not expiry_only:
         owner = UserId(billing_user_id) if billing_user_id is not None else tg_id
         panel_tg, _ = await panel_identity_fields(session, owner)
     tasks = []
@@ -191,6 +207,8 @@ async def renew_on_3xui(
                     sub_id=sub,
                     tg_id=panel_tg if panel_tg and int(panel_tg) > 0 else "",
                     limit_ip=hwid_device_limit,
+                    reset_traffic=reset_traffic,
+                    expiry_only=expiry_only,
                 )
             except Exception as e:
                 logger.warning(f"{PANEL_XUI} [{name}] ошибка продления: {e}")
@@ -215,7 +233,7 @@ async def renew_on_3xui(
         else:
             failed.append((name, err or "unknown_error"))
     if succeeded:
-        if session is not None and billing_user_id is not None:
+        if reset_traffic and not expiry_only and session is not None and billing_user_id is not None:
             current_owner = await resolve_key_operation_owner(session, billing_user_id, client_id, email)
             if current_owner is not None:
                 resource_ids = {
@@ -242,11 +260,12 @@ async def renew_key_in_cluster(
     new_expiry_time: int,
     total_gb: int,
     session: AsyncSession,
-    hwid_device_limit: int = 0,
+    hwid_device_limit: int | None = None,
     reset_traffic: bool = True,
     target_subgroup: str | None = None,
     old_subgroup: str | None = None,
     plan=None,
+    expiry_only: bool = False,
 ):
     """Продлевает ключ в кластере с учётом подгрупп и Remnawave/3x-ui."""
     try:
@@ -254,6 +273,8 @@ async def renew_key_in_cluster(
         if not kd or kd.get("client_id") != client_id:
             logger.error(f"Не найден ключ по email={email} и client_id={client_id}")
             return False
+        if expiry_only and kd.get("is_frozen"):
+            raise ValidationError("Сначала разморозьте подписку для изменения срока")
 
         billing_user_id = UserId(kd["user_id"])
         tg_id = saved_public_subscription_tail(kd.get("key"), email, PUBLIC_LINK)
@@ -264,7 +285,9 @@ async def renew_key_in_cluster(
         servers_map = await get_servers(session, include_enabled=True)
         old_tariff = await get_tariff_by_id(session, kd["tariff_id"]) if kd.get("tariff_id") else None
         tariff = await get_tariff_by_id(session, plan) if plan is not None else old_tariff
-        if tariff is not None or plan is not None:
+        if expiry_only:
+            scope = await resolve_key_server_scope(session, kd, servers_map=servers_map)
+        elif tariff is not None or plan is not None:
             scope = await resolve_key_renewal_scope(session, kd, tariff, servers_map=servers_map)
         else:
             scope = await resolve_key_server_scope(session, kd, servers_map=servers_map)
@@ -289,16 +312,23 @@ async def renew_key_in_cluster(
                 else:
                     external_squad_uuid = ""
                 is_configurable = tariff.get("configurable", False)
-                if not is_configurable:
+                if not is_configurable and hwid_device_limit is None:
                     tariff_device_limit = tariff.get("device_limit")
                     if tariff_device_limit is not None:
                         hwid_device_limit = int(tariff_device_limit)
-        else:
+        elif hwid_device_limit is None:
             dl = await resolve_device_limit_from_group(session, server_id)
             if dl is not None:
                 hwid_device_limit = dl
+        if hwid_device_limit is None:
+            hwid_device_limit = 0
 
-        if (target_subgroup or "") != (old_subgroup or "") and not single_server:
+        if (
+            not expiry_only
+            and not scope.preserve_placement
+            and (target_subgroup or "") != (old_subgroup or "")
+            and not single_server
+        ):
             from services.tariffs.subgroup_migration import migrate_between_subgroups
 
             old_servers = []
@@ -370,6 +400,8 @@ async def renew_key_in_cluster(
             old_device_limit=old_device_limit,
             billing_user_id=billing_user_id,
             subscription_url=kd.get("remnawave_link") or kd.get("link"),
+            preserve_placement=scope.preserve_placement,
+            expiry_only=expiry_only,
         )
 
         succeeded, _ = await renew_on_3xui(
@@ -384,6 +416,8 @@ async def renew_key_in_cluster(
             target_server_name=server_id if single_server else None,
             session=session,
             billing_user_id=billing_user_id,
+            reset_traffic=reset_traffic,
+            expiry_only=expiry_only,
         )
 
         if remna_ok or succeeded:
@@ -394,6 +428,8 @@ async def renew_key_in_cluster(
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
                 await delete_notification(session, billing_user_id, f"{email}_{prefix}", commit=False)
 
+            if expiry_only or scope.preserve_placement:
+                return True
             try:
                 remna_link_override = None
                 if remna_ok and cluster_scope:

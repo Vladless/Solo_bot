@@ -49,6 +49,7 @@ from services.payments.pipeline import (
     process_cancelled_payment,
     process_success_payment,
 )
+from services.renewal_access import resolve_key_renewal_scope
 from settings import texts
 from settings.config import (
     KASSAI_API_KEY,
@@ -129,6 +130,10 @@ async def quote_autopay_for_key(session: AsyncSession, user_id: UserId, client_i
     tariff = await get_tariff_by_id(session, key.tariff_id)
     if not tariff:
         raise ValueError("Тариф подписки не найден")
+    try:
+        await resolve_key_renewal_scope(session, key, tariff)
+    except ServiceError as exc:
+        raise ValueError(exc.message) from exc
     terms = autopay_terms_for_tariff(
         tariff, key.selected_device_limit, key.selected_traffic_limit, provider_id=PROVIDER
     )

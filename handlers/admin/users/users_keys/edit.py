@@ -1,11 +1,14 @@
 from database.access.resolution import UserId
-from database.keys import resolve_key_operation_owner
+from database.keys import lock_owned_key_for_operation
 from database.subscription_events import get_recent_renewals
 from filters.admin_actions import admin_action_allowed
 from filters.permissions import PERM_KEY_VIEW
+from middlewares.session import operation_session
+from services.errors import ValidationError
 from services.subscription_keys import resolve_remnawave_server_ref
 
 from ...panel.headers import card, menu_text, quote, section
+from ..keyboard import build_users_key_show_kb
 from ._common import *
 
 
@@ -260,7 +263,16 @@ async def handle_expiry_add(
         return
 
     if days:
-        await change_expiry_time(key_details["expiry_time"] + days * 24 * 3600 * 1000, email, session, user_id=user_id)
+        try:
+            await change_expiry_time(
+                key_details["expiry_time"] + days * 24 * 3600 * 1000, email, session, user_id=user_id
+            )
+        except Exception as e:
+            await callback_query.message.edit_text(
+                text=menu_text("Срок действия", "Не удалось изменить.", quote(f"<code>{e}</code>")),
+                reply_markup=build_users_key_show_kb(user_id, key_ref),
+            )
+            return
         await handle_key_edit(callback_query, callback_data, session, True)
         return
 
@@ -397,13 +409,15 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
             text = menu_text("Подписка", f"✅ Время действия ключа изменено на <b>{message.text} (МСК)</b>")
 
         new_expiry_timestamp = int(new_expiry_time.timestamp() * 1000)
-        await change_expiry_time(new_expiry_timestamp, email, session, user_id=user_id)
     except ValueError:
         text = menu_text(
             "Срок действия", "Некорректный формат даты.", quote("Нужно так: <code>ГГГГ-ММ-ДД ЧЧ:ММ</code>")
         )
-    except Exception as e:
-        text = menu_text("Срок действия", "Не удалось изменить.", quote(f"<code>{e}</code>"))
+    else:
+        try:
+            await change_expiry_time(new_expiry_timestamp, email, session, user_id=user_id)
+        except Exception as e:
+            text = menu_text("Срок действия", "Не удалось изменить.", quote(f"<code>{e}</code>"))
 
     await message.answer(
         text=text,
@@ -411,71 +425,27 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
     )
 
 
-async def change_expiry_time(
-    expiry_time: int, email: str, session: AsyncSession, *, user_id: UserId
-) -> Exception | None:
+async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession, *, user_id: UserId) -> None:
     key_obj = await get_key_by_email(session, email, user_id)
     if not key_obj:
-        return ValueError(f"User with email {email} was not found")
+        raise ValidationError("Подписка не найдена")
 
     client_id = key_obj.client_id
-    tariff_id = key_obj.tariff_id
-    server_id = key_obj.server_id
-    key_device_limit = key_obj.current_device_limit
-    key_traffic_limit = key_obj.current_traffic_limit
-    if server_id is None:
-        return ValueError(f"Key with client_id {client_id} was not found")
-
-    traffic_limit = 0
-    device_limit = None
-    key_subgroup = None
-    if tariff_id:
-        tariff = await get_tariff_by_id(session, tariff_id)
-        if tariff:
-            traffic_limit = int(tariff.get("traffic_limit") or 0)
-            raw_device_limit = tariff.get("device_limit")
-            device_limit = int(raw_device_limit) if raw_device_limit is not None else 0
-            key_subgroup = tariff.get("subgroup_title")
-
-    if key_device_limit is not None:
-        device_limit = key_device_limit
-    if key_traffic_limit is not None:
-        traffic_limit = key_traffic_limit
-
-    servers = await get_servers(session=session)
-
-    if server_id in servers:
-        target_cluster = server_id
-    else:
-        target_cluster = None
-        for cluster_name, cluster_servers in servers.items():
-            if any(s.get("server_name") == server_id for s in cluster_servers):
-                target_cluster = cluster_name
-                break
-
-        if not target_cluster:
-            return ValueError(f"No suitable cluster found for server {server_id}")
-
-    await release_session_early(session)
-
-    renewed = await renew_key_in_cluster(
-        cluster_id=target_cluster,
-        email=email,
-        client_id=client_id,
-        new_expiry_time=expiry_time,
-        total_gb=traffic_limit,
-        session=session,
-        hwid_device_limit=device_limit,
-        reset_traffic=False,
-        target_subgroup=key_subgroup,
-        old_subgroup=key_subgroup,
-        plan=tariff_id,
-    )
-    if not renewed:
-        return RuntimeError("Изменение срока подписки на панели не подтверждено")
-
-    current_owner = await resolve_key_operation_owner(session, user_id, client_id, email)
-    if current_owner is None:
-        return ValueError("Subscription owner changed while updating expiry")
-    await update_key_expiry(session, client_id, expiry_time, user_id=current_owner)
-    return None
+    async with operation_session(session) as operation:
+        key_obj = await lock_owned_key_for_operation(operation, user_id, client_id, email)
+        if key_obj is None:
+            raise ValidationError("Подписка или её владелец изменились")
+        if key_obj.is_frozen:
+            raise ValidationError("Сначала разморозьте подписку для изменения срока")
+        renewed = await renew_key_in_cluster(
+            cluster_id=key_obj.server_id,
+            email=email,
+            client_id=client_id,
+            new_expiry_time=expiry_time,
+            total_gb=0,
+            session=operation,
+            reset_traffic=False,
+            expiry_only=True,
+        )
+        if not renewed:
+            raise RuntimeError("Изменение срока подписки на панели не подтверждено")

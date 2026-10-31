@@ -54,6 +54,7 @@ from services.payments.pipeline import (
     process_success_payment,
 )
 from services.payments.yookassa.amounts import YOOKASSA_AMOUNTS, quote_yookassa_amount, saved_yookassa_amounts
+from services.renewal_access import resolve_key_renewal_scope
 from settings import texts
 from settings.buttons import YOOKASSA_AUTOPAY_SERVICE_CONFIRM_PAYMENT
 from settings.config import REDIRECT_LINK, SERVICE_NAME
@@ -181,6 +182,10 @@ async def quote_autopay_for_key(session: AsyncSession, user_id: UserId, client_i
     tariff = await get_tariff_by_id(session, key.tariff_id)
     if not tariff:
         raise ValueError(texts.YOOKASSA_AUTOPAY_SERVICE_TARIFF_UNAVAILABLE)
+    try:
+        await resolve_key_renewal_scope(session, key, tariff)
+    except ServiceError as exc:
+        raise ValueError(exc.message) from exc
     period = int(tariff.get("duration_days") or 0)
     if period <= 0:
         raise ValueError(texts.YOOKASSA_AUTOPAY_SERVICE_INVALID_TARIFF_PERIOD)

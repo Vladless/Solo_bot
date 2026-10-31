@@ -6,9 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_servers, get_tariff_by_id, update_key_expiry
 from database.access.resolution import UserId, chat_id_for_user
-from database.keys import delete_key, mark_key_as_frozen, mark_key_as_unfrozen, update_key_subscription_links
+from database.keys import (
+    delete_key,
+    lock_owned_key_for_operation,
+    mark_key_as_frozen,
+    mark_key_as_unfrozen,
+    update_key_subscription_links,
+)
 from database.models import Key
 from logger import logger
+from middlewares.session import operation_session
 from panels import remnawave as remnawave_panel
 from services.operations import (
     delete_key_from_cluster,
@@ -158,23 +165,24 @@ async def bulk_add_days(session: AsyncSession, keys: list[Key], days: int) -> tu
             skipped += 1
             continue
         try:
-            traffic, device = await _key_limits(session, key)
-            new_expiry = key.expiry_time + add_ms
-            renewed = await renew_key_in_cluster(
-                key.server_id,
-                email=key.email,
-                client_id=key.client_id,
-                new_expiry_time=new_expiry,
-                total_gb=traffic,
-                session=session,
-                hwid_device_limit=device,
-                reset_traffic=False,
-                plan=key.tariff_id,
-            )
-            if not renewed:
-                fail += 1
-                continue
-            await update_key_expiry(session, key.client_id, new_expiry, user_id=key.user_id)
+            async with operation_session(session) as operation:
+                current = await lock_owned_key_for_operation(operation, key.user_id, key.client_id, key.email)
+                if current is None or current.is_frozen:
+                    fail += 1
+                    continue
+                renewed = await renew_key_in_cluster(
+                    current.server_id,
+                    email=current.email,
+                    client_id=current.client_id,
+                    new_expiry_time=current.expiry_time + add_ms,
+                    total_gb=0,
+                    session=operation,
+                    reset_traffic=False,
+                    expiry_only=True,
+                )
+                if not renewed:
+                    fail += 1
+                    continue
             ok += 1
         except Exception as e:
             fail += 1

@@ -19,12 +19,14 @@ from database import (
 from database.access.resolution import UserId
 from database.keys import lock_owned_key_for_operation, resolve_current_key_owner, resolve_key_operation_owner
 from database.models import Key
-from database.tariffs import check_tariff_exists, get_tariff_by_id, get_tariffs_for_cluster
+from database.tariffs import check_tariff_exists, get_tariff_by_id
 from handlers.notifications.context import NotificationContext
 from hooks.hooks import run_hooks
 from logger import logger
 from middlewares.session import operation_session
+from services.errors import ServiceError
 from services.operations import renew_key_in_cluster
+from services.renewal_access import resolve_key_renewal_scope
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key, resolve_price_to_charge
 
 
@@ -68,10 +70,6 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
     server_id = key.server_id
     tariff_id = key.tariff_id
 
-    tariffs = await get_tariffs_for_cluster(ctx.session, server_id)
-    if not tariffs:
-        return RenewalResult(RenewalStatus.NO_TARIFF)
-
     current_tariff = None
     if tariff_id:
         current_tariff = ctx.get_tariff(tariff_id)
@@ -93,6 +91,11 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
         logger.warning(f"[RENEW] Ошибка хуков forbidden_groups: {error}")
 
     if current_tariff["group_code"] in forbidden:
+        return RenewalResult(RenewalStatus.FORBIDDEN_TARIFF)
+
+    try:
+        await resolve_key_renewal_scope(ctx.session, key, current_tariff)
+    except ServiceError:
         return RenewalResult(RenewalStatus.FORBIDDEN_TARIFF)
 
     balance = await get_balance(ctx.session, owner_ref)
