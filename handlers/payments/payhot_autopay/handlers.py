@@ -197,7 +197,7 @@ async def _show_methods(
     await callback.answer()
 
 
-@router.callback_query(F.data == "pay_payhot_autopay")
+@router.callback_query(F.data == "pay_payhot_autopay", flags={"balance_topup": "checkout"})
 async def payment_menu(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Открывает выбор способа оплаты PayHOT с привязкой."""
     user_id = await _actor_uid(callback, session)
@@ -211,7 +211,7 @@ async def payment_menu(callback: CallbackQuery, state: FSMContext, session: Asyn
     await _show_methods(callback, state, session, user_id)
 
 
-@router.callback_query(F.data.startswith("payhot_auto_method|"))
+@router.callback_query(F.data.startswith("payhot_auto_method|"), flags={"balance_topup": "payhot_method_choice"})
 async def choose_method(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Сохраняет способ и показывает сумму или согласие покупки."""
     user_id = await _actor_uid(callback, session)
@@ -246,7 +246,7 @@ async def choose_method(callback: CallbackQuery, state: FSMContext, session: Asy
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("payhot_auto_amount|"))
+@router.callback_query(F.data.startswith("payhot_auto_amount|"), flags={"balance_topup": True})
 async def quick_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Запрашивает согласие на оплату выбранной суммы."""
     user_id = await _actor_uid(callback, session)
@@ -263,7 +263,7 @@ async def quick_amount(callback: CallbackQuery, state: FSMContext, session: Asyn
     await _show_consent(callback, state, session, user_id, amount, {"payment_flow": "balance_topup"}, method_name)
 
 
-@router.callback_query(F.data == "payhot_auto_custom")
+@router.callback_query(F.data == "payhot_auto_custom", flags={"balance_topup": True})
 async def request_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Запрашивает произвольную сумму."""
     user_id = await _actor_uid(callback, session)
@@ -278,7 +278,7 @@ async def request_amount(callback: CallbackQuery, state: FSMContext, session: As
     await callback.answer()
 
 
-@router.message(PayHOTPaymentState.entering_amount)
+@router.message(PayHOTPaymentState.entering_amount, flags={"balance_topup": True})
 async def custom_amount(message: Message, state: FSMContext, session: AsyncSession):
     """Проверяет введённую сумму и показывает согласие."""
     user_id = await _actor_uid(message, session)
@@ -327,7 +327,7 @@ async def process_fast_renewal_flow(
     await _show_methods(callback_query, state, session, user_id, {"amount": amount, "metadata": metadata})
 
 
-@router.callback_query(F.data == "payhot_auto_confirm")
+@router.callback_query(F.data == "payhot_auto_confirm", flags={"balance_topup": "payhot_checkout"})
 async def confirm_checkout(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Создаёт платёж после согласия подтверждённого владельца."""
     user_id = await _actor_uid(callback, session)

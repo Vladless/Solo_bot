@@ -33,7 +33,7 @@ class ReplenishBalanceState(StatesGroup):
     waiting_for_payment_confirmation_robokassa = State()
 
 
-@router.callback_query(F.data == "pay_robokassa")
+@router.callback_query(F.data == "pay_robokassa", flags={"balance_topup": "checkout"})
 async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = TelegramId(callback_query.from_user.id)
     b = await get_key_count(session, tg_id)
@@ -71,7 +71,7 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
     await state.set_state(ReplenishBalanceState.choosing_amount_robokassa)
 
 
-@router.callback_query(F.data.startswith("robokassa_"))
+@router.callback_query(F.data.startswith("robokassa_"), flags={"balance_topup": True})
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     amount = parse_amount_from_callback(callback_query.data, prefixes=["robokassa"])
     if not amount or amount <= 0:
@@ -101,7 +101,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     )
 
 
-@router.callback_query(F.data == "enter_custom_amount_robokassa")
+@router.callback_query(F.data == "enter_custom_amount_robokassa", flags={"balance_topup": True})
 async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     b = back_keyboard("pay_robokassa")
     await edit_or_send_message(target_message=callback_query.message, text=ENTER_SUM, reply_markup=b)

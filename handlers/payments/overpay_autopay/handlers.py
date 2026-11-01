@@ -171,7 +171,7 @@ async def _show_consent(
         await event.answer(text, reply_markup=markup)
 
 
-@router.callback_query(F.data == "pay_overpay_autopay")
+@router.callback_query(F.data == "pay_overpay_autopay", flags={"balance_topup": "checkout"})
 async def payment_menu(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Открывает выбор суммы или согласие текущей покупки."""
     user_id = await _actor_uid(callback, session)
@@ -194,7 +194,7 @@ async def payment_menu(callback: CallbackQuery, state: FSMContext, session: Asyn
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("overpay_auto_amount|"))
+@router.callback_query(F.data.startswith("overpay_auto_amount|"), flags={"balance_topup": True})
 async def quick_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Запрашивает согласие на оплату выбранной суммы."""
     user_id = await _actor_uid(callback, session)
@@ -207,7 +207,7 @@ async def quick_amount(callback: CallbackQuery, state: FSMContext, session: Asyn
     await _show_consent(callback, state, session, user_id, amount, {"payment_flow": "balance_topup"})
 
 
-@router.callback_query(F.data == "overpay_auto_custom")
+@router.callback_query(F.data == "overpay_auto_custom", flags={"balance_topup": True})
 async def request_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Запрашивает произвольную сумму."""
     user_id = await _actor_uid(callback, session)
@@ -221,7 +221,7 @@ async def request_amount(callback: CallbackQuery, state: FSMContext, session: As
     await callback.answer()
 
 
-@router.message(OverPayPaymentState.entering_amount)
+@router.message(OverPayPaymentState.entering_amount, flags={"balance_topup": True})
 async def custom_amount(message: Message, state: FSMContext, session: AsyncSession):
     """Проверяет введённую сумму и показывает согласие."""
     user_id = await _actor_uid(message, session)
@@ -265,7 +265,7 @@ async def process_fast_renewal_flow(
     await _show_consent(callback_query, state, session, user_id, amount, metadata)
 
 
-@router.callback_query(F.data == "overpay_auto_confirm")
+@router.callback_query(F.data == "overpay_auto_confirm", flags={"balance_topup": "overpay_checkout"})
 async def confirm_checkout(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Создаёт платёж после согласия подтверждённого владельца."""
     user_id = await _actor_uid(callback, session)

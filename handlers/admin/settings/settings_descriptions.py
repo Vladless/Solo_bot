@@ -105,7 +105,7 @@ SETTING_HINTS: Final[dict[str, str]] = {
     "KASSA2328": "Приём платежей через 2328. Настройте KASSA2328_PROJECT_UUID и KASSA2328_API_KEY на сервере.",
     "CHANNEL_BUTTON_ENABLE": "Кнопка перехода в ваш канал в меню бота",
     "DONATIONS_BUTTON_ENABLE": "Кнопка донатов в главном меню",
-    "BALANCE_BUTTON_ENABLE": "Кнопка пополнения баланса в профиле",
+    "BALANCE_BUTTON_ENABLE": "Пополнение баланса и кнопка баланса в профиле. Оплата заказов остаётся доступной.",
     "REFERRAL_QR_BUTTON_ENABLE": "QR-код реферальной ссылки в реферальном меню",
     "DELETE_KEY_BUTTON_ENABLE": "Разрешить пользователю самому удалять подписку",
     "INSTRUCTIONS_BUTTON_ENABLE": "Кнопка инструкций по подключению",

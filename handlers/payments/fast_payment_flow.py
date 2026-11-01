@@ -17,6 +17,7 @@ from database import get_balance, get_coupon_by_code_ci
 from database.access.resolution import TelegramId, user_id_from_legacy_ref
 from database.temporary_data import create_temporary_data, get_temporary_data
 from database.users import get_locked_balance
+from handlers.payments.access import balance_topup_enabled
 from handlers.payments.checkout_coupon import apply_checkout_coupon, checkout_price
 from handlers.payments.currency_flow import (
     build_currency_choice_kb,
@@ -52,6 +53,12 @@ async def get_payment_providers_config() -> dict[str, bool]:
 
 
 def _configured_fast_providers(providers_map: dict) -> list[str]:
+    if not USE_NEW_PAYMENT_FLOW and not balance_topup_enabled():
+        return [
+            name
+            for name, config in providers_map.items()
+            if config.get("enabled") and (config.get("fast") or name == "TRIBUTE")
+        ]
     configured = [str(provider).upper() for provider in (USE_NEW_PAYMENT_FLOW or [])]
     if (
         "YOOKASSA" in configured
@@ -178,7 +185,9 @@ async def _run_provider_flow(
         return False
 
     module_name_from_config = cfg.get("module")
-    if module_name_from_config:
+    if provider_upper == "FREEKASSA":
+        module_name = "handlers.payments.freekassa.freekassa_pay"
+    elif module_name_from_config:
         module_name = f"handlers.payments.{module_name_from_config}.handlers"
     else:
         module_name = f"handlers.payments.{provider_upper.lower()}.handlers"
@@ -196,7 +205,9 @@ async def _run_provider_flow(
                 await callback_query.message.delete()
             except Exception as error:
                 logger.warning(f"[FAST_FLOW] Не удалось удалить меню перед STARS: {error}")
-        if provider_upper in {
+        if provider_upper == "FREEKASSA":
+            await func(callback_query, state=state, session=session)
+        elif provider_upper in {
             "YOOKASSA_AUTOPAY",
             "KASSAI_AUTOPAY",
             "OVERPAY_AUTOPAY",
@@ -223,7 +234,7 @@ async def try_fast_payment_flow(
     required_amount: int | None = None,
     resume: bool = False,
 ) -> bool:
-    if not USE_NEW_PAYMENT_FLOW:
+    if not USE_NEW_PAYMENT_FLOW and balance_topup_enabled():
         if not resume:
             await create_temporary_data(session, tg_id, temp_key, temp_payload)
         return False

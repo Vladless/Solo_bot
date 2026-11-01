@@ -381,7 +381,7 @@ async def partner_create_payout_request(
 ):
     user_id, _ = await _resolve_partner_user(session, request, identity)
     profile = await pdb.get_partner_profile(session, user_id, lock=True)
-    balance, requested = float(profile["partner_balance"]), float(body.amount_rub)
+    balance, requested = round(float(profile["partner_balance"]), 2), round(float(body.amount_rub), 2)
     if requested <= 0:
         raise HTTPException(status_code=400, detail="Сумма должна быть больше нуля")
     try:
@@ -409,7 +409,7 @@ async def partner_create_payout_request(
         raise HTTPException(status_code=400, detail="Сначала укажите способ вывода и реквизиты")
     fee_rate = float(PARTNER_PAYOUT_FEE_RATE or 0.0)
     fee = round(requested * fee_rate, 2) if fee_rate > 0 else 0.0
-    net_amount = requested - fee
+    net_amount = round(requested - fee, 2)
     if not 0 < net_amount <= requested:
         raise HTTPException(status_code=400, detail="Недостаточно средств для заявки")
     try:

@@ -27,7 +27,7 @@ router = Router(name="kassai_router")
 router.include_router(service_router)
 
 
-@router.callback_query(F.data == "pay_kassai_cards")
+@router.callback_query(F.data == "pay_kassai_cards", flags={"balance_topup": "checkout"})
 async def handle_pay_kassai_cards(
     callback_query: types.CallbackQuery,
     state: FSMContext,
@@ -37,7 +37,7 @@ async def handle_pay_kassai_cards(
     await process_callback_pay_kassai(callback_query, state, session, method_name="cards")
 
 
-@router.callback_query(F.data == "pay_kassai_sbp")
+@router.callback_query(F.data == "pay_kassai_sbp", flags={"balance_topup": "checkout"})
 async def handle_pay_kassai_sbp(
     callback_query: types.CallbackQuery,
     state: FSMContext,

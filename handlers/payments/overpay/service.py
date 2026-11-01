@@ -156,17 +156,17 @@ async def process_callback_pay_overpay(
         )
 
 
-@router.callback_query(F.data == "pay_overpay_cards")
+@router.callback_query(F.data == "pay_overpay_cards", flags={"balance_topup": "checkout"})
 async def _pay_overpay_cards(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_overpay(cb, state, session, "cards")
 
 
-@router.callback_query(F.data == "pay_overpay_sbp")
+@router.callback_query(F.data == "pay_overpay_sbp", flags={"balance_topup": "checkout"})
 async def _pay_overpay_sbp(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_overpay(cb, state, session, "sbp")
 
 
-@router.callback_query(F.data.startswith("overpay_custom_amount|"))
+@router.callback_query(F.data.startswith("overpay_custom_amount|"), flags={"balance_topup": True})
 async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     method = OVERPAY_METHODS.get(method_name)
@@ -186,7 +186,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     await state.set_state(ReplenishBalanceOverpay.entering_custom_amount)
 
 
-@router.message(ReplenishBalanceOverpay.entering_custom_amount)
+@router.message(ReplenishBalanceOverpay.entering_custom_amount, flags={"balance_topup": True})
 async def handle_custom_amount_input(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     method_name = data.get("overpay_method")
@@ -243,7 +243,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
 
 
 @router.callback_query(
-    F.data.startswith("overpay_cards_amount|") | F.data.startswith("overpay_sbp_amount|")
+    F.data.startswith("overpay_cards_amount|") | F.data.startswith("overpay_sbp_amount|"), flags={"balance_topup": True}
 )
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     prefixes = ["overpay_cards", "overpay_sbp"]

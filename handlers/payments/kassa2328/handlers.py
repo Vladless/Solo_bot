@@ -191,7 +191,7 @@ async def _show_invoice(
         return False
 
 
-@router.callback_query(F.data.in_({"pay_2328", "k2328_back"}))
+@router.callback_query(F.data.in_({"pay_2328", "k2328_back"}), flags={"balance_topup": "checkout"})
 async def pay_2328_start(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     """Открывает выбор суммы пополнения через 2328."""
     if not await _available_for(callback):
@@ -221,7 +221,7 @@ async def pay_2328_start(callback: CallbackQuery, state: FSMContext, session: As
     )
 
 
-@router.callback_query(F.data.startswith("k2328_amount|"))
+@router.callback_query(F.data.startswith("k2328_amount|"), flags={"balance_topup": True})
 async def pay_2328_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     """Создаёт счёт для выбранной рублёвой суммы."""
     if not await _available_for(callback):
@@ -236,7 +236,7 @@ async def pay_2328_amount(callback: CallbackQuery, state: FSMContext, session: A
     await _show_invoice(callback, session, amount, state=state)
 
 
-@router.callback_query(F.data == "k2328_custom")
+@router.callback_query(F.data == "k2328_custom", flags={"balance_topup": True})
 async def custom_amount(callback: CallbackQuery, state: FSMContext) -> None:
     """Предлагает ввести сумму в валюте счёта."""
     if not await _available_for(callback):
@@ -261,7 +261,7 @@ async def custom_amount(callback: CallbackQuery, state: FSMContext) -> None:
     )
 
 
-@router.message(Replenish2328State.entering_custom_amount)
+@router.message(Replenish2328State.entering_custom_amount, flags={"balance_topup": True})
 async def custom_amount_input(message: Message, state: FSMContext, session: AsyncSession) -> None:
     """Переводит введённую сумму в рубли и создаёт счёт."""
     if not await _available_for(message):

@@ -3,8 +3,9 @@ from collections.abc import Iterable
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from handlers.payments.access import balance_topup_enabled
 from services.payments.currency_rates import format_for_user
-from settings.buttons import BACK, CUSTOM_AMOUNT
+from settings.buttons import BACK, CUSTOM_AMOUNT, MAIN_MENU
 from settings.config import RENEWAL_PRICES
 
 
@@ -41,6 +42,8 @@ def build_amounts_keyboard(
     per_row: int = 2,
     opts: Iterable[dict] | None = None,
 ) -> InlineKeyboardMarkup:
+    if back_cb == "balance" and not balance_topup_enabled():
+        back_cb = "profile"
     items = list(opts) if opts is not None else payment_options()
     b = InlineKeyboardBuilder()
     row = []
@@ -84,6 +87,8 @@ def parse_amount_from_callback(data: str, *, prefixes: list[str]) -> int | None:
 
 
 def pay_keyboard(url: str, *, pay_text: str, back_cb: str) -> InlineKeyboardMarkup:
+    if back_cb == "balance" and not balance_topup_enabled():
+        back_cb = "profile"
     b = InlineKeyboardBuilder()
     b.row(InlineKeyboardButton(text=pay_text, url=url))
     b.row(InlineKeyboardButton(text=BACK, callback_data=back_cb))
@@ -91,6 +96,8 @@ def pay_keyboard(url: str, *, pay_text: str, back_cb: str) -> InlineKeyboardMark
 
 
 def back_keyboard(back_cb: str) -> InlineKeyboardMarkup:
+    if back_cb == "balance" and not balance_topup_enabled():
+        back_cb = "profile"
     b = InlineKeyboardBuilder()
     b.row(InlineKeyboardButton(text=BACK, callback_data=back_cb))
     return b.as_markup()
@@ -100,5 +107,8 @@ def balance_fallback_kb() -> InlineKeyboardMarkup:
     from settings.buttons import BALANCE
 
     b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
+    if balance_topup_enabled():
+        b.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
+    else:
+        b.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
     return b.as_markup()

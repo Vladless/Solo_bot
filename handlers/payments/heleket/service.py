@@ -19,6 +19,7 @@ from database.access.resolution import TelegramId
 from database.payments import resolve_payment_creation_owner
 from services.payments.checkout_snapshot import capture_payment_checkout
 from database.users import get_user_language
+from handlers.payments.access import balance_topup_enabled
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -122,7 +123,7 @@ async def process_callback_pay_heleket(
         for name, method in HELEKET_METHODS.items():
             if method["enable"]:
                 builder.row(InlineKeyboardButton(text=method["button"], callback_data=f"heleket_method|{name}"))
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="balance" if balance_topup_enabled() else "profile"))
 
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -140,7 +141,7 @@ async def process_callback_pay_heleket(
         await callback_query.answer("Произошла ошибка при инициализации платежа. Попробуйте позже.", show_alert=True)
 
 
-@router.callback_query(F.data.startswith("heleket_method|"))
+@router.callback_query(F.data.startswith("heleket_method|"), flags={"balance_topup": True})
 async def process_method_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     method = HELEKET_METHODS.get(method_name)
@@ -175,7 +176,7 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceHeleket.choosing_amount)
 
 
-@router.callback_query(F.data.startswith("heleket_custom_amount|"))
+@router.callback_query(F.data.startswith("heleket_custom_amount|"), flags={"balance_topup": True})
 async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     await state.update_data(heleket_method=method_name)
@@ -195,7 +196,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     await state.set_state(ReplenishBalanceHeleket.entering_custom_amount)
 
 
-@router.message(ReplenishBalanceHeleket.entering_custom_amount)
+@router.message(ReplenishBalanceHeleket.entering_custom_amount, flags={"balance_topup": True})
 async def handle_custom_amount_input(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     method_name = data.get("heleket_method")
@@ -267,7 +268,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     await state.set_state(ReplenishBalanceHeleket.waiting_for_payment_confirmation)
 
 
-@router.callback_query(F.data.startswith("heleket_crypto_amount|"))
+@router.callback_query(F.data.startswith("heleket_crypto_amount|"), flags={"balance_topup": True})
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     amount = parse_amount_from_callback(callback_query.data, prefixes=["heleket_crypto"])
     if amount is None:

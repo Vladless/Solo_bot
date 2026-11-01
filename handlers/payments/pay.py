@@ -15,6 +15,7 @@ from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import User
 from database.payments import get_balance_activity
 from database.temporary_data import clear_temporary_data
+from handlers.payments.access import balance_topup_enabled
 from handlers.payments.currency_flow import build_currency_choice_kb
 from handlers.payments.stars.handlers import process_callback_pay_stars
 from handlers.payments.tribute.handlers import process_callback_pay_tribute
@@ -43,7 +44,7 @@ async def get_payment_providers_config() -> dict[str, bool]:
     return dict(config)
 
 
-@router.callback_query(F.data == "pay")
+@router.callback_query(F.data == "pay", flags={"balance_topup": "checkout"})
 async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     providers_config = await get_payment_providers_config()
     providers_with_hooks = await get_providers_with_hooks(providers_config)
@@ -152,7 +153,7 @@ async def _build_pay_menu_for_currency(currency: str) -> InlineKeyboardBuilder:
     return builder
 
 
-@router.callback_query(F.data.startswith("pay_currency|"))
+@router.callback_query(F.data.startswith("pay_currency|"), flags={"balance_topup": "checkout"})
 async def handle_pay_currency(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     currency = callback_query.data.split("|")[1]
     if currency == "STARS":
@@ -181,7 +182,7 @@ async def handle_pay_currency(callback_query: CallbackQuery, state: FSMContext, 
     )
 
 
-@router.callback_query(F.data == "balance")
+@router.callback_query(F.data == "balance", flags={"balance_topup": True})
 async def balance_handler(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     for key in ("temp_key", "temp_payload", "required_amount", "fastflow_providers", "chosen_currency"):
@@ -219,7 +220,8 @@ async def balance_handler(callback_query: CallbackQuery, state: FSMContext, sess
 @router.callback_query(F.data == "balance_history")
 async def balance_history_handler(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=btn.PAYMENT, callback_data="pay"))
+    if balance_topup_enabled():
+        builder.row(InlineKeyboardButton(text=btn.PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
 
     u = await resolve_user_optional(session, TelegramId(callback_query.from_user.id))
@@ -275,7 +277,7 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data == "back_to_currency")
+@router.callback_query(F.data == "back_to_currency", flags={"balance_topup": "checkout"})
 async def back_to_currency(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     providers_config = await get_payment_providers_config()
     providers_with_hooks = await get_providers_with_hooks(providers_config)
@@ -291,11 +293,11 @@ async def back_to_currency(callback_query: CallbackQuery, state: FSMContext, ses
     )
 
 
-@router.callback_query(F.data == "back_to_pay")
+@router.callback_query(F.data == "back_to_pay", flags={"balance_topup": True})
 async def back_to_pay(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     return await balance_handler(callback_query, state, session)
 
 
-@router.callback_query(F.data == "pay_tribute")
+@router.callback_query(F.data == "pay_tribute", flags={"balance_topup": True})
 async def handle_pay_tribute(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_tribute(callback_query, state, session)

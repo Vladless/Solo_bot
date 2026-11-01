@@ -27,7 +27,7 @@ router = Router(name="paritypay_router")
 router.include_router(service_router)
 
 
-@router.callback_query(F.data == "pay_paritypay_sbp")
+@router.callback_query(F.data == "pay_paritypay_sbp", flags={"balance_topup": "checkout"})
 async def handle_pay_paritypay_sbp(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_paritypay(callback_query, state, session, method_name="sbp")
 

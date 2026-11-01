@@ -280,7 +280,10 @@ async def _show_invoice(
     return False
 
 
-@router.callback_query(F.data.in_({"pay_payhot_cards", "pay_payhot_sbp", "pay_payhot_sberpay"}))
+@router.callback_query(
+    F.data.in_({"pay_payhot_cards", "pay_payhot_sbp", "pay_payhot_sberpay"}),
+    flags={"balance_topup": "checkout"},
+)
 async def pay_payhot_start(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     """Открывает рублёвые суммы выбранного способа PayHOT."""
     method_name = callback.data.removeprefix("pay_payhot_")
@@ -308,7 +311,7 @@ async def pay_payhot_start(callback: CallbackQuery, state: FSMContext, session: 
     )
 
 
-@router.callback_query(F.data.startswith("payhot_amount|"))
+@router.callback_query(F.data.startswith("payhot_amount|"), flags={"balance_topup": True})
 async def pay_payhot_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     """Создаёт счёт для выбранной рублёвой суммы."""
     try:
@@ -324,7 +327,7 @@ async def pay_payhot_amount(callback: CallbackQuery, state: FSMContext, session:
     await _show_invoice(callback, session, amount, method_name, state=state)
 
 
-@router.callback_query(F.data.startswith("payhot_custom|"))
+@router.callback_query(F.data.startswith("payhot_custom|"), flags={"balance_topup": True})
 async def custom_amount(callback: CallbackQuery, state: FSMContext) -> None:
     """Сохраняет приглашение к вводу суммы в рублях."""
     method_name = callback.data.removeprefix("payhot_custom|")
@@ -347,7 +350,7 @@ async def custom_amount(callback: CallbackQuery, state: FSMContext) -> None:
     )
 
 
-@router.message(ReplenishPayhotState.entering_custom_amount)
+@router.message(ReplenishPayhotState.entering_custom_amount, flags={"balance_topup": True})
 async def custom_amount_input(message: Message, state: FSMContext, session: AsyncSession) -> None:
     """Проверяет введённую сумму и заменяет приглашение счётом."""
     expected_state = ReplenishPayhotState.entering_custom_amount.state
@@ -385,7 +388,7 @@ async def custom_amount_input(message: Message, state: FSMContext, session: Asyn
     )
 
 
-@router.message(ReplenishPayhotState.entering_phone)
+@router.message(ReplenishPayhotState.entering_phone, flags={"balance_topup": "payhot_pending"})
 async def phone_input(message: Message, state: FSMContext, session: AsyncSession) -> None:
     """Проверяет свой номер и создаёт сохранённый счёт SberPay."""
     expected_state = ReplenishPayhotState.entering_phone.state

@@ -176,27 +176,27 @@ async def process_callback_pay_platega(
         )
 
 
-@router.callback_query(F.data == "pay_platega_sbp")
+@router.callback_query(F.data == "pay_platega_sbp", flags={"balance_topup": "checkout"})
 async def _pay_platega_sbp(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_platega(cb, state, session, "sbp")
 
 
-@router.callback_query(F.data == "pay_platega_cards")
+@router.callback_query(F.data == "pay_platega_cards", flags={"balance_topup": "checkout"})
 async def _pay_platega_cards(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_platega(cb, state, session, "cards")
 
 
-@router.callback_query(F.data == "pay_platega_int")
+@router.callback_query(F.data == "pay_platega_int", flags={"balance_topup": "checkout"})
 async def _pay_platega_int(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_platega(cb, state, session, "int")
 
 
-@router.callback_query(F.data == "pay_platega_crypto")
+@router.callback_query(F.data == "pay_platega_crypto", flags={"balance_topup": "checkout"})
 async def _pay_platega_crypto(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_platega(cb, state, session, "crypto")
 
 
-@router.callback_query(F.data.startswith("platega_custom_amount|"))
+@router.callback_query(F.data.startswith("platega_custom_amount|"), flags={"balance_topup": True})
 async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     method = PLATEGA_METHODS.get(method_name)
@@ -220,7 +220,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     await state.set_state(ReplenishBalancePlatega.entering_custom_amount)
 
 
-@router.message(ReplenishBalancePlatega.entering_custom_amount)
+@router.message(ReplenishBalancePlatega.entering_custom_amount, flags={"balance_topup": True})
 async def handle_custom_amount_input(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     method_name = data.get("platega_method")
@@ -302,7 +302,8 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     F.data.startswith("platega_sbp_amount|")
     | F.data.startswith("platega_cards_amount|")
     | F.data.startswith("platega_int_amount|")
-    | F.data.startswith("platega_crypto_amount|")
+    | F.data.startswith("platega_crypto_amount|"),
+    flags={"balance_topup": True},
 )
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     prefixes = ["platega_sbp", "platega_cards", "platega_int", "platega_crypto"]

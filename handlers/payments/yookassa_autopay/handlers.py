@@ -303,7 +303,7 @@ async def _show_consent(
     await callback.answer()
 
 
-@router.callback_query(F.data == "pay_yookassa_autopay")
+@router.callback_query(F.data == "pay_yookassa_autopay", flags={"balance_topup": "checkout"})
 async def handle_pay_yookassa_autopay(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     user_id = await _actor_uid(callback, session)
     if user_id is None or not await _allow_create(callback, session):
@@ -315,7 +315,7 @@ async def handle_pay_yookassa_autopay(callback: CallbackQuery, state: FSMContext
     await show_payment_menu(callback, state, session)
 
 
-@router.callback_query(F.data == "yookassa_autopay_menu")
+@router.callback_query(F.data == "yookassa_autopay_menu", flags={"balance_topup": True})
 async def show_payment_menu(callback: CallbackQuery, state: FSMContext | None, session: AsyncSession):
     user_id = await _actor_uid(callback, session)
     if user_id is None or not await _allow_create(callback, session):
@@ -336,7 +336,7 @@ async def show_payment_menu(callback: CallbackQuery, state: FSMContext | None, s
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("yookassa_autopay_amount|"))
+@router.callback_query(F.data.startswith("yookassa_autopay_amount|"), flags={"balance_topup": True})
 async def process_quick_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     user_id = await _actor_uid(callback, session)
     if user_id is None or not await _allow_create(callback, session):
@@ -348,7 +348,7 @@ async def process_quick_amount(callback: CallbackQuery, state: FSMContext, sessi
     await _show_consent(callback, state, session, user_id, amount, {"payment_flow": "balance_topup"})
 
 
-@router.callback_query(F.data == "yookassa_autopay_custom_amount")
+@router.callback_query(F.data == "yookassa_autopay_custom_amount", flags={"balance_topup": True})
 async def request_custom_amount(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     user_id = await _actor_uid(callback, session)
     if user_id is None or not await _allow_create(callback, session):
@@ -371,7 +371,7 @@ async def request_custom_amount(callback: CallbackQuery, state: FSMContext, sess
     await callback.answer()
 
 
-@router.message(YooKassaPaymentState.entering_amount)
+@router.message(YooKassaPaymentState.entering_amount, flags={"balance_topup": True})
 async def process_custom_amount(message: Message, state: FSMContext, session: AsyncSession):
     target_message = await _restore_prompt(message, state)
     user_id = await _actor_uid(message, session, target_message=target_message)
@@ -433,7 +433,7 @@ async def process_fast_renewal_flow(
     await remember_management_checkout(callback_query, state, user_id, "yookassa")
     temp = await get_temporary_data(session, user_id)
     if not temp or temp["state"] not in _FLOW_BY_STATE:
-        await show_payment_menu(callback_query, state, session)
+        await callback_query.answer(texts.YOOKASSA_AUTOPAY_CONSENT_EXPIRED, show_alert=True)
         return
     data = dict(temp.get("data") or {})
     amount = _amount(data.get("required_amount"))
@@ -449,7 +449,7 @@ async def process_fast_renewal_flow(
     await _show_consent(callback_query, state, session, user_id, amount, metadata)
 
 
-@router.callback_query(F.data == "yookassa_autopay_confirm")
+@router.callback_query(F.data == "yookassa_autopay_confirm", flags={"balance_topup": "autopay_checkout"})
 async def confirm_checkout(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     user_id = await _actor_uid(callback, session)
     if user_id is None or not await _allow_create(callback, session):

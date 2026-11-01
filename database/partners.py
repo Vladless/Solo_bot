@@ -367,14 +367,17 @@ async def create_partner_payout(
     owner = await get_partner_profile(session, user_id, lock=True)
     if owner is None:
         raise ValueError("missing")
-    debit = float(amount if debit_amount is None else debit_amount)
-    if not 0 < debit <= 100_000_000 or not 0 <= float(amount) <= debit or status not in {"pending", "approved"}:
+    debit = round(float(amount if debit_amount is None else debit_amount), 2)
+    amount = round(float(amount), 2)
+    if not 0 < debit <= 100_000_000 or not 0 <= amount <= debit or status not in {"pending", "approved"}:
         raise ValueError("amount")
     result = await session.execute(
         text(
-            "UPDATE users SET partner_balance = COALESCE(partner_balance, 0) - :amount WHERE id = :id AND COALESCE(partner_balance, 0) >= :amount RETURNING partner_balance"
+            "UPDATE users SET partner_balance = ROUND(CAST(COALESCE(partner_balance, 0) AS NUMERIC) - CAST(:amount AS NUMERIC), 2) "
+            "WHERE id = :id AND ROUND(CAST(COALESCE(partner_balance, 0) AS NUMERIC), 2) >= CAST(:amount AS NUMERIC) "
+            "RETURNING partner_balance"
         ),
-        {"id": int(user_id), "amount": debit},
+        {"id": int(user_id), "amount": str(debit)},
     )
     balance = result.scalar()
     if balance is None:
@@ -434,10 +437,7 @@ async def decide_partner_payout(session: AsyncSession, payout_id: int, approve: 
     if amount is None:
         return False
     if not approve:
-        await session.execute(
-            text("UPDATE users SET partner_balance = COALESCE(partner_balance, 0) + :amount WHERE id = :id"),
-            {"id": owner["id"], "amount": float(amount)},
-        )
+        await credit_partner_balance(session, owner["id"], float(amount))
     return True
 
 
@@ -585,9 +585,10 @@ async def credit_partner_balance(session: AsyncSession, user_id: int, amount: fl
     """Начисляет партнёрский бонус только каноническому владельцу."""
     result = await session.execute(
         text(
-            "UPDATE users SET partner_balance = COALESCE(partner_balance, 0) + :amount WHERE id = :id RETURNING partner_balance"
+            "UPDATE users SET partner_balance = ROUND(CAST(COALESCE(partner_balance, 0) AS NUMERIC) + CAST(:amount AS NUMERIC), 2) "
+            "WHERE id = :id RETURNING partner_balance"
         ),
-        {"id": int(user_id), "amount": float(amount)},
+        {"id": int(user_id), "amount": str(round(float(amount), 2))},
     )
     balance = result.scalar()
     if balance is None:

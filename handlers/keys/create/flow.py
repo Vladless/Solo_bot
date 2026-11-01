@@ -15,24 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
 from database import (
     add_user,
-    get_tariffs_for_cluster,
     get_trial,
 )
 from database.access.resolution import TelegramId, UserId, notify_telegram_chat_id
 from database.models import Admin
-from database.notifications import check_cold_lead_discount, check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, get_tariffs
 from database.users import get_balance
 from handlers.admin.panel.keyboard import AdminPanelCallback
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_least_loaded_cluster
 from hooks.hook_buttons import insert_hook_buttons
-from hooks.processors import (
-    process_purchase_tariff_group_override,
-    process_tariff_menu,
-)
+from hooks.processors import process_tariff_menu
 from logger import logger
-from services.tariffs.visibility import filter_visible_tariffs
+from services.tariffs.purchase import resolve_purchase_tariffs
 from settings.buttons import MAIN_MENU
 from settings.config import (
     DISCOUNT_ACTIVE_HOURS,
@@ -188,62 +183,13 @@ async def handle_key_creation(
             )
             return
 
-        tariffs = await get_tariffs_for_cluster(session, cluster_name)
-
-        discount_info: dict[str, Any] | None = None
-
-        if tariffs:
-            group_code = tariffs[0].get("group_code")
-            original_group_code = group_code
-            if group_code:
-                discount_info = await check_hot_lead_discount(session, tg_id)
-                if not (discount_info and discount_info.get("available")):
-                    cold_discount_info = await check_cold_lead_discount(session, tg_id)
-                    if cold_discount_info and cold_discount_info.get("available"):
-                        discount_info = cold_discount_info
-
-                if discount_info and discount_info.get("available"):
-                    group_code = discount_info["tariff_group"]
-                    await state.update_data(discount_info=_make_state_safe(discount_info))
-                else:
-                    await state.update_data(discount_info=None)
-
-                override_result = await process_purchase_tariff_group_override(
-                    chat_id=tg_id,
-                    admin=False,
-                    session=session,
-                    original_group=group_code,
-                )
-                if override_result:
-                    group_code = override_result["override_group"]
-                    logger.info(f"[PURCHASE] Тарифная группа переопределена хуком: {group_code}")
-                    if override_result.get("discount_info"):
-                        await state.update_data(discount_info=_make_state_safe(override_result["discount_info"]))
-
-                tariffs_data = await get_tariffs(
-                    session,
-                    group_code=group_code,
-                    with_subgroup_weights=True,
-                )
-                tariffs = await filter_visible_tariffs(
-                    session, tg_id, [t for t in tariffs_data["tariffs"] if t.get("is_active")]
-                )
-                tariffs_data["subgroup_weights"]
-
-                if not tariffs and discount_info and discount_info.get("available"):
-                    logger.warning(f"[PURCHASE] Нет тарифов со скидкой {group_code}, fallback на {original_group_code}")
-                    group_code = original_group_code
-                    tariffs_data = await get_tariffs(
-                        session,
-                        group_code=group_code,
-                        with_subgroup_weights=True,
-                    )
-                    tariffs = await filter_visible_tariffs(
-                        session, tg_id, [t for t in tariffs_data["tariffs"] if t.get("is_active")]
-                    )
-                    tariffs_data["subgroup_weights"]
-                    discount_info = None
-                    await state.update_data(discount_info=None)
+        selection = await resolve_purchase_tariffs(session, tg_id, cluster_name=cluster_name)
+        tariffs = selection.tariffs
+        discount_info = selection.discount_info
+        if selection.group_code:
+            await state.update_data(
+                discount_info=_make_state_safe(selection.state_discount_info) if selection.state_discount_info else None
+            )
 
         if not tariffs:
             result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))

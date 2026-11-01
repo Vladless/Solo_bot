@@ -142,7 +142,7 @@ PROVIDERS_BASE: dict[str, dict[str, Any]] = {
     "FREEKASSA": {
         "currency": "USD",
         "value": "pay_freekassa",
-        "fast": None,
+        "fast": "handle_custom_amount_input",
         "order": 18,
     },
     "STARS": {

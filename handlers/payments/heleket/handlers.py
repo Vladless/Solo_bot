@@ -27,7 +27,7 @@ router = Router(name="heleket_router")
 router.include_router(service_router)
 
 
-@router.callback_query(F.data == "pay_heleket_crypto")
+@router.callback_query(F.data == "pay_heleket_crypto", flags={"balance_topup": "checkout"})
 async def handle_pay_heleket_crypto(
     callback_query: types.CallbackQuery,
     state: FSMContext,

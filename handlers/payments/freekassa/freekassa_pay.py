@@ -27,6 +27,8 @@ from database import (
 )
 from database.access.resolution import TelegramId, UserId
 from database.payments import resolve_payment_creation_owner
+from handlers.payments.access import balance_topup_enabled
+from handlers.payments.constants import ALLOWED_TEMP_PAYMENT_STATES
 from services.payments.checkout_snapshot import capture_payment_checkout
 from handlers.utils import edit_or_send_message
 from logger import logger
@@ -76,7 +78,7 @@ def generate_payment_link(amount: float, order_id: str, tg_id: int, currency: st
     return full_url
 
 
-@router.callback_query(F.data == "pay_freekassa")
+@router.callback_query(F.data == "pay_freekassa", flags={"balance_topup": "checkout"})
 async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = TelegramId(callback_query.message.chat.id)
     logger.info(f"User {tg_id} initiated Freekassa payment.")
@@ -101,7 +103,7 @@ async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, st
                     callback_data=f"freekassa_amount|{PAYMENT_OPTIONS[i]['callback_data']}",
                 )
             )
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="balance" if balance_topup_enabled() else "profile"))
 
     key_count = await get_key_count(session, tg_id)
 
@@ -131,7 +133,7 @@ async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, st
     logger.info(f"Displayed amount selection for user {tg_id}.")
 
 
-@router.callback_query(F.data.startswith("freekassa_amount|"))
+@router.callback_query(F.data.startswith("freekassa_amount|"), flags={"balance_topup": True})
 async def process_amount_selection(
     callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession | None = None
 ):
@@ -283,7 +285,7 @@ async def freekassa_webhook(request: web.Request):
         return web.Response(status=500, text="Internal server error")
 
 
-@router.callback_query(F.data == "enter_custom_amount_freekassa")
+@router.callback_query(F.data == "enter_custom_amount_freekassa", flags={"balance_topup": True})
 async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = TelegramId(callback_query.message.chat.id)
     logger.info(f"User {tg_id} chose to enter a custom amount.")
@@ -300,7 +302,7 @@ async def process_custom_amount_selection(callback_query: types.CallbackQuery, s
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_freekassa)
 
 
-@router.message(ReplenishBalanceState.waiting_for_payment_confirmation_freekassa)
+@router.message(ReplenishBalanceState.waiting_for_payment_confirmation_freekassa, flags={"balance_topup": True})
 async def handle_custom_amount_input(
     message: types.Message | types.CallbackQuery,
     state: FSMContext = None,
@@ -355,6 +357,8 @@ async def handle_custom_amount_input(
             message_text = (
                 f"Вы выбрали пополнение на {amount} рублей для продления ключа. Перейдите по ссылке для оплаты:"
             )
+        elif state_type in ALLOWED_TEMP_PAYMENT_STATES:
+            message_text = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
         else:
             await edit_or_send_message(
                 target_message=target_message,

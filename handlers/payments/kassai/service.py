@@ -13,6 +13,7 @@ from database import register_pending_payment
 from database.access.resolution import TelegramId
 from database.payments import resolve_payment_creation_owner
 from database.users import get_user_language
+from handlers.payments.access import balance_topup_enabled
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -76,7 +77,7 @@ KASSAI_METHODS = {
 }
 
 
-@router.callback_query(F.data == "pay_kassai", flags={"popup": True})
+@router.callback_query(F.data == "pay_kassai", flags={"popup": True, "balance_topup": "checkout"})
 async def process_callback_pay_kassai(
     callback_query: types.CallbackQuery,
     state: FSMContext,
@@ -131,7 +132,7 @@ async def process_callback_pay_kassai(
                         callback_data=f"kassai_method|{name}",
                     )
                 )
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="balance" if balance_topup_enabled() else "profile"))
 
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -152,7 +153,7 @@ async def process_callback_pay_kassai(
         )
 
 
-@router.callback_query(F.data.startswith("kassai_method|"))
+@router.callback_query(F.data.startswith("kassai_method|"), flags={"balance_topup": True})
 async def process_method_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     method = KASSAI_METHODS.get(method_name)
@@ -187,7 +188,7 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceKassaiState.choosing_amount)
 
 
-@router.callback_query(F.data.startswith("kassai_custom_amount|"))
+@router.callback_query(F.data.startswith("kassai_custom_amount|"), flags={"balance_topup": True})
 async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     await state.update_data(kassai_method=method_name)
@@ -207,7 +208,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     await state.set_state(ReplenishBalanceKassaiState.entering_custom_amount)
 
 
-@router.message(ReplenishBalanceKassaiState.entering_custom_amount)
+@router.message(ReplenishBalanceKassaiState.entering_custom_amount, flags={"balance_topup": True})
 async def handle_custom_amount_input(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     method_name = data.get("kassai_method")
@@ -289,7 +290,10 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     await state.set_state(ReplenishBalanceKassaiState.waiting_for_payment_confirmation)
 
 
-@router.callback_query(F.data.startswith("kassai_cards_amount|") | F.data.startswith("kassai_sbp_amount|"))
+@router.callback_query(
+    F.data.startswith("kassai_cards_amount|") | F.data.startswith("kassai_sbp_amount|"),
+    flags={"balance_topup": True},
+)
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     amount = parse_amount_from_callback(callback_query.data, prefixes=["kassai_cards", "kassai_sbp"])
     if amount is None:

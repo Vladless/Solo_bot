@@ -9,7 +9,7 @@ import { useScreenFlip } from "@/components/constructor/blockContent/pageFlip";
 import { buildAppImportUrl } from "@/lib/platform-detect";
 import { useAppInfo } from "@/app/AppInfoProvider";
 import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor";
-import { useDefaultTheme, useIsMobile, parseBlockData, useBlockApi, useBlockApiMutate, apiFetch, apiFetchPublic } from "..";
+import { useDefaultTheme, useIsMobile, parseBlockData, useBlockApi, useBlockApiMutate, apiFetch, apiFetchPublic, useAuthenticatedSWR } from "..";
 import { useLoadedFade, useLoadedReveal } from "@/components/constructor/blockContent/useLoadedFade";
 import { useAccountMutations } from "@/components/constructor/blockContent/account/useAccountMutations";
 import { useSectionScreen } from "@/app/(marketing)/landing/SectionScreenContext";
@@ -324,14 +324,21 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
 
   const closeAddons = () => setPanelMode("main");
 
-  const switchGroupCode = isBuying ? "" : effectiveSwitchGroupCode;
-  const switchListUrl = !isPreview && (isBuying || switchTariffMode === "inside")
-    ? (switchGroupCode ? `/api/tariffs/public?group_code=${encodeURIComponent(switchGroupCode)}` : "/api/tariffs/public")
+  const purchaseTariffs = useAuthenticatedSWR<WebTariffPublic[]>({
+    path: "/api/tariffs/purchase-options",
+    cacheKey: "/api/tariffs/purchase-options",
+    disabled: isPreview || !isBuying,
+    swrConfig: { keepPreviousData: false },
+  });
+  const switchListUrl = !isPreview && !isBuying && switchTariffMode === "inside"
+    ? (effectiveSwitchGroupCode ? `/api/tariffs/public?group_code=${encodeURIComponent(effectiveSwitchGroupCode)}` : "/api/tariffs/public")
     : null;
-  const { data: switchTariffsList, isLoading: switchListLoading } = useSWR<WebTariffPublic[]>(
+  const switchTariffs = useSWR<WebTariffPublic[]>(
     switchListUrl,
     (url: string) => apiFetchPublic<WebTariffPublic[]>(url),
   );
+  const switchTariffsList = isBuying ? purchaseTariffs.data : switchTariffs.data;
+  const switchListLoading = isBuying ? purchaseTariffs.isLoading : switchTariffs.isLoading;
   const switchLoadedFade = useLoadedFade(!isPreview && panelMode === "switch" && switchListLoading && !switchTariffsList);
   const switchCountKnown = isPreview || Array.isArray(switchTariffsList);
   const switchSortedTariffs = useMemo<WebTariffPublic[]>(() => {

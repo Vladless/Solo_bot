@@ -29,7 +29,7 @@ router = Router(name="wata_router")
 router.include_router(service_router)
 
 
-@router.callback_query(F.data == "pay_wata_ru")
+@router.callback_query(F.data == "pay_wata_ru", flags={"balance_topup": "checkout"})
 async def handle_pay_wata_ru(
     callback_query: types.CallbackQuery,
     state: FSMContext,
@@ -38,7 +38,7 @@ async def handle_pay_wata_ru(
     await process_callback_pay_wata(callback_query, state, session, method_name="ru")
 
 
-@router.callback_query(F.data == "pay_wata_int")
+@router.callback_query(F.data == "pay_wata_int", flags={"balance_topup": "checkout"})
 async def handle_pay_wata_int(
     callback_query: types.CallbackQuery,
     state: FSMContext,

@@ -17,6 +17,7 @@ from database.access.resolution import TelegramId
 from database.payments import resolve_payment_creation_owner
 from services.payments.checkout_snapshot import capture_payment_checkout
 from database.users import get_user_language
+from handlers.payments.access import balance_topup_enabled
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -84,7 +85,7 @@ def _wata_method_enabled(method: dict) -> bool:
     return bool(PAYMENTS_CONFIG.get(method["provider_key"], False))
 
 
-@router.callback_query(F.data == "pay_wata", flags={"popup": True})
+@router.callback_query(F.data == "pay_wata", flags={"popup": True, "balance_topup": "checkout"})
 async def process_callback_pay_wata(
     callback_query: types.CallbackQuery,
     state: FSMContext,
@@ -143,7 +144,7 @@ async def process_callback_pay_wata(
                         callback_data=f"wata_method|{name}",
                     )
                 )
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="balance" if balance_topup_enabled() else "profile"))
 
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -164,7 +165,7 @@ async def process_callback_pay_wata(
         )
 
 
-@router.callback_query(F.data.startswith("wata_method|"))
+@router.callback_query(F.data.startswith("wata_method|"), flags={"balance_topup": True})
 async def process_method_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     method = WATA_METHODS.get(method_name)
@@ -204,7 +205,7 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceWata.choosing_amount)
 
 
-@router.callback_query(F.data.startswith("wata_custom_amount|"))
+@router.callback_query(F.data.startswith("wata_custom_amount|"), flags={"balance_topup": True})
 async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     await state.update_data(wata_method=method_name)
@@ -224,7 +225,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     await state.set_state(ReplenishBalanceWata.entering_custom_amount)
 
 
-@router.message(ReplenishBalanceWata.entering_custom_amount)
+@router.message(ReplenishBalanceWata.entering_custom_amount, flags={"balance_topup": True})
 async def handle_custom_amount_input(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     method_name = data.get("wata_method")
@@ -300,7 +301,10 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     await state.set_state(ReplenishBalanceWata.waiting_for_payment_confirmation)
 
 
-@router.callback_query(F.data.startswith("wata_ru_amount|") | F.data.startswith("wata_int_amount|"))
+@router.callback_query(
+    F.data.startswith("wata_ru_amount|") | F.data.startswith("wata_int_amount|"),
+    flags={"balance_topup": True},
+)
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     amount = parse_amount_from_callback(callback_query.data, prefixes=["wata_ru", "wata_int"])
     if amount is None:

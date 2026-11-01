@@ -17,6 +17,7 @@ from services.payments.payment_links import (
 from services.payments.providers import get_providers
 from settings.config import PROVIDERS_ENABLED
 
+from .access import BalanceTopupMiddleware
 from .autopay_management import router as autopay_management_router
 from .cryptobot import router as cryptobot_router
 from .fast_payment_flow import router as fast_payment_flow_router
@@ -43,6 +44,8 @@ from .yoomoney import router as yoomoney_router
 
 
 router = Router(name="payments_main_router")
+router.callback_query.middleware(BalanceTopupMiddleware())
+router.message.middleware(BalanceTopupMiddleware())
 
 PROVIDERS = get_providers(PROVIDERS_ENABLED)
 

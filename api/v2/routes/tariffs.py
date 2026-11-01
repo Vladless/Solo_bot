@@ -2,11 +2,13 @@ import time
 
 from datetime import datetime, timedelta
 from math import ceil
+from types import SimpleNamespace
+from typing import Annotated
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pytz import timezone as tz_moscow
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, validate_redirect_url, verify_identity_admin, verify_identity_token
@@ -26,11 +28,12 @@ from database import (
     identities as idb,
 )
 from database.coupons import mark_coupon_used
-from database.models import Key, Server, ServerSubgroup, Tariff
+from database.models import Identity, Key, Server, Tariff
 from database.tariffs import get_tariff_by_id
 from logger import logger
+from services.clusters import select_cluster
 from services.coupons import resolve_percent_coupon_soft
-from services.errors import InsufficientFundsError
+from services.errors import InsufficientFundsError, ServiceError
 from services.keys import create_vpn_key_headless
 from services.payments.checkout_intent import autopay_terms_for_tariff
 from services.payments.payment_links import PaymentLinkRequest, create_payment_link, store_provider_checkout
@@ -42,6 +45,7 @@ from services.tariffs import (
     filter_config_options,
 )
 from services.tariffs.cooldown import format_cooldown_left, get_tariff_cooldown_remaining
+from services.tariffs.purchase import resolve_purchase_tariffs
 from services.tariffs.visibility import is_tariff_visible_for
 from settings.config import TRIAL_TIME_DISABLE
 from settings.texts import TARIFF_COOLDOWN_MESSAGE
@@ -61,10 +65,12 @@ def _full_config_options(raw: object) -> list[int] | None:
     return out or None
 
 
-def _tariff_to_public(t: Tariff) -> TariffPublic:
+def _tariff_to_public(t: Tariff | dict) -> TariffPublic:
+    filtered_devices, filtered_traffic = filter_config_options(t)
+    if isinstance(t, dict):
+        t = SimpleNamespace(**t)
     dev_opts = getattr(t, "device_options", None)
     tr_opts = getattr(t, "traffic_options_gb", None)
-    filtered_devices, filtered_traffic = filter_config_options(t)
     device_options = filtered_devices if isinstance(dev_opts, list) and filtered_devices else None
     traffic_options_gb = filtered_traffic if isinstance(tr_opts, list) and filtered_traffic else None
     addon_device_options = _full_config_options(dev_opts)
@@ -197,6 +203,22 @@ async def get_tariff_config_price(
 user_tariff_router = APIRouter()
 
 
+@user_tariff_router.get("/purchase-options", response_model=list[TariffPublic])
+async def get_purchase_options(
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    identity: Annotated[Identity, Depends(verify_identity_token)],
+):
+    """Возвращает персональные тарифы стандартного экрана покупки."""
+    response.headers["Cache-Control"] = "private, no-store"
+    user_ref = await idb.ensure_billing_user_for_identity(session, identity)
+    try:
+        selection = await resolve_purchase_tariffs(session, user_ref)
+    except ServiceError:
+        return []
+    return [_tariff_to_public(tariff) for tariff in selection.tariffs]
+
+
 @user_tariff_router.post("/purchase", response_model=TariffPurchaseResponse)
 async def purchase_tariff_with_balance(
     body: TariffPurchaseRequest,
@@ -212,24 +234,13 @@ async def purchase_tariff_with_balance(
     tariff_group_code = (tariff.get("group_code") or "").strip()
     if not tariff_group_code:
         raise HTTPException(status_code=404, detail="Тариф не найден")
-    subgroup_title = str(tariff.get("subgroup_title") or "").strip()
-    bind_values = [str(body.tariff_id)]
-    if subgroup_title:
-        bind_values.append(subgroup_title)
-    tariff_is_purchasable = await session.scalar(
-        select(Server.id)
-        .outerjoin(ServerSubgroup, ServerSubgroup.server_id == Server.id)
-        .where(
-            Server.enabled.is_(True),
-            or_(Server.tariff_group == tariff_group_code, ServerSubgroup.subgroup_title.in_(bind_values)),
-        )
-        .limit(1)
-    )
-    if not tariff_is_purchasable:
-        raise HTTPException(status_code=404, detail="Тариф не найден")
+    try:
+        await select_cluster(session, tariff_id=body.tariff_id)
+    except ServiceError:
+        raise HTTPException(status_code=404, detail="Тариф недоступен") from None
+    if not await is_tariff_visible_for(session, tg_id, tariff):
+        raise HTTPException(status_code=404, detail="Тариф недоступен")
     if not preview:
-        if not await is_tariff_visible_for(session, tg_id, tariff):
-            raise HTTPException(status_code=404, detail="Тариф недоступен")
         cooldown_left = await get_tariff_cooldown_remaining(
             session, tg_id, int(body.tariff_id), int(tariff.get("cooldown_days") or 0)
         )
