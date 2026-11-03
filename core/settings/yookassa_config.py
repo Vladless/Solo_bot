@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.settings import get_setting, set_setting
 from database.settings_cache import settings_cache
-from settings import config, texts
+from settings import config
 
 from .runtime_sync import publish_runtime_config, register_runtime_config
 
 
 YOOKASSA_SETTING_KEY = "YOOKASSA_CONFIG"
+YOOKASSA_MARKUP_INVALID = "Процент наценки должен быть числом от 0 до 100."
 YOOKASSA_PAGE_METHODS = ("sbp", "bank_card", "tinkoff_bank", "yoo_money")
 DEFAULT_YOOKASSA_CONFIG = {
     "MARKUP_ENABLED": bool(getattr(config, "YOOKASSA_MARKUP_ENABLED", False)),
@@ -92,11 +93,11 @@ def normalize_yookassa_config(values: dict | None) -> dict:
     try:
         percent = Decimal(str(result["MARKUP_PERCENT"]))
     except (InvalidOperation, TypeError, ValueError) as exc:
-        raise ValueError(texts.YOOKASSA_MARKUP_INVALID) from exc
+        raise ValueError(YOOKASSA_MARKUP_INVALID) from exc
     if not percent.is_finite() or not 0 <= percent <= 100:
-        raise ValueError(texts.YOOKASSA_MARKUP_INVALID)
+        raise ValueError(YOOKASSA_MARKUP_INVALID)
     if not isinstance(result["MARKUP_ENABLED"], bool):
-        raise ValueError(texts.YOOKASSA_MARKUP_INVALID)
+        raise ValueError(YOOKASSA_MARKUP_INVALID)
     if not isinstance(result["PAGE_ENABLED"], bool):
         raise ValueError("Включение своей страницы оплаты должно быть логическим значением.")
     users = list(

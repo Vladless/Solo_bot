@@ -32,6 +32,7 @@ from settings import texts
 
 PAYHOT_DIFFERENT_PAYMENT = "PayHOT вернул другой платёж."
 PAYHOT_WEBHOOK_INVALID = "Некорректное уведомление PayHOT."
+PAYHOT_PARTIAL_REFUND_ALERT_FAILED = "Не удалось сообщить администратору о частичном возврате PayHOT."
 
 
 PAYHOT_METHODS = {
@@ -221,7 +222,7 @@ async def _alert_partial_refund(invoice: dict) -> None:
         "Проверьте оплату и сумму возврата в кабинете PayHOT и скорректируйте баланс клиента."
     )
     if not delivered:
-        raise PaymentError(texts.PAYHOT_PARTIAL_REFUND_ALERT_FAILED, retryable=True)
+        raise PaymentError(PAYHOT_PARTIAL_REFUND_ALERT_FAILED, retryable=True)
     async with async_session_maker() as session:
         row = await lock_payment_for_processing(session, invoice["payment_id"])
         if row is not None:

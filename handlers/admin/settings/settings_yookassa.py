@@ -7,10 +7,9 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.settings.payments_config import PAYMENTS_CONFIG
-from core.settings.yookassa_config import YOOKASSA_CONFIG, update_yookassa_config
+from core.settings.yookassa_config import YOOKASSA_CONFIG, YOOKASSA_MARKUP_INVALID, update_yookassa_config
 from filters.admin import IsAdminFilter, get_admin_context
 from settings.buttons import BACK
-from settings.texts import YOOKASSA_MARKUP_INVALID
 
 from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
