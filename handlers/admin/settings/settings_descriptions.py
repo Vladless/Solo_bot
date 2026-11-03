@@ -80,6 +80,27 @@ YOOKASSA_SETTINGS_HINT = (
     "Наценка добавляется к сумме оплаты, а на баланс зачисляется исходная сумма. "
     "Клиент видит полную стоимость перед оплатой. Для автоплатежей требуется согласие на полную сумму."
 )
+YOOKASSA_PAGE_SETTINGS_HINT = (
+    "Своя страница выбора способа оплаты для кнопки «ЮКасса» в боте. "
+    "Отдельная кнопка СБП, автоплатежи и оформление на сайте используют прежний порядок оплаты. "
+    "При выключении новые счета со страницы не создаются; ранее созданные платежи продолжают зачисляться."
+)
+YOOKASSA_PAGE_SETTING_HINTS = {
+    "PAGE_ENABLED": YOOKASSA_PAGE_SETTINGS_HINT,
+    "PAGE_TEST_USERS": (
+        "Telegram ID через запятую. Пустой список означает всех пользователей. "
+        "Чтобы очистить список в боте, пришлите «-»."
+    ),
+    "PAGE_METHODS": (
+        "Коды способов в порядке показа, без повторов: sbp, bank_card, tinkoff_bank, yoo_money. "
+        "Оставьте только способы, подключённые в вашем магазине ЮКассы."
+    ),
+    "PAGE_LINK_TTL_MINUTES": "Целое число от 1 до 1440. Сколько минут действует ссылка на страницу оплаты.",
+    "PAGE_PUBLIC_URL": (
+        "HTTPS-адрес без пути, например: https://pay.example.ru. Пустое значение использует внешний адрес бота. "
+        "Чтобы очистить адрес в боте, пришлите «-»."
+    ),
+}
 
 
 SECTION_DESCRIPTIONS: Final[dict[str, str]] = {
@@ -92,7 +113,7 @@ SECTION_DESCRIPTIONS: Final[dict[str, str]] = {
     "web": "Сайт и личный кабинет.",
     "remnawave": "Мониторинг панели Remnawave и автодействия с хостами.",
     "management": "Обслуживание и сервисные действия.",
-    "yookassa": YOOKASSA_SETTINGS_HINT,
+    "yookassa": f"{YOOKASSA_SETTINGS_HINT} {YOOKASSA_PAGE_SETTINGS_HINT}",
     "yookassa_autopay": YOOKASSA_AUTOPAY_SETTINGS_DESCRIPTION,
     "kassai": KASSAI_AUTOPAY_SETTINGS_DESCRIPTION,
     "kassai_autopay": KASSAI_AUTOPAY_SETTINGS_DESCRIPTION,
@@ -228,6 +249,7 @@ SETTING_HINTS: Final[dict[str, str]] = {
     "ADMIN_GRANULAR_PERMISSIONS_ENABLED": ADMIN_GRANULAR_PERMISSIONS_HINT,
     "MARKUP_ENABLED": YOOKASSA_SETTINGS_HINT,
     "MARKUP_PERCENT": YOOKASSA_MARKUP_PERCENT_PROMPT,
+    **YOOKASSA_PAGE_SETTING_HINTS,
     "YOOKASSA": YOOKASSA_METHODS_HINT,
     "YOOKASSA_SBP": YOOKASSA_METHODS_HINT,
     "KASSAI_AUTOPAY": "Автопродление через привязанный счёт СБП. Требуется подключение рекуррентных платежей у KassaAI.",

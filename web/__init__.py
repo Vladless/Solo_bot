@@ -8,7 +8,9 @@ from services.payments.paritypay.webhook import paritypay_webhook
 from services.payments.payhot.webhook import payhot_webhook
 from services.payments.platega.webhook import platega_webhook
 from services.payments.wata.webhook import wata_webhook
+from services.payments.yookassa.page_http import PAGE_CREATE_PATH, PAGE_PATH
 from utils.modules_loader import load_module_webhooks
+from web.yookassa_page import create_yookassa_page_payment, show_yookassa_page
 
 
 KASSAI_WEBHOOK_PATH = "/kassai/webhook"
@@ -20,6 +22,8 @@ OVERPAY_WEBHOOK_PATH = "/overpay/webhook"
 
 
 async def register_web_routes(router: UrlDispatcher) -> None:
+    router.add_get(PAGE_PATH, show_yookassa_page)
+    router.add_post(PAGE_CREATE_PATH, create_yookassa_page_payment)
     router.add_post(KASSAI_WEBHOOK_PATH, kassai_webhook)
     router.add_post(HELEKET_WEBHOOK_PATH, heleket_webhook)
     router.add_post(WATA_WEBHOOK_PATH, wata_webhook)

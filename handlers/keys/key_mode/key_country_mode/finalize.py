@@ -1,6 +1,10 @@
+from math import ceil
+
 from database.servers import get_servers
+from database.users import get_balance, get_trial
 from services.cluster_access import is_server_configured, resolve_tariff_servers
-from settings.config import SUPERNODE
+from settings.config import SUPERNODE, TRIAL_TIME_DISABLE
+from settings.texts import INSUFFICIENT_FUNDS_MSG, TRIAL_ALREADY_USED_MSG, TRIAL_UNAVAILABLE_MSG
 
 from ._common import *
 
@@ -99,6 +103,17 @@ async def finalize_key_creation(
         tariff_id = int(effective_tariff_id)
         tariff = await get_tariff_by_id(session, tariff_id)
 
+    if tariff and not old_key_name:
+        is_trial = tariff.get("group_code") == "trial"
+    if is_trial and not old_key_name and not skip_balance_charge:
+        trial_disabled = bool(MODES_CONFIG.get("TRIAL_TIME_DISABLED", TRIAL_TIME_DISABLE))
+        if trial_disabled or not tariff or not tariff.get("is_active", True):
+            await callback_query.message.answer(TRIAL_UNAVAILABLE_MSG)
+            return
+    if is_trial and not old_key_name and await get_trial(session, billing_user_id) not in (0, -1):
+        await callback_query.message.answer(TRIAL_ALREADY_USED_MSG)
+        return
+
     device_limit, traffic_limit_bytes = await get_effective_limits_for_key(
         session=session,
         tariff_id=tariff_id,
@@ -113,6 +128,13 @@ async def finalize_key_creation(
 
     if price_to_charge is None and tariff and not old_key_name:
         price_to_charge = tariff.get("price_rub")
+    if is_trial and not old_key_name and price_to_charge and not skip_balance_charge:
+        balance = await get_balance(session, billing_user_id)
+        if balance < int(price_to_charge):
+            await callback_query.message.answer(
+                INSUFFICIENT_FUNDS_MSG.format(required_amount=f"{ceil(int(price_to_charge) - balance)} ₽")
+            )
+            return
 
     need_vless_key = bool(tariff.get("vless")) if tariff else False
 
@@ -192,6 +214,8 @@ async def finalize_key_creation(
                 user_data["trafficLimitBytes"] = traffic_limit_bytes
             if device_limit:
                 user_data["hwidDeviceLimit"] = device_limit
+            if not old_key_name and tariff and tariff.get("external_squad"):
+                user_data["externalSquadUuid"] = tariff["external_squad"]
 
             if same_api and old_panel_type == "remnawave":
                 updated = await remna.update_user(
@@ -336,7 +360,7 @@ async def finalize_key_creation(
                 trial_status = await get_trial(session, billing_user_id)
                 if trial_status in [0, -1]:
                     await update_trial(session, billing_user_id, 1)
-            if not is_trial and price_to_charge and not skip_balance_charge:
+            if price_to_charge and not skip_balance_charge:
                 debited = await update_balance(session, billing_user_id, -int(price_to_charge))
                 if debited is None:
                     raise InsufficientFundsError("Недостаточно средств на балансе")

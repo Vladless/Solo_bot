@@ -7,6 +7,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_cache import cache_delete, cache_delete_pattern, cache_get, cache_key, cache_set
+from database.cache_purge import defer_purge, defer_purge_patterns, is_purge_pending
 from database.models import Server, Tariff, TariffSubgroupSetting
 from logger import logger
 from settings.cache_config import TARIFFS_FOR_CLUSTER_CACHE_TTL_SEC, TARIFF_BY_ID_CACHE_TTL_SEC
@@ -31,6 +32,14 @@ async def _invalidate_tariff_cache(tariff_id: int | None = None) -> None:
         await cache_delete(cache_key("tariff", tariff_id))
     await cache_delete_pattern("tariffs_cluster:*")
     await cache_delete_pattern("tariffs_public:*")
+
+
+async def invalidate_tariff_cache(session: AsyncSession, tariff_id: int) -> None:
+    """Сбрасывает кеш изменённого тарифа после коммита."""
+    if not defer_purge(session, cache_key("tariff", tariff_id)):
+        await _invalidate_tariff_cache(tariff_id)
+        return
+    defer_purge_patterns(session, "tariffs_cluster:*", "tariffs_public:*")
 
 
 def create_subgroup_hash(subgroup_title: str, group_code: str) -> str:
@@ -124,7 +133,8 @@ async def get_tariff_names_groups_subgroups_durations(
 
 async def get_tariff_by_id(session: AsyncSession, tariff_id: int):
     key = cache_key("tariff", tariff_id)
-    cached = await cache_get(key)
+    pending = is_purge_pending(session, key)
+    cached = None if pending else await cache_get(key)
     if isinstance(cached, dict):
         return cached
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
@@ -132,7 +142,8 @@ async def get_tariff_by_id(session: AsyncSession, tariff_id: int):
     if not tariff:
         return None
     row = _row_to_cache_dict(dict(tariff.__dict__))
-    await cache_set(key, row, TARIFF_BY_ID_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(key, row, TARIFF_BY_ID_CACHE_TTL_SEC)
     return row
 
 
@@ -156,7 +167,8 @@ async def get_active_tariffs_by_group_code(session: AsyncSession, group_code: st
 
 async def get_tariffs_for_cluster(session: AsyncSession, cluster_name: str):
     key = cache_key("tariffs_cluster", cluster_name)
-    cached = await cache_get(key)
+    pending = is_purge_pending(session, key)
+    cached = None if pending else await cache_get(key)
     if isinstance(cached, list):
         return cached
     server_row = await session.execute(select(Server.tariff_group).where(Server.cluster_name == cluster_name).limit(1))
@@ -178,7 +190,8 @@ async def get_tariffs_for_cluster(session: AsyncSession, cluster_name: str):
         .order_by(Tariff.sort_order, Tariff.id)
     )
     rows = [_row_to_cache_dict(dict(r.__dict__)) for r in result.scalars().all()]
-    await cache_set(key, rows, TARIFFS_FOR_CLUSTER_CACHE_TTL_SEC)
+    if not pending:
+        await cache_set(key, rows, TARIFFS_FOR_CLUSTER_CACHE_TTL_SEC)
     return rows
 
 

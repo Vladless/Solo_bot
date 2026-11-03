@@ -7,6 +7,7 @@ import { ELEMENT_FILL_CLASS } from "@/components/constructor/blockContent/blockL
 import { SurfaceEffectFrame } from "@/components/constructor/SurfaceEffectFrame";
 import { buildSurfaceEffectFrameProps } from "@/components/constructor/visualBindings";
 import { useCheckoutFlowContext } from "@/components/constructor/blockContent/checkout/checkoutFlowContext";
+import { formatDurationLabel } from "@/components/constructor/blockContent/cabinetKit/blockHelpers";
 import { useDefaultTheme, panelShadow, pickContrast } from "./defaultTheme";
 import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor";
 import { useBlockNavigate } from "@/lib/block-navigation";
@@ -79,6 +80,14 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
   const checkout = useCheckoutFlowContext();
   const previewMode = context.previewMode === true;
   const live = checkout?.available === true && !editMode && !previewMode;
+  const renewTariffOptions = checkout?.renewTariffOptions ?? [];
+  const renewTariffOptionsStatus = checkout?.renewTariffOptionsStatus ?? "idle";
+  const showRenewTariffPicker = live && checkout!.mode === "renew" && (
+    checkout!.requiresTariffSelection || renewTariffOptions.length > 0 || renewTariffOptionsStatus === "loading" || renewTariffOptionsStatus === "error"
+  );
+  const needsRenewTariffSelection = live && checkout!.mode === "renew" && (
+    checkout!.requiresTariffSelection || (showRenewTariffPicker && checkout!.selectedRenewTariffId == null)
+  );
   const showRenewDevicePicker = live && checkout!.mode === "renew" && checkout!.hasDeviceOption;
   const renewDeviceDraft = checkout?.deviceDraft ?? "";
   const renewDeviceOptions = checkout?.deviceOptions ?? [];
@@ -125,7 +134,7 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
         ...(baseAmount > 0 && baseAmount !== liveFinalAmount
           ? [{ label: "Цена", value: `${fmt(baseAmount)} ${currency}`, variant: "strike" as const }]
           : []),
-        { label: liveFinalAmount !== liveRequiredAmount ? "Стоимость" : "К оплате", value: checkout!.loading ? "…" : `${fmt(liveFinalAmount)} ${currency}`, variant: "base" as const },
+        { label: liveFinalAmount !== liveRequiredAmount ? "Стоимость" : "К оплате", value: needsRenewTariffSelection ? "—" : checkout!.loading ? "…" : `${fmt(liveFinalAmount)} ${currency}`, variant: "base" as const },
       ]
     : [];
   const priceRows: PriceRow[] = live ? livePriceRows : fallbackPriceRows;
@@ -195,7 +204,7 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
   };
 
   const autopayConsentRequired = live && isAutopayConsentRequired(checkout);
-  const payButtonDisabled = editMode || (live && (checkout!.paying || checkout!.loading || checkout!.requiresTariffSelection || (autopayConsentRequired && !checkout!.autopayConsent)));
+  const payButtonDisabled = editMode || (live && (checkout!.paying || checkout!.loading || needsRenewTariffSelection || (autopayConsentRequired && !checkout!.autopayConsent)));
 
   const node = (
     <div
@@ -258,6 +267,63 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
                     <span style={{ fontSize: 13, fontWeight: 600, color: inkColor, textAlign: "right" }}>{row.value}</span>
                   </div>
                 ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showRenewTariffPicker ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <span style={{ fontSize: 13, color: inkDim }}>Тариф для продления</span>
+              <select
+                value={checkout!.selectedRenewTariffId ?? ""}
+                onChange={(event) => checkout!.setSelectedRenewTariffId(Number(event.target.value))}
+                disabled={checkout!.paying || renewTariffOptions.length === 0}
+                className="dco-well"
+                style={{
+                  width: "100%",
+                  minWidth: 0,
+                  border: `1px solid ${lineColor}`,
+                  borderRadius: 14,
+                  background: t.innerBg,
+                  color: inkColor,
+                  fontFamily: sansFont,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  padding: "12px 16px",
+                  outline: "none",
+                }}
+              >
+                <option value="" disabled>Выберите тариф</option>
+                {renewTariffOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {[
+                      option.name,
+                      formatDurationLabel(option.duration_days),
+                      typeof option.price_rub === "number" && Number.isFinite(option.price_rub)
+                        ? `${option.configurable ? "от " : ""}${fmt(option.price_rub)} ${currency}`
+                        : "",
+                    ].filter(Boolean).join(" · ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {renewTariffOptionsStatus === "error" ? (
+              <div role="alert" style={{ fontSize: 12, color: t.error, lineHeight: 1.5 }}>
+                Не удалось загрузить тарифы.{" "}
+                <button
+                  type="button"
+                  onClick={() => { void checkout!.reloadRenewTariffOptions(); }}
+                  disabled={checkout!.paying}
+                  style={{ border: "none", padding: 0, background: "transparent", color: accentColor, font: "inherit", textDecoration: "underline", cursor: "pointer" }}
+                >
+                  Повторить
+                </button>
+              </div>
+            ) : renewTariffOptions.length === 0 ? (
+              <div role="status" style={{ fontSize: 12, color: inkDim, lineHeight: 1.5 }}>
+                {renewTariffOptionsStatus === "loaded" ? "Нет доступных тарифов для продления." : "Загружаем доступные тарифы…"}
               </div>
             ) : null}
           </div>
@@ -404,11 +470,13 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
         }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: inkDim }}>{totalLabel}</div>
-            {totalMeta && !autopayConsentRequired ? <div style={{ fontSize: 12, color: inkMute, marginTop: 3 }}>{totalMeta}</div> : null}
+            {needsRenewTariffSelection ? (
+              <div style={{ fontSize: 12, color: inkMute, marginTop: 3 }}>Выберите тариф для расчёта стоимости</div>
+            ) : totalMeta && !autopayConsentRequired ? <div style={{ fontSize: 12, color: inkMute, marginTop: 3 }}>{totalMeta}</div> : null}
           </div>
           <div style={{ fontWeight: 700, fontSize: 34, letterSpacing: "-0.02em", lineHeight: 1 }}>
-            <span>{live && checkout!.loading ? "…" : fmt(totalAmount)}</span>
-            <span style={{ fontSize: 18, color: inkDim, fontWeight: 600, marginLeft: 5 }}>{currency}</span>
+            <span>{needsRenewTariffSelection ? "—" : live && checkout!.loading ? "…" : fmt(totalAmount)}</span>
+            {!needsRenewTariffSelection ? <span style={{ fontSize: 18, color: inkDim, fontWeight: 600, marginLeft: 5 }}>{currency}</span> : null}
           </div>
         </div>
 
@@ -438,7 +506,7 @@ export function DefaultCheckoutBlockView({ block, context, editMode }: TypedBloc
             flexShrink: 0,
           }}
         >
-          <span>{live && checkout!.paying ? "…" : payLabel}</span>
+          <span>{live && checkout!.paying ? "…" : needsRenewTariffSelection ? "Выберите тариф" : payLabel}</span>
           <span aria-hidden>→</span>
         </button>
 

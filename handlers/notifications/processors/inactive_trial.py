@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 from aiogram import Bot, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -13,9 +15,15 @@ from database.users import grant_extended_trial_for_users
 from handlers.notifications.sender import send_messages_with_limit
 from logger import logger
 from services.formatting import format_days
+from services.tariffs.trial import select_trial_tariff
 from settings.buttons import MAIN_MENU, TRIAL_BONUS
 from settings.config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE
-from settings.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG
+from settings.texts import (
+    TRIAL_INACTIVE_BONUS_MSG,
+    TRIAL_INACTIVE_FIRST_MSG,
+    TRIAL_INACTIVE_PAID_BONUS_MSG,
+    TRIAL_INACTIVE_PAID_FIRST_MSG,
+)
 
 
 _INACTIVE_TRIAL_UPDATE_BATCH_SIZE = 1000
@@ -41,11 +49,13 @@ async def process_inactive_trial(
     logger.info(f"[InactiveTrial] {len(users)} неактивных пользователей")
 
     trial_tariffs = await get_tariffs(session, group_code="trial")
-    if not trial_tariffs:
+    trial_tariff = select_trial_tariff(trial_tariffs)
+    if trial_tariff is None:
         logger.error("[InactiveTrial] Триальный тариф не найден")
         return
 
-    trial_days = trial_tariffs[0]["duration_days"]
+    trial_days = int(trial_tariff["duration_days"])
+    trial_price = max(0, int(trial_tariff.get("price_rub") or 0))
     messages = []
     users_to_extend = []
 
@@ -53,7 +63,7 @@ async def process_inactive_trial(
         tg_id = await notify_telegram_chat_id(session, UserId(user["user_id"]))
         if tg_id is None:
             continue
-        display_name = user["username"] or user["first_name"] or user["last_name"] or "Пользователь"
+        display_name = escape(user["username"] or user["first_name"] or user["last_name"] or "Пользователь")
 
         builder = InlineKeyboardBuilder()
         builder.row(types.InlineKeyboardButton(text=TRIAL_BONUS, callback_data="create_key"))
@@ -65,16 +75,21 @@ async def process_inactive_trial(
 
         if already_notified and extra_days > 0 and not bonus_granted:
             total_days = extra_days + trial_days
-            message = TRIAL_INACTIVE_BONUS_MSG.format(
+            template = TRIAL_INACTIVE_PAID_BONUS_MSG if trial_price > 0 else TRIAL_INACTIVE_BONUS_MSG
+            message = template.format(
                 display_name=display_name,
                 extra_days_formatted=format_days(extra_days),
                 total_days_formatted=format_days(total_days),
+                price_rub=trial_price,
             )
             users_to_extend.append(UserId(user["user_id"]))
         else:
-            message = TRIAL_INACTIVE_FIRST_MSG.format(
+            total_days = trial_days + max(0, extra_days) if bonus_granted else trial_days
+            template = TRIAL_INACTIVE_PAID_FIRST_MSG if trial_price > 0 else TRIAL_INACTIVE_FIRST_MSG
+            message = template.format(
                 display_name=display_name,
-                trial_time_formatted=format_days(trial_days),
+                trial_time_formatted=format_days(total_days),
+                price_rub=trial_price,
             )
 
         messages.append({

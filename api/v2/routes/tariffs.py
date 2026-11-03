@@ -21,7 +21,7 @@ from api.v2.schemas.web_public import (
     TariffPurchaseRequest,
     TariffPurchaseResponse,
 )
-from core.bootstrap import MODES_CONFIG, PAYMENTS_CONFIG
+from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG, PAYMENTS_CONFIG
 from core.redis_cache import cache_get, cache_key, cache_set
 from database import (
     get_balance,
@@ -46,8 +46,9 @@ from services.tariffs import (
 )
 from services.tariffs.cooldown import format_cooldown_left, get_tariff_cooldown_remaining
 from services.tariffs.purchase import resolve_purchase_tariffs
+from services.tariffs.trial import select_trial_tariff
 from services.tariffs.visibility import is_tariff_visible_for
-from settings.config import TRIAL_TIME_DISABLE
+from settings.config import NOTIFY_EXTRA_DAYS, TRIAL_TIME_DISABLE
 from settings.texts import TARIFF_COOLDOWN_MESSAGE
 
 
@@ -234,6 +235,8 @@ async def purchase_tariff_with_balance(
     tariff_group_code = (tariff.get("group_code") or "").strip()
     if not tariff_group_code:
         raise HTTPException(status_code=404, detail="Тариф не найден")
+    if tariff_group_code.lower() == "trial":
+        raise HTTPException(status_code=403, detail="Пробный тариф доступен только через активацию пробного периода")
     try:
         await select_cluster(session, tariff_id=body.tariff_id)
     except ServiceError:
@@ -435,14 +438,16 @@ async def activate_trial(
         raise HTTPException(status_code=409, detail="Пробная подписка уже использована")
 
     trial_tariffs = await get_tariffs(session, group_code="trial")
-    if not trial_tariffs:
+    tariff = select_trial_tariff(trial_tariffs)
+    if tariff is None:
         raise HTTPException(status_code=404, detail="Пробный тариф не найден")
 
-    tariff = max(trial_tariffs, key=lambda t: int(t.get("id", 0) or 0))
     price = int(tariff.get("price_rub", 0) or 0)
     duration = int(tariff.get("duration_days") or 0)
     if duration <= 0:
         raise HTTPException(status_code=400, detail="Некорректная длительность триала")
+    if trial_status == -1:
+        duration += max(0, int(NOTIFICATIONS_CONFIG.get("EXTRA_DAYS_AFTER_EXPIRY", NOTIFY_EXTRA_DAYS)))
 
     if price <= 0:
         moscow_tz = tz_moscow("Europe/Moscow")

@@ -15,6 +15,7 @@ from api.depends import get_session, verify_admin_token
 from database.access.identity_cache import invalidate_identity_cache
 from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import Admin
+from database.tariffs import invalidate_tariff_cache
 from services.formatting import get_site_gift_link, get_telegram_gift_link
 
 
@@ -212,6 +213,8 @@ def generate_crud_router(
             await session.flush()
             if model.__name__ == "User":
                 await invalidate_identity_cache(session, user_ids=(obj.id,))
+            elif model.__name__ == "Tariff":
+                await invalidate_tariff_cache(session, obj.id)
             await session.refresh(obj)
             return to_schema(schema_response, obj)
 

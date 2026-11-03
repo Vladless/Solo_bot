@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import create_tariff
 from database.models import Gift, Key, Server, Tariff
+from database.tariffs import invalidate_tariff_cache
 from filters.admin import IsAdminFilter
 from settings.buttons import BACK
 
@@ -663,6 +664,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
             value = None
         setattr(tariff, field, value)
         tariff.updated_at = datetime.utcnow()
+        await invalidate_tariff_cache(session, tariff_id)
         await state.clear()
 
         text, markup = render_tariff_card(tariff)

@@ -89,7 +89,6 @@ from handlers.admin.settings.settings_descriptions import (
     SECTION_DESCRIPTIONS,
     SETTING_HINTS,
 )
-from settings.texts import YOOKASSA_MARKUP_INVALID
 
 
 SETTING_INVALID_VALUE = "Некорректное значение настройки."
@@ -217,6 +216,8 @@ def _schema_fields(config: dict, titles: dict, scope: str | None = None) -> list
             continue
         if key == "QUICK_AMOUNTS" and isinstance(value, list | tuple):
             value = ", ".join(str(amount) for amount in value)
+        if scope == "yookassa" and key in {"PAGE_TEST_USERS", "PAGE_METHODS"} and isinstance(value, list | tuple):
+            value = ", ".join(str(item) for item in value)
         field_type = "enum" if options else _field_type(value)
         if key.startswith("EMAIL_") and key.endswith(("_BODY", "_TEMPLATE")):
             field_type = "text"
@@ -234,6 +235,8 @@ def _schema_fields(config: dict, titles: dict, scope: str | None = None) -> list
             field["scope"] = scope
         if scope == "yookassa" and key == "MARKUP_PERCENT":
             field.update(min=0, max=100)
+        if scope == "yookassa" and key == "PAGE_LINK_TTL_MINUTES":
+            field.update(min=1, max=1440, step=1)
         field.update(_FIELD_NUMBER_LIMITS.get(key, {}))
         if scope == "kassai_autopay" and key in KASSAI_AUTOPAY_SETTING_LIMITS:
             minimum, maximum = KASSAI_AUTOPAY_SETTING_LIMITS[key]
@@ -365,12 +368,12 @@ async def update_config_scope(
             raise HTTPException(status_code=400, detail=TRAFFIC_SETTINGS_INVALID) from exc
         return {"notifications": dict(NOTIFICATIONS_CONFIG)}
     if normalized == "yookassa":
-        if "MARKUP_ENABLED" in data and not isinstance(data["MARKUP_ENABLED"], bool):
+        if any(key in data and not isinstance(data[key], bool) for key in ("MARKUP_ENABLED", "PAGE_ENABLED")):
             raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
         try:
             await update_yookassa_config(session, data)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=YOOKASSA_MARKUP_INVALID) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"yookassa": dict(YOOKASSA_CONFIG)}
     if normalized == "yookassa_autopay":
         await require_full_admin(session, identity)
@@ -506,6 +509,18 @@ async def upsert_setting(
     session: AsyncSession = Depends(get_session),
 ):
     """Создание или обновление настройки по ключу."""
+    if key == "YOOKASSA_CONFIG":
+        if not isinstance(payload.value, dict):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        try:
+            await update_yookassa_config(session, payload.value)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        result = await session.execute(select(Setting).where(Setting.key == key))
+        obj = result.scalar_one()
+        if payload.description is not None:
+            obj.description = payload.description
+        return obj
     if key == "WEB_CONFIG":
         if not isinstance(payload.value, dict):
             raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)

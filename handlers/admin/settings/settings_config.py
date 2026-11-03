@@ -231,6 +231,11 @@ MANAGEMENT_TITLES: Final[dict[str, str]] = {
 YOOKASSA_TITLES: Final[dict[str, str]] = {
     "MARKUP_ENABLED": "Наценка ЮКассы",
     "MARKUP_PERCENT": "Наценка ЮКассы (%)",
+    "PAGE_ENABLED": "Своя страница оплаты ЮКассы",
+    "PAGE_TEST_USERS": "Telegram ID для проверки страницы",
+    "PAGE_METHODS": "Способы на странице по порядку",
+    "PAGE_LINK_TTL_MINUTES": "Срок ссылки на страницу (мин)",
+    "PAGE_PUBLIC_URL": "Внешний адрес страницы оплаты",
 }
 
 YOOKASSA_AUTOPAY_TITLES: Final[dict[str, str]] = {

@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from api.shared.yookassa_page import router as yookassa_page_router
 from api.v1.routes import (
     coupons,
     gifts,
@@ -17,6 +18,7 @@ from api.v1.routes import (
 
 
 router = APIRouter()
+router.include_router(yookassa_page_router)
 
 
 @router.get("/api", include_in_schema=False)

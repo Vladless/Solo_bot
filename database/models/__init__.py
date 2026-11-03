@@ -45,6 +45,7 @@ from .yookassa_autopay import (
     YooKassaSavedCard,
     YooKassaSubscription,
 )
+from .yookassa_page import YooKassaPageIntent
 from .yookassa_refunds import RefundOperation
 
 
@@ -105,6 +106,7 @@ __all__ = [
     "YooKassaPayment",
     "YooKassaLog",
     "YooKassaAutopayAttempt",
+    "YooKassaPageIntent",
     "KassaISavedMethod",
     "KassaISubscription",
     "KassaIAutopayAttempt",

@@ -27,6 +27,7 @@ from database.tariffs import get_tariffs
 from logger import logger
 from services.formatting import format_days, get_referral_link
 from services.payments.currency_rates import format_for_user
+from services.tariffs.trial import select_trial_tariff
 from settings.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
 from settings.config import (
     ADMIN_ID,
@@ -43,6 +44,7 @@ from settings.texts import (
     INVITE_TEXT_NON_INLINE,
     NEW_REFERRAL_NOTIFICATION,
     REFERRAL_OFFERS,
+    REFERRAL_PAID_OFFERS,
     REFERRAL_SUCCESS_MSG,
     TOP_REFERRALS_EMPTY_TEXT,
     TOP_REFERRALS_ROW,
@@ -124,18 +126,21 @@ async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSessi
     referral_link = f"https://telegram.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
 
     trial_tariffs = await get_tariffs(session, group_code="trial")
-    if not trial_tariffs:
+    trial_tariff = select_trial_tariff(trial_tariffs)
+    if trial_tariff is None:
         await safe_answer_inline_query(inline_query, results=[], cache_time=0)
         return
 
-    trial_days = trial_tariffs[0]["duration_days"]
+    trial_days = trial_tariff["duration_days"]
+    trial_price = max(0, int(trial_tariff.get("price_rub") or 0))
     trial_time_formatted = format_days(trial_days)
 
     results: list[InlineQueryResultArticle] = []
 
-    for index, offer in enumerate(REFERRAL_OFFERS):
-        message_text = offer["message"].format(trial_time_formatted=trial_time_formatted)[:4096]
-        title = offer["title"].format(trial_time_formatted=trial_time_formatted)
+    offers = REFERRAL_PAID_OFFERS if trial_price > 0 else REFERRAL_OFFERS
+    for index, offer in enumerate(offers):
+        message_text = offer["message"].format(trial_time_formatted=trial_time_formatted, price_rub=trial_price)[:4096]
+        title = offer["title"].format(trial_time_formatted=trial_time_formatted, price_rub=trial_price)
         description = offer["description"]
 
         builder = InlineKeyboardBuilder()

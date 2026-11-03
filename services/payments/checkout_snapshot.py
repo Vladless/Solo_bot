@@ -13,7 +13,7 @@ from database.payments import (
 from database.tariffs import get_tariff_by_id
 from services.clusters import select_cluster
 from services.errors import ValidationError
-from services.payments.checkout_intent import _optional_int, checkout_key_snapshot
+from services.payments.checkout_intent import _optional_int, checkout_key_snapshot, validate_trial_checkout
 from services.renewal_access import resolve_key_renewal_scope
 from settings.texts import RENEWAL_TARIFF_UNAVAILABLE
 
@@ -51,6 +51,10 @@ async def capture_payment_checkout(session: AsyncSession | None, owner: int, met
     tariff_id = data.get("tariff_id")
     if not tariff_id:
         raise ValidationError("Тариф для оплаты не указан")
+    tariff = await get_tariff_by_id(session, int(tariff_id))
+    if not tariff:
+        raise ValidationError("Тариф для оплаты не найден")
+    await validate_trial_checkout(session, owner, tariff, data.get("payment_flow") or "tariff_purchase")
     cluster = await select_cluster(
         session, tariff_id=int(tariff_id), is_trial=data.get("payment_flow") == "trial_purchase"
     )

@@ -2,6 +2,7 @@ import os
 
 from collections import defaultdict
 from datetime import datetime, timedelta
+from math import ceil
 from typing import Any
 
 import pytz
@@ -28,6 +29,7 @@ from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_tariff_menu
 from logger import logger
 from services.tariffs.purchase import resolve_purchase_tariffs
+from services.tariffs.trial import select_trial_tariff
 from settings.buttons import MAIN_MENU
 from settings.config import (
     DISCOUNT_ACTIVE_HOURS,
@@ -98,7 +100,8 @@ async def handle_key_creation(
             trial_status = await get_trial(session, tg_id)
             if trial_status in [0, -1]:
                 trial_tariffs = await get_tariffs(session, group_code="trial")
-                if not trial_tariffs:
+                trial_tariff = select_trial_tariff(trial_tariffs)
+                if not trial_tariff:
                     builder = InlineKeyboardBuilder()
                     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
                     await edit_or_send_message(
@@ -108,7 +111,6 @@ async def handle_key_creation(
                     )
                     return
 
-                trial_tariff = trial_tariffs[0]
                 trial_price = float(trial_tariff.get("price_rub", 0) or 0)
                 base_days = trial_tariff["duration_days"]
                 extra_days_value = int(NOTIFICATIONS_CONFIG.get("EXTRA_DAYS_AFTER_EXPIRY", NOTIFY_EXTRA_DAYS))
@@ -119,7 +121,7 @@ async def handle_key_creation(
                 if trial_price > 0:
                     balance = await get_balance(session, tg_id)
                     if balance < trial_price:
-                        shortfall = int(trial_price - balance)
+                        shortfall = ceil(trial_price - balance)
                         handled = await try_fast_payment_flow(
                             message_or_query if isinstance(message_or_query, CallbackQuery) else None,
                             session,
@@ -158,7 +160,7 @@ async def handle_key_creation(
                     reply_markup=None,
                 )
 
-                await state.update_data(is_trial=True, plan=trial_tariff["id"])
+                await state.update_data(is_trial=True, plan=trial_tariff["id"], tariff_id=trial_tariff["id"])
                 await create_key(
                     tg_id=tg_id,
                     expiry_time=expiry_time,
@@ -167,6 +169,12 @@ async def handle_key_creation(
                     message_or_query=message_or_query,
                     old_key_name=None,
                     plan=trial_tariff["id"],
+                    selected_duration_days=total_days,
+                    selected_device_limit=int(trial_tariff.get("device_limit") or 0),
+                    selected_traffic_gb=int(trial_tariff.get("traffic_limit") or 0),
+                    selected_price_rub=int(trial_price),
+                    skip_balance_charge=False,
+                    is_trial=True,
                 )
                 return
 
@@ -364,6 +372,7 @@ async def create_key(
             state_data["config_selected_traffic_gb"] = selected_traffic_gb
         if selected_price_rub is not None:
             state_data["config_selected_price_rub"] = selected_price_rub
+            state_data["selected_price_rub"] = selected_price_rub
         if skip_balance_charge is not None:
             state_data["skip_balance_charge"] = skip_balance_charge
         await state.set_data(state_data)

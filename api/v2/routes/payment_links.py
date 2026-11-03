@@ -85,7 +85,10 @@ async def _validate_payment_intent(
 ) -> None:
     if not isinstance(metadata, dict):
         return
-    if str(metadata.get("payment_flow") or "").strip().lower() != "tariff_purchase":
+    payment_flow = str(metadata.get("payment_flow") or "").strip().lower()
+    if payment_flow == "trial_purchase":
+        raise HTTPException(status_code=403, detail="Пробный тариф доступен только через активацию пробного периода")
+    if payment_flow != "tariff_purchase":
         return
     tariff_id = metadata.get("tariff_id")
     if tariff_id in (None, ""):

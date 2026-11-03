@@ -20,7 +20,6 @@ from database.models import Setting
 from database.settings import set_setting
 from database.settings_cache import settings_cache
 from handlers.admin.settings.settings_config import ADMIN_NOTIFICATION_TITLES, NOTIFICATION_TITLES
-from settings.texts import YOOKASSA_MARKUP_INVALID
 
 
 SETTING_INVALID_VALUE = "Некорректное значение настройки."
@@ -95,12 +94,12 @@ async def update_config_scope(
         return {"modes": dict(MODES_CONFIG)}
 
     if normalized == "yookassa":
-        if "MARKUP_ENABLED" in data and not isinstance(data["MARKUP_ENABLED"], bool):
+        if any(key in data and not isinstance(data[key], bool) for key in ("MARKUP_ENABLED", "PAGE_ENABLED")):
             raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
         try:
             await update_yookassa_config(session, data)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=YOOKASSA_MARKUP_INVALID) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"yookassa": dict(YOOKASSA_CONFIG)}
 
     if normalized == "money":
@@ -151,6 +150,18 @@ async def upsert_setting(
     admin=Depends(verify_admin_token),
     session: AsyncSession = Depends(get_session),
 ):
+    if key == "YOOKASSA_CONFIG":
+        if not isinstance(payload.value, dict):
+            raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)
+        try:
+            await update_yookassa_config(session, payload.value)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        result = await session.execute(select(Setting).where(Setting.key == key))
+        obj = result.scalar_one()
+        if payload.description is not None:
+            obj.description = payload.description
+        return obj
     if key == "WEB_CONFIG":
         if not isinstance(payload.value, dict):
             raise HTTPException(status_code=400, detail=SETTING_INVALID_VALUE)

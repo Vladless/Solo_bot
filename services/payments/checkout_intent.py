@@ -9,8 +9,10 @@ from math import ceil
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.client_origin import ORIGIN_BOT, client_origin
 from core.settings.kassai_autopay_config import KASSAI_AUTOPAY_CONFIG
 from core.settings.modes_config import MODES_CONFIG
+from core.settings.notifications_config import NOTIFICATIONS_CONFIG
 from core.settings.overpay_autopay_config import OVERPAY_AUTOPAY_CONFIG
 from core.settings.payhot_autopay_config import PAYHOT_AUTOPAY_CONFIG
 from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
@@ -35,6 +37,7 @@ from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS
 from services.tariffs.renewal_window import is_renewal_available
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key, resolve_key_traffic_limit_gb
 from services.tariffs.visibility import is_tariff_visible_for
+from settings.config import NOTIFY_EXTRA_DAYS, TRIAL_TIME_DISABLE
 from settings.texts import RENEWAL_NOT_YET_AVAILABLE, RENEWAL_PAID_TARIFF_UNAVAILABLE
 
 
@@ -81,6 +84,31 @@ def checkout_key_snapshot(key) -> dict:
     return {field: getattr(key, field, None) for field in fields}
 
 
+def validate_trial_purchase_flow(tariff: dict, flow: str) -> None:
+    """Запрещает покупку пробного тарифа вне пробного оформления."""
+    is_trial_tariff = str(tariff.get("group_code") or "").strip() == "trial"
+    if is_trial_tariff and flow != "trial_purchase":
+        raise ValidationError("Пробный тариф доступен только через активацию пробного периода")
+    if flow == "trial_purchase" and not is_trial_tariff:
+        raise ValidationError("Пробный тариф не найден")
+
+
+async def validate_trial_checkout(
+    session: AsyncSession, user_id: UserId, tariff: dict, flow: str, *, enforce_availability: bool = True
+) -> None:
+    """Проверяет доступность пробного оформления до создания счёта."""
+    validate_trial_purchase_flow(tariff, flow)
+    if flow != "trial_purchase":
+        return
+    disabled = bool(MODES_CONFIG.get("TRIAL_TIME_DISABLED", TRIAL_TIME_DISABLE))
+    if client_origin() != ORIGIN_BOT:
+        disabled = disabled or bool(MODES_CONFIG.get("WEB_TRIAL_DISABLED", False))
+    if enforce_availability and (disabled or not tariff.get("is_active", True)):
+        raise ValidationError("Пробный период недоступен")
+    if await get_trial(session, user_id) not in (0, -1):
+        raise ValidationError("Пробный период уже использован")
+
+
 async def prepare_checkout_completion(session: AsyncSession, user_id: UserId, intent: dict) -> dict:
     """Проверяет оплаченные условия перед выдачей под блокировкой владельца."""
     intent = copy.deepcopy(intent)
@@ -120,6 +148,7 @@ async def prepare_checkout_completion(session: AsyncSession, user_id: UserId, in
         tariff = await get_tariff_by_id(session, int(data["tariff_id"]))
         if not tariff:
             raise ValidationError("Оплаченный тариф удалён; оплата оставлена на балансе")
+        validate_trial_purchase_flow(tariff, data.get("payment_flow") or "tariff_purchase")
         if (
             await get_tariff_cooldown_remaining(
                 session, user_id, int(data["tariff_id"]), int(tariff.get("cooldown_days") or 0)
@@ -215,6 +244,7 @@ async def freeze_checkout_intent(
     *,
     trusted_legacy: bool = False,
     enforce_renewal_window: bool = True,
+    enforce_trial_availability: bool = True,
 ) -> dict:
     """Фиксирует условия оплачиваемой операции по серверным ценам."""
     user_id = UserId(user_id)
@@ -310,14 +340,13 @@ async def freeze_checkout_intent(
             raise ValidationError("Подписка не найдена")
         await _freeze_addons(session, data, key, tariff, devices, traffic, now_ms)
     else:
+        await validate_trial_checkout(session, user_id, tariff, flow, enforce_availability=enforce_trial_availability)
         if not trusted_legacy and not await is_tariff_visible_for(session, user_id, tariff):
             raise ValidationError("Тариф недоступен")
         if flow == "gift_create" and tariff.get("group_code") != "gifts":
             raise ValidationError("Тариф подарка не найден")
         if flow != "gift_create" and tariff.get("group_code") == "gifts":
             raise ValidationError("Для подарка требуется отдельное оформление")
-        if flow == "trial_purchase" and await get_trial(session, user_id) not in (0, -1):
-            raise ValidationError("Пробный период уже использован")
         if (
             not trusted_legacy
             and await get_tariff_cooldown_remaining(
@@ -327,6 +356,8 @@ async def freeze_checkout_intent(
         ):
             raise ValidationError("Тариф временно недоступен для повторной покупки")
         duration = legacy_duration if legacy_duration is not None else int(tariff.get("duration_days") or 0)
+        if flow == "trial_purchase" and legacy_duration is None and await get_trial(session, user_id) == -1:
+            duration += max(0, int(NOTIFICATIONS_CONFIG.get("EXTRA_DAYS_AFTER_EXPIRY", NOTIFY_EXTRA_DAYS)))
         if duration <= 0:
             raise ValidationError("Некорректная длительность тарифа")
         price = int(calculate_config_price(tariff, devices, traffic))
@@ -417,7 +448,13 @@ async def normalize_legacy_checkout_intent(
     if flow == "key_addons" and metadata.get("cost") is None:
         metadata["cost"] = metadata.get("agreed_extra_price", metadata.get("extra_price"))
     return await freeze_checkout_intent(
-        session, UserId(user_id), metadata, amount, trusted_legacy=True, enforce_renewal_window=False
+        session,
+        UserId(user_id),
+        metadata,
+        amount,
+        trusted_legacy=True,
+        enforce_renewal_window=False,
+        enforce_trial_availability=False,
     )
 
 

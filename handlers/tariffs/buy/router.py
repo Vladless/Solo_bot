@@ -20,7 +20,7 @@ from settings.texts import (
 )
 
 from .config import TariffUserConfigState, clear_user_renewal_context, start_user_tariff_configurator
-from .purchase import finalize_config_and_purchase, proceed_purchase_with_values
+from .purchase import _reject_unavailable_purchase_tariff, finalize_config_and_purchase, proceed_purchase_with_values
 from .screens import render_user_config_screen
 
 
@@ -39,13 +39,8 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
     logger.info("[TARIFF_CFG] select_tariff_plan: tg_id={} tariff_id={}", tg_id, tariff_id)
 
     tariff = await get_tariff_by_id(session, tariff_id)
-    if not tariff:
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text="❌ Указанный тариф не найден.",
-        )
-        await safe_answer_callback(callback_query)
-        logger.warning(f"[TARIFF_CFG] select_tariff_plan tariff_not_found: tariff_id={tariff_id}")
+    if await _reject_unavailable_purchase_tariff(callback_query, tariff):
+        logger.warning(f"[TARIFF_CFG] select_tariff_plan tariff_unavailable: tariff_id={tariff_id}")
         return
 
     cooldown_left = await get_tariff_cooldown_remaining(

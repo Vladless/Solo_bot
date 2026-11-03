@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <title>__PAYMENT_PAGE_TITLE__</title>
+  <style nonce="__PAYMENT_PAGE_NONCE__">
+    :root{color-scheme:light dark;--bg:#f4f6fb;--card:#fff;--line:#e2e6ef;--text:#141a26;--muted:#5e6778;--accent:#2f6fed;--tint:rgba(47,111,237,.09);--red:#c62b35;--red-tint:rgba(198,43,53,.07)}
+    @media(prefers-color-scheme:dark){:root{--bg:#12161f;--card:#1b212d;--line:#343e51;--text:#eef1f7;--muted:#a7b0c0;--accent:#8ab1ff;--tint:rgba(138,177,255,.12);--red:#ff8d91;--red-tint:rgba(255,141,145,.08)}}
+    *{box-sizing:border-box}[hidden]{display:none!important}html{min-height:100%;background:var(--bg)}body{margin:0;min-height:100vh;min-height:100svh;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}button,a{-webkit-tap-highlight-color:transparent}button{font:inherit}header{display:flex;align-items:center;min-height:60px;padding:16px max(20px,env(safe-area-inset-left));overflow-wrap:anywhere}header b{font-size:17px;font-weight:650;letter-spacing:-.02em}main{flex:1;display:flex;justify-content:center;padding:4px max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}.column{width:100%;max-width:520px;display:flex;flex-direction:column}.summary{padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--card)}h1{font-size:15px;color:var(--muted);font-weight:550;margin:0 0 7px;line-height:1.4}.amount{font-size:34px;font-weight:750;letter-spacing:-.04em;overflow-wrap:anywhere}.breakdown{margin:14px 0 0;padding:12px 0 0;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}.breakdown div{display:flex;gap:12px;justify-content:space-between;margin-top:6px}.breakdown div:first-child{margin-top:0}.breakdown dt{overflow-wrap:anywhere}.breakdown dd{margin:0;text-align:right;white-space:nowrap}h2{margin:26px 0 12px;font-size:13px;font-weight:650;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}.error{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--red);border-radius:12px;background:var(--red-tint);padding:14px;margin-bottom:14px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}.error-mark{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;background:var(--red);color:var(--bg);border-radius:50%;font-weight:750}.methods{display:grid;gap:10px}.method{display:flex;align-items:center;gap:13px;width:100%;min-height:80px;text-align:left;padding:15px 14px;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:13px;cursor:pointer;transition:border-color .15s,opacity .15s,background-color .15s}.method:hover:enabled{border-color:var(--accent);background:var(--tint)}.method:focus-visible,.back:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.method:disabled{cursor:default}.method.dim{opacity:.48}.method.pending{border-color:var(--accent)}.method.pending .method-name{color:var(--accent)}.icon{flex:none;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:var(--tint);color:var(--accent)}.icon svg{display:block;width:27px;height:27px}.method-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}.method-name{font-size:16px;font-weight:650;line-height:1.3;overflow-wrap:anywhere}.method-hint{font-size:13px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}.method-price{font-size:13px;font-weight:550;line-height:1.4}.end{display:flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;color:var(--muted)}.end svg{width:20px;height:20px}.spinner{width:19px;height:19px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}.trust{display:flex;gap:8px;align-items:flex-start;color:var(--muted);font-size:12.5px;line-height:1.5;margin:17px 2px 0}.trust svg{flex:none;width:17px;height:17px;margin-top:1px}.spacer{flex:1;min-height:30px}.back{display:flex;gap:7px;align-items:center;justify-content:center;min-height:49px;padding:12px;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:12px;font-size:15px;font-weight:600;background:transparent;cursor:pointer}.back svg{width:18px;height:18px}.back:hover{background:var(--tint)}noscript{display:block;padding:20px;color:var(--red)}@keyframes spin{to{transform:rotate(360deg)}}@media(min-width:761px){header{padding:20px 40px;border-bottom:1px solid var(--line);background:var(--card)}main{padding:48px 24px 40px}.column{flex:0 0 auto}.spacer{flex:0 0 auto}}@media(prefers-reduced-motion:reduce){.method{transition:none}.spinner{animation-duration:1.6s}}
+  </style>
+</head>
+<body>
+  <header><b id="project"></b></header>
+  <main>
+    <div class="column">
+      <section class="summary" aria-labelledby="payment-title">
+        <h1 id="payment-title"></h1>
+        <div class="amount" id="amount">—</div>
+        <dl class="breakdown" id="breakdown" hidden>
+          <div><dt id="net-label"></dt><dd id="net-amount"></dd></div>
+          <div><dt id="fee-label"></dt><dd id="fee-amount"></dd></div>
+        </dl>
+      </section>
+      <h2 id="methods-title"></h2>
+      <div class="error" id="error" role="alert" hidden><span class="error-mark" aria-hidden="true">!</span><span id="error-text"></span></div>
+      <div class="methods" id="methods" aria-labelledby="methods-title"></div>
+      <div class="trust" id="trust"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="4" y="8" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 8V6a3 3 0 016 0v2" stroke="currentColor" stroke-width="1.5"/></svg><span id="trust-text"></span></div>
+      <div class="spacer"></div>
+      <a class="back" id="back" hidden rel="noreferrer"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M12 5l-5 5 5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="back-text"></span></a>
+    </div>
+  </main>
+  <noscript>__PAYMENT_PAGE_NOSCRIPT__</noscript>
+  <script type="application/json" id="payment-data" nonce="__PAYMENT_PAGE_NONCE__">__PAYMENT_PAGE_DATA__</script>
+  <script nonce="__PAYMENT_PAGE_NONCE__">
+    (function () {
+      "use strict";
+      var data = JSON.parse(document.getElementById("payment-data").textContent);
+      var copy = data.texts;
+      var byId = function (id) { return document.getElementById(id); };
+      var money = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 2 });
+      var formatMoney = function (amount) { return money.format(Number(amount)); };
+      var busy = false;
+      var terminal = false;
+      var buttons = [];
+      var allowedMethods = ["sbp", "bank_card", "tinkoff_bank", "yoo_money"];
+      var createUrl = null;
+      var controller = null;
+      var timeout = null;
+      var icons = {
+        sbp: '<path d="M6 3l6 4v6L6 9V3z" fill="#5B57A2"/><path d="M12 7l6-4v6l-6 4V7z" fill="#ED6F26"/><path d="M6 9l6 4v7l-6-4V9z" fill="#1487C9"/><path d="M12 13l6-4v7l-6 4v-7z" fill="#63B22F"/>',
+        bank_card: '<rect x="2" y="5" width="20" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2 10h20M6 15h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+        tinkoff_bank: '<rect x="1" y="1" width="22" height="22" rx="5" fill="#FFDD2D"/><path d="M6 6h12v3h-4v10h-4V9H6V6z" fill="#333"/>',
+        yoo_money: '<rect x="1" y="1" width="22" height="22" rx="5" fill="#8B3FFD"/><path d="M4 8h4v9H6L4 8z" fill="#fff"/><circle cx="15" cy="12" r="5" fill="#fff"/><circle cx="15" cy="12" r="2" fill="#8B3FFD"/>'
+      };
+
+      function text(id, value) { byId(id).textContent = value; }
+      function showError(message) { text("error-text", message); byId("error").hidden = false; }
+      function expired() { return Number(data.expires_at) > 0 && Number(data.expires_at) * 1000 <= Date.now(); }
+      function summary(method) {
+        var gross = method ? method.gross : data.gross_amount;
+        var fee = method ? method.fee : data.fee_amount;
+        var net = method ? method.net : data.net_amount;
+        text("amount", Number(gross) > 0 ? formatMoney(gross) : "—");
+        byId("breakdown").hidden = !(Number(fee) > 0);
+        text("net-amount", formatMoney(net || 0));
+        text("fee-amount", formatMoney(fee || 0));
+      }
+      function clearPending() {
+        busy = false;
+        if (timeout !== null) clearTimeout(timeout);
+        timeout = null;
+        byId("methods").removeAttribute("aria-busy");
+        buttons.forEach(function (entry) {
+          entry.button.disabled = terminal;
+          entry.button.classList.toggle("dim", terminal);
+          entry.button.classList.remove("pending");
+          entry.button.removeAttribute("aria-busy");
+          entry.name.textContent = entry.method.label;
+          entry.hint.hidden = !entry.method.subtitle;
+          entry.price.hidden = false;
+          entry.spinner.hidden = true;
+          entry.arrow.hidden = false;
+        });
+      }
+      function lock(message) { terminal = true; clearPending(); showError(message); }
+      function pending(selected) {
+        busy = true;
+        byId("error").hidden = true;
+        byId("methods").setAttribute("aria-busy", "true");
+        buttons.forEach(function (entry) {
+          entry.button.disabled = true;
+          entry.button.classList.toggle("dim", entry !== selected);
+          entry.button.classList.toggle("pending", entry === selected);
+        });
+        selected.button.setAttribute("aria-busy", "true");
+        selected.name.textContent = copy.pending;
+        selected.hint.hidden = true;
+        selected.price.hidden = true;
+        selected.spinner.hidden = false;
+        selected.arrow.hidden = true;
+        summary(selected.method);
+      }
+      function httpsUrl(raw) {
+        if (typeof raw !== "string") return null;
+        try {
+          var parsed = new URL(raw);
+          return parsed.protocol === "https:" && !parsed.username && !parsed.password ? parsed : null;
+        } catch (_) { return null; }
+      }
+      function element(tag, className, value) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (value !== undefined) node.textContent = value;
+        return node;
+      }
+      async function pay(entry) {
+        if (busy || terminal || entry.button.disabled) return;
+        if (expired()) { lock(copy.expired); return; }
+        pending(entry);
+        controller = new AbortController();
+        timeout = setTimeout(function () { controller.abort(); }, 20000);
+        try {
+          var response = await fetch(createUrl.href, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "omit",
+            cache: "no-store",
+            referrerPolicy: "no-referrer",
+            signal: controller.signal,
+            body: JSON.stringify({ token: data.token, method: entry.method.id, accepted_gross_amount: String(entry.method.gross) })
+          });
+          var result;
+          try { result = await response.json(); } catch (_) { throw new Error(copy.provider_error); }
+          if (!response.ok) {
+            var message = typeof result.error === "string" ? result.error : copy.provider_error;
+            if (result.terminal === true) { lock(message); return; }
+            throw new Error(message);
+          }
+          var redirect = httpsUrl(result.url);
+          if (!redirect) throw new Error(copy.invalid_response);
+          clearTimeout(timeout);
+          timeout = null;
+          window.location.assign(redirect.href);
+        } catch (error) {
+          clearPending();
+          showError(error.name === "AbortError" ? copy.timeout_error : error instanceof TypeError ? copy.network_error : error.message || copy.provider_error);
+        } finally {
+          controller = null;
+          if (timeout !== null) clearTimeout(timeout);
+          timeout = null;
+        }
+      }
+
+      document.title = copy.page_title + (data.project_name ? " — " + data.project_name : "");
+      text("project", data.project_name || copy.page_title);
+      text("payment-title", data.kind === "checkout" ? copy.checkout_title : copy.topup_title);
+      text("methods-title", copy.methods_title);
+      text("net-label", data.kind === "checkout" ? copy.checkout_net_label : copy.net_label);
+      text("fee-label", copy.fee_label);
+      text("trust-text", copy.trust);
+      text("back-text", copy.back);
+      var bot = httpsUrl(data.bot_url);
+      if (bot && bot.hostname === "t.me" && /^\/[A-Za-z0-9_]{5,32}\/?$/.test(bot.pathname) && !bot.search && !bot.hash) {
+        byId("back").href = bot.href;
+        byId("back").hidden = false;
+      }
+      try {
+        var candidate = new URL(data.create_path, location.origin);
+        if (candidate.origin === location.origin && candidate.pathname === "/api/payments/yookassa/page/create" && !candidate.search && !candidate.hash) createUrl = candidate;
+      } catch (_) {}
+      var methods = Array.isArray(data.methods) ? data.methods.filter(function (method) {
+        return method && allowedMethods.indexOf(method.id) !== -1 && typeof method.label === "string" && Number(method.gross) > 0;
+      }) : [];
+      summary(methods[0]);
+      methods.forEach(function (method) {
+        var button = element("button", "method");
+        button.type = "button";
+        button.dataset.method = method.id;
+        var icon = element("span", "icon");
+        icon.setAttribute("aria-hidden", "true");
+        icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none">' + icons[method.id] + '</svg>';
+        var content = element("span", "method-text");
+        var name = element("span", "method-name", method.label);
+        var hint = element("span", "method-hint", method.subtitle || "");
+        hint.hidden = !method.subtitle;
+        var price = element("span", "method-price", copy.total_label + " " + formatMoney(method.gross));
+        content.append(name, hint, price);
+        var end = element("span", "end");
+        end.setAttribute("aria-hidden", "true");
+        var arrow = element("span", "arrow");
+        arrow.innerHTML = '<svg viewBox="0 0 20 20" fill="none"><path d="M8 5l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        var spinner = element("span", "spinner");
+        spinner.hidden = true;
+        end.append(arrow, spinner);
+        button.append(icon, content, end);
+        var entry = { button: button, name: name, hint: hint, price: price, arrow: arrow, spinner: spinner, method: method };
+        buttons.push(entry);
+        button.addEventListener("click", function () { pay(entry); });
+        byId("methods").append(button);
+      });
+      window.addEventListener("pageshow", function () { if (busy) clearPending(); });
+      if (data.error) lock(data.error);
+      else if (expired()) lock(copy.expired);
+      else if (!data.token || !createUrl || !buttons.length) lock(copy.unavailable);
+    })();
+  </script>
+</body>
+</html>

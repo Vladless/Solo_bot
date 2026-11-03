@@ -19,10 +19,29 @@ from settings.config import USE_NEW_PAYMENT_FLOW
 from settings.texts import (
     CREATING_CONNECTION_MSG,
     INSUFFICIENT_FUNDS_MSG,
+    TRIAL_ACTIVATION_REQUIRED_MSG,
 )
 
 
 CREATING_KEY_BUTTON_TEXT = "⏳ Подождите..."
+
+
+async def _reject_unavailable_purchase_tariff(callback_query: CallbackQuery, tariff: dict | None) -> bool:
+    """Отклоняет недоступный тариф и обход активации пробника."""
+    if not tariff or not tariff.get("is_active", True):
+        message = "❌ Указанный тариф не найден."
+    elif tariff.get("group_code") == "trial":
+        message = TRIAL_ACTIVATION_REQUIRED_MSG
+    else:
+        return False
+
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=message,
+        reply_markup=None,
+    )
+    await safe_answer_callback(callback_query)
+    return True
 
 
 async def _offer_coupon_before_charge(
@@ -96,6 +115,9 @@ async def proceed_purchase_with_values(
     selected_traffic_gb: int | None = None,
 ):
     """Проверяет баланс и создаёт ключ по выбранной конфигурации."""
+    if await _reject_unavailable_purchase_tariff(callback_query, tariff):
+        return
+
     from ...keys.create.flow import create_key, moscow_tz
 
     tg_id = TelegramId(callback_query.from_user.id)
@@ -215,14 +237,9 @@ async def finalize_config_and_purchase(callback_query: CallbackQuery, state: FSM
         return
 
     tariff = await get_tariff_by_id(session, int(tariff_id))
-    if not tariff:
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text="Подождите, создаём подписку…",
-            reply_markup=None,
-        )
+    if await _reject_unavailable_purchase_tariff(callback_query, tariff):
         await state.clear()
-        logger.warning(f"[TARIFF_CFG] finalize_config_and_purchase tariff_not_found: tariff_id={tariff_id}")
+        logger.warning(f"[TARIFF_CFG] finalize_config_and_purchase tariff_unavailable: tariff_id={tariff_id}")
         return
 
     duration_days = int(tariff.get("duration_days") or 30)

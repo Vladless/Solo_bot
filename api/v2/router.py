@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 
+from api.shared.yookassa_page import router as yookassa_page_router
 from api.v2.routes import (
     analytics,
     auth,
@@ -33,6 +34,7 @@ from api.v2.routes import (
 
 
 router = APIRouter()
+router.include_router(yookassa_page_router)
 
 router.include_router(root_router)
 try:
