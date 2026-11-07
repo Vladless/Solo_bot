@@ -12,7 +12,7 @@ from uuid import UUID
 from .naming import node_name_length
 
 
-PANEL_VERSION = "3.2.1"
+PANEL_MIN_VERSION = (3, 0, 0)
 NODE_VERSION = "3.4.3"
 NODE_IMAGE = f"remnawave/node:{NODE_VERSION}"
 TRANSPORTS = {

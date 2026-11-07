@@ -7,7 +7,10 @@ from urllib.parse import quote
 
 from .panel import _SQUAD_LOCKS, Checkpoint, InstallerPanel, _approved_specs, _uuid
 from .profiles import build_profile
-from .types import PANEL_VERSION, InstallError, InstallSpec
+from .types import InstallError, InstallSpec
+
+
+_CLEANUP_PLAN_VERSION = "3.2.1"
 
 
 def _blocked(message: str) -> InstallError:
@@ -630,7 +633,7 @@ async def cleanup_panel(
     if saved:
         if (
             not isinstance(saved, dict)
-            or saved.get("version") != PANEL_VERSION
+            or saved.get("version") != _CLEANUP_PLAN_VERSION
             or saved.get("install_id") != artifacts.get("install_id")
             or saved.get("panel_ref") != spec.panel_ref
             or bool(saved.get("cascade_only")) != cascade_only
@@ -661,7 +664,7 @@ async def cleanup_panel(
                     raise _blocked("Объект встречается в противоречащих планах удаления")
                 unique[entry["key"]] = entry
             saved = {
-                "version": PANEL_VERSION,
+                "version": _CLEANUP_PLAN_VERSION,
                 "install_id": artifacts.get("install_id"),
                 "panel_ref": spec.panel_ref,
                 "cascade_only": cascade_only,

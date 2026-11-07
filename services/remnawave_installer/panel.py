@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import ipaddress
+import re
 import uuid
 
 from collections.abc import Awaitable, Callable
@@ -9,7 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 from .defaults import get_install_defaults as get_install_defaults
-from .types import NODE_VERSION, PANEL_VERSION, InstallError, InstallSpec
+from .types import NODE_VERSION, PANEL_MIN_VERSION, InstallError, InstallSpec
 
 
 Checkpoint = Callable[[dict], Awaitable[None]]
@@ -225,17 +226,25 @@ class InstallerPanel:
         except (ValueError, TypeError) as error:
             raise InstallError("panel", "Панель вернула некорректный JSON") from error
         if not isinstance(payload, dict) or "response" not in payload:
-            raise InstallError("panel", "Ответ панели не соответствует контракту 3.2.1")
+            raise InstallError("panel", "Ответ панели Remnawave имеет некорректный формат")
         return payload["response"]
 
     async def ensure_version(self) -> str:
-        """Проверяет точную поддерживаемую версию панели."""
+        """Проверяет минимальную поддерживаемую версию панели."""
         payload = await self._call("GET", "/system/metadata")
         version = payload.get("version") if isinstance(payload, dict) else None
-        if version != PANEL_VERSION:
-            raise InstallError(
-                "panel", f"Для установки поддерживается только Remnawave {PANEL_VERSION}", retryable=False
-            )
+        version_text = version.strip() if isinstance(version, str) and len(version) <= 128 else ""
+        parsed = re.fullmatch(
+            r"v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+            r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+            r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+            version_text,
+        )
+        if parsed is None:
+            raise InstallError("panel", "Панель вернула некорректную версию Remnawave", retryable=False)
+        if tuple(int(part) for part in parsed.groups()) < PANEL_MIN_VERSION:
+            minimum = ".".join(str(part) for part in PANEL_MIN_VERSION)
+            raise InstallError("panel", f"Для установки поддерживается Remnawave {minimum} и новее", retryable=False)
         self._version_checked = True
         return version
 
