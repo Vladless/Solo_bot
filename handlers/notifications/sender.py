@@ -5,7 +5,7 @@ import os
 import time
 
 from collections import OrderedDict, deque
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import aiofiles
@@ -18,7 +18,6 @@ from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 from core.executor import spawn
 from database import async_session_maker
 from database.access.resolution import UserId, chat_id_for_user
-from database.bans import save_blocked_user_ids, save_blocked_user_pairs
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
 from handlers.notifications.webapp_only import webapp_only_markup
 from logger import logger
@@ -26,6 +25,12 @@ from services.formatting import format_hours, format_minutes
 from services.tariffs.tariff_display import get_key_tariff_display
 from utils.custom_emojis import _process_text
 from utils.media import get_media_type
+from utils.telegram_delivery import (
+    log_telegram_delivery_error as _log_delivery_failure,
+    publish_telegram_reachable,
+    publish_telegram_unreachable,
+    unreachable_chat_reason as _delivery_failure_reason,
+)
 
 
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -89,16 +94,20 @@ class NotificationRateLimiter:
 def rate_limited_send(func):
     async def wrapper(*args: Any, **kwargs: Any):
         while True:
+            attempt_started_at = None
             try:
                 tg_id = kwargs.get("tg_id") or (args[1] if len(args) > 1 else None)
                 if not await _delivery_owner_matches(kwargs.get("user_id"), tg_id):
                     return False
+                attempt_started_at = datetime.now(UTC)
                 return await func(*args, **kwargs)
             except TelegramRetryAfter as e:
                 await asyncio.sleep(int(e.retry_after) + 1)
-            except TelegramForbiddenError:
-                return False
-            except TelegramBadRequest:
+            except (TelegramForbiddenError, TelegramBadRequest) as error:
+                reason = _delivery_failure_reason(error)
+                if reason and isinstance(attempt_started_at, datetime):
+                    await publish_telegram_unreachable(tg_id, attempt_started_at, kwargs.get("user_id"))
+                _log_delivery_failure(error, tg_id, kwargs.get("user_id"), reason or "telegram_error")
                 return False
             except Exception as e:
                 tg_id = kwargs.get("tg_id") or (args[1] if len(args) > 1 else "?")
@@ -111,8 +120,14 @@ def rate_limited_send(func):
 async def _delivery_owner_matches(user_id: int | None, tg_id: int | None) -> bool:
     if user_id is None:
         return True
+    from sqlalchemy import select
+
+    from database.bans import telegram_chat_blocked
+
     async with async_session_maker() as session:
-        return await chat_id_for_user(session, UserId(user_id)) == tg_id
+        if await chat_id_for_user(session, UserId(user_id)) != tg_id:
+            return False
+        return not await session.scalar(select(telegram_chat_blocked(int(user_id), int(tg_id))))
 
 
 async def send_notification(
@@ -147,6 +162,7 @@ async def _send_media_message(
     keyboard: InlineKeyboardMarkup | None = None,
     *,
     caption_entities: list | None = None,
+    attempt_state: dict | None = None,
 ) -> None:
     """Отправляет медиа по фактическому типу и кеширует file_id."""
     media_type = "animation" if get_media_type(media_path) == "animation" else "photo"
@@ -160,6 +176,8 @@ async def _send_media_message(
     if caption_entities:
         kwargs.update(caption_entities=caption_entities, parse_mode=None)
     send = bot.send_animation if media_type == "animation" else bot.send_photo
+    if attempt_state is not None:
+        attempt_state["_attempt_started_at"] = datetime.now(UTC)
     result = await send(chat_id=tg_id, **kwargs)
     if not cached_file_id and result:
         if media_type == "animation":
@@ -184,11 +202,24 @@ async def _send_media(
 ) -> bool:
     """Отправляет медиа уведомления с повтором при ограничении Telegram."""
     try:
-        await _send_media_message(bot, tg_id, media_path, caption, keyboard)
+        attempt_state = {}
+        await _send_media_message(bot, tg_id, media_path, caption, keyboard, attempt_state=attempt_state)
+        if isinstance(attempt_state.get("_attempt_started_at"), datetime):
+            try:
+                await publish_telegram_reachable(tg_id, attempt_state["_attempt_started_at"])
+            except Exception as error:
+                logger.warning(
+                    "[Notify] Подтверждение доставки не сохранено: chat={}, type={}", tg_id, type(error).__name__
+                )
         return True
     except TelegramRetryAfter:
         raise
-    except (TelegramForbiddenError, TelegramBadRequest):
+    except (TelegramForbiddenError, TelegramBadRequest) as error:
+        reason = _delivery_failure_reason(error)
+        observed_at = attempt_state.get("_attempt_started_at")
+        if reason and isinstance(observed_at, datetime):
+            await publish_telegram_unreachable(tg_id, observed_at, user_id)
+        _log_delivery_failure(error, tg_id, user_id, reason or "telegram_error")
         return False
     except Exception as e:
         logger.error(f"Ошибка отправки медиа пользователю {tg_id}: {e}")
@@ -204,17 +235,29 @@ async def _send_text(
     *,
     user_id: int | None = None,
 ) -> bool:
+    attempt_started_at = None
     try:
         processed, entities = await _process_text(caption)
         kwargs = {"reply_markup": keyboard}
         if entities:
             kwargs["entities"] = entities
             kwargs["parse_mode"] = None
+        attempt_started_at = datetime.now(UTC)
         await bot.send_message(tg_id, processed, **kwargs)
+        try:
+            await publish_telegram_reachable(tg_id, attempt_started_at)
+        except Exception as error:
+            logger.warning(
+                "[Notify] Подтверждение доставки не сохранено: chat={}, type={}", tg_id, type(error).__name__
+            )
         return True
     except TelegramRetryAfter:
         raise
-    except (TelegramForbiddenError, TelegramBadRequest):
+    except (TelegramForbiddenError, TelegramBadRequest) as error:
+        reason = _delivery_failure_reason(error)
+        if reason and isinstance(attempt_started_at, datetime):
+            await publish_telegram_unreachable(tg_id, attempt_started_at, user_id)
+        _log_delivery_failure(error, tg_id, user_id, reason or "telegram_error")
         return False
     except Exception as e:
         logger.error(f"Ошибка отправки текста пользователю {tg_id}: {e}")
@@ -232,6 +275,8 @@ class FastNotificationSender:
         self.max_attempts = max_attempts
         self.blocked_users: set[int] = set()
         self.blocked_user_pairs: set[tuple[UserId, int]] = set()
+        self.blocked_observed_at: dict[int, datetime] = {}
+        self.reachable_at: dict[int, datetime] = {}
         self.queue: asyncio.Queue = asyncio.Queue()
         self.results: list[bool] = []
         self.total_sent = 0
@@ -241,6 +286,8 @@ class FastNotificationSender:
     async def _send_one(self, msg: dict) -> str:
         tg_id = msg["tg_id"]
         if not is_telegram_chat_id(tg_id):
+            return "fail"
+        if tg_id in self.blocked_users or (msg.get("user_id"), tg_id) in self.blocked_user_pairs:
             return "fail"
         webapp_markup = webapp_only_markup()
         if webapp_markup is not None:
@@ -266,9 +313,11 @@ class FastNotificationSender:
                         processed_text,
                         msg.get("keyboard"),
                         caption_entities=entities,
+                        attempt_state=msg,
                     )
                 else:
                     text_kwargs = {"entities": entities} if entities else {}
+                    msg["_attempt_started_at"] = datetime.now(UTC)
                     await self.bot.send_message(
                         chat_id=tg_id,
                         text=processed_text,
@@ -278,6 +327,7 @@ class FastNotificationSender:
                     )
             else:
                 text_kwargs = {"entities": entities} if entities else {}
+                msg["_attempt_started_at"] = datetime.now(UTC)
                 await self.bot.send_message(
                     chat_id=tg_id,
                     text=processed_text,
@@ -285,6 +335,11 @@ class FastNotificationSender:
                     **emoji_kwargs,
                     **text_kwargs,
                 )
+            observed_at = msg.get("_attempt_started_at")
+            if isinstance(observed_at, datetime):
+                previous = self.reachable_at.get(tg_id)
+                if previous is None or observed_at > previous:
+                    self.reachable_at[tg_id] = observed_at
             return "ok"
 
         except TelegramRetryAfter as e:
@@ -292,18 +347,27 @@ class FastNotificationSender:
             msg["_attempts"] = msg.get("_attempts", 0) + 1
             msg["_retry_at"] = time.time() + wait_seconds
             return "retry"
-        except TelegramForbiddenError:
-            if is_telegram_chat_id(tg_id):
+        except TelegramForbiddenError as error:
+            reason = _delivery_failure_reason(error)
+            if reason and is_telegram_chat_id(tg_id):
                 self._record_blocked(msg, tg_id)
+            _log_delivery_failure(error, tg_id, msg.get("user_id"), reason or "forbidden")
             return "fail"
         except TelegramBadRequest as e:
-            if "chat not found" in str(e).lower() and is_telegram_chat_id(tg_id):
+            reason = _delivery_failure_reason(e)
+            if reason and is_telegram_chat_id(tg_id):
                 self._record_blocked(msg, tg_id)
+            _log_delivery_failure(e, tg_id, msg.get("user_id"), reason or "bad_request")
             return "fail"
-        except Exception:
+        except Exception as error:
+            _log_delivery_failure(error, tg_id, msg.get("user_id"), "unexpected")
             return "fail"
 
     def _record_blocked(self, msg: dict, tg_id: int) -> None:
+        observed_at = msg.get("_attempt_started_at") or datetime.now(UTC)
+        previous = self.blocked_observed_at.get(tg_id)
+        if previous is None or observed_at > previous:
+            self.blocked_observed_at[tg_id] = observed_at
         user_id = msg.get("user_id")
         if user_id is not None:
             self.blocked_user_pairs.add((UserId(user_id), tg_id))
@@ -349,16 +413,22 @@ class FastNotificationSender:
                 self.queue.task_done()
 
     async def _save_blocked_users(self):
-        if not self.blocked_users and not self.blocked_user_pairs:
+        if not self.blocked_users and not self.blocked_user_pairs and not self.reachable_at:
             return
+        from database.bans import save_blocked_recipients
+
+        canonical_chats = {tg for _, tg in self.blocked_user_pairs}
         try:
             async with async_session_maker() as session:
-                await save_blocked_user_ids(session, list(self.blocked_users))
-                await save_blocked_user_pairs(session, list(self.blocked_user_pairs))
+                added = await save_blocked_recipients(
+                    session,
+                    sorted(self.blocked_users - canonical_chats),
+                    sorted(self.blocked_user_pairs),
+                    observed_at=self.blocked_observed_at,
+                    reachable_at=self.reachable_at,
+                )
                 await session.commit()
-            logger.info(
-                f"Добавлено до {len(self.blocked_users) + len(self.blocked_user_pairs)} пользователей в blocked_users"
-            )
+            logger.info("Отмечено недоступных Telegram-чатов: {}", added)
         except Exception as e:
             logger.error(f"Ошибка сохранения заблокированных: {e}")
 
@@ -372,6 +442,8 @@ class FastNotificationSender:
         self.total_sent = 0
         self.blocked_users = set()
         self.blocked_user_pairs = set()
+        self.blocked_observed_at = {}
+        self.reachable_at = {}
         self.pending_retries = 0
         start = time.time()
 
@@ -485,12 +557,15 @@ async def chat_ids_for_user_ids(session, user_ids: list[int], batch_size: int = 
     """Возвращает Telegram-чаты клиентов с привязанным Telegram."""
     from sqlalchemy import select
 
+    from database.bans import telegram_chat_blocked
     from database.models import User
 
     out: dict[int, int] = {}
     for i in range(0, len(user_ids), batch_size):
         batch = user_ids[i : i + batch_size]
-        result = await session.execute(select(User.id, User.tg_id).where(User.id.in_(batch)))
+        result = await session.execute(
+            select(User.id, User.tg_id).where(User.id.in_(batch), ~telegram_chat_blocked(User.id, User.tg_id))
+        )
         for uid, tg_id in result.all():
             if is_telegram_chat_id(tg_id):
                 out[int(uid)] = int(tg_id)

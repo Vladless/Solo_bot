@@ -3,6 +3,7 @@ import time
 
 from collections import deque
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from aiogram import Bot
@@ -14,13 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.executor import spawn
 from core.settings.modes_config import resolve_protect_content
-from database import async_session_maker, save_blocked_user_ids
+from database import async_session_maker
 from database.access.resolution import TelegramId, UserId, chat_id_for_user
-from database.bans import save_blocked_user_pairs
 from database.broadcasts import get_broadcast_addresses
 from database.db import isolated_sessionmaker
 from handlers.admin.sender.sender_utils import get_recipient_emails, is_telegram_chat_id, parse_channels
 from logger import logger
+from utils.telegram_delivery import log_telegram_delivery_error, unreachable_chat_reason
 
 
 DEFAULT_MESSAGES_PER_SECOND = 25
@@ -101,7 +102,7 @@ def _keyboard_url(keyboard: Any) -> str | None:
 
 
 class BroadcastMessage:
-    __slots__ = ("tg_id", "user_id", "text", "photo", "keyboard", "attempts", "retry_at")
+    __slots__ = ("tg_id", "user_id", "text", "photo", "keyboard", "attempts", "retry_at", "attempt_started_at")
 
     def __init__(
         self, tg_id: int, text: str, photo: str | None = None, keyboard: Any = None, user_id: int | None = None
@@ -113,6 +114,7 @@ class BroadcastMessage:
         self.keyboard = keyboard
         self.attempts = 0
         self.retry_at = 0.0
+        self.attempt_started_at: datetime | None = None
 
 
 class RateLimiter:
@@ -161,6 +163,8 @@ class BroadcastService:
         self.max_attempts = max_attempts
         self.blocked_users: set[int] = set()
         self.blocked_user_pairs: set[tuple[UserId, int]] = set()
+        self.blocked_observed_at: dict[int, datetime] = {}
+        self.reachable_at: dict[int, datetime] = {}
         self._owner_check_lock = asyncio.Lock()
         self.queue: asyncio.Queue = asyncio.Queue()
         self.results: list[bool] = []
@@ -184,6 +188,7 @@ class BroadcastService:
                     logger.info(f"[Broadcast] Пропущен устаревший адрес получателя user_id={msg.user_id}")
                     return "fail"
 
+            msg.attempt_started_at = datetime.now(UTC)
             if msg.photo:
                 await self.bot.send_photo(
                     chat_id=msg.tg_id,
@@ -200,6 +205,9 @@ class BroadcastService:
                     reply_markup=msg.keyboard,
                 )
 
+            previous = self.reachable_at.get(msg.tg_id)
+            if previous is None or msg.attempt_started_at > previous:
+                self.reachable_at[msg.tg_id] = msg.attempt_started_at
             return "ok"
 
         except TelegramRetryAfter as e:
@@ -212,27 +220,29 @@ class BroadcastService:
             )
             return "retry"
 
-        except TelegramForbiddenError:
-            logger.warning(f"🚫 Бот заблокирован пользователем {msg.tg_id}")
-            if is_telegram_chat_id(msg.tg_id):
+        except TelegramForbiddenError as error:
+            reason = unreachable_chat_reason(error)
+            if reason and is_telegram_chat_id(msg.tg_id):
                 self._record_blocked(msg)
+            log_telegram_delivery_error(error, msg.tg_id, msg.user_id, reason or "forbidden")
             return "fail"
 
         except TelegramBadRequest as e:
-            error_msg = str(e).lower()
-            if "chat not found" in error_msg:
-                logger.warning(f"🚫 Чат не найден для пользователя {msg.tg_id}")
-                if is_telegram_chat_id(msg.tg_id):
-                    self._record_blocked(msg)
-            else:
-                logger.warning(f"📩 Не удалось отправить сообщение пользователю {msg.tg_id}: {e}")
+            reason = unreachable_chat_reason(e)
+            if reason and is_telegram_chat_id(msg.tg_id):
+                self._record_blocked(msg)
+            log_telegram_delivery_error(e, msg.tg_id, msg.user_id, reason or "bad_request")
             return "fail"
 
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки сообщения пользователю {msg.tg_id}: {e}")
+            log_telegram_delivery_error(e, msg.tg_id, msg.user_id, "unexpected")
             return "fail"
 
     def _record_blocked(self, msg: BroadcastMessage) -> None:
+        observed_at = msg.attempt_started_at or datetime.now(UTC)
+        previous = self.blocked_observed_at.get(msg.tg_id)
+        if previous is None or observed_at > previous:
+            self.blocked_observed_at[msg.tg_id] = observed_at
         self.blocked_users.add(msg.tg_id)
         if msg.user_id is not None:
             self.blocked_user_pairs.add((msg.user_id, msg.tg_id))
@@ -288,18 +298,30 @@ class BroadcastService:
                 self.queue.task_done()
 
     async def _save_blocked_users(self) -> None:
-        if not self.blocked_users:
+        if not self.blocked_users and not self.reachable_at:
             return
+        from database.bans import save_blocked_recipients
+
         canonical_chats = {tg for _, tg in self.blocked_user_pairs}
-        legacy_chats = list(self.blocked_users - canonical_chats)
+        legacy_chats = sorted(self.blocked_users - canonical_chats)
         try:
             if self._session is not None:
-                await save_blocked_user_ids(self._session, legacy_chats)
-                await save_blocked_user_pairs(self._session, list(self.blocked_user_pairs))
+                await save_blocked_recipients(
+                    self._session,
+                    legacy_chats,
+                    sorted(self.blocked_user_pairs),
+                    observed_at=self.blocked_observed_at,
+                    reachable_at=self.reachable_at,
+                )
             else:
                 async with self._sessionmaker() as session:
-                    await save_blocked_user_ids(session, legacy_chats)
-                    await save_blocked_user_pairs(session, list(self.blocked_user_pairs))
+                    await save_blocked_recipients(
+                        session,
+                        legacy_chats,
+                        sorted(self.blocked_user_pairs),
+                        observed_at=self.blocked_observed_at,
+                        reachable_at=self.reachable_at,
+                    )
                     await session.commit()
         except Exception as e:
             logger.error(f"❌ Ошибка при сохранении заблокированных пользователей: {e}")
@@ -370,6 +392,8 @@ class BroadcastService:
         self.total_sent = 0
         self.blocked_users = set()
         self.blocked_user_pairs = set()
+        self.blocked_observed_at = {}
+        self.reachable_at = {}
         self.pending_retries = 0
 
         bot_recipient_count = 0
@@ -452,6 +476,8 @@ class BroadcastService:
             "blocked_users": len(self.blocked_users),
             "blocked_user_ids": list(self.blocked_users),
             "blocked_user_pairs": [(int(uid), tg) for uid, tg in self.blocked_user_pairs],
+            "blocked_observed_at": {str(tg): stamp.isoformat() for tg, stamp in self.blocked_observed_at.items()},
+            "reachable_at": {str(tg): stamp.isoformat() for tg, stamp in self.reachable_at.items()},
         }
 
         logger.info(

@@ -89,7 +89,7 @@ _addons_notifier: Callable[..., Awaitable[None]] | None = None
 
 
 def register_addons_notifier(notifier: Callable[..., Awaitable[None]]) -> None:
-    """Подключает отправку карточки после докупки."""
+    """Подключает подтверждение оплаченной докупки."""
     global _addons_notifier
     _addons_notifier = notifier
 
@@ -972,9 +972,15 @@ async def _emit_notices(attempt_id: str, bot=None) -> None:
         if bot is not None and chat_id is not None and owner_id is not None and _addons_notifier is not None:
             try:
                 async with async_session_maker() as session:
-                    await _addons_notifier(bot, session, owner_id, str(checkout_data.get("client_id") or ""))
+                    await _addons_notifier(
+                        bot,
+                        session,
+                        owner_id,
+                        str(checkout_data.get("client_id") or ""),
+                        pack_mode=bool(checkout_data.get("pack_mode")),
+                    )
             except Exception as exc:
-                logger.warning("[Autopay] Не удалось отправить карточку после докупки {}: {}", attempt_id, exc)
+                logger.warning("[Autopay] Не удалось подтвердить докупку {}: {}", attempt_id, exc)
         return
     if kind in {"manual_review", "paid_review"}:
         details = (

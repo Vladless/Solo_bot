@@ -29,7 +29,7 @@ from database.keys import (
     update_key_renewal_snapshot,
 )
 from database.servers import cluster_name_exists, get_cluster_name_for_server_name
-from database.users import get_trial
+from database.users import get_locked_balance, get_trial
 from logger import logger
 from services.renewal_access import resolve_key_renewal_scope
 from settings.texts import RENEWAL_FROZEN_UNAVAILABLE
@@ -729,6 +729,11 @@ async def execute_renewal(
     target_subgroup = tariff.get("subgroup_title")
 
     cluster_id = renewal_scope.cluster_name
+
+    if cost > 0:
+        locked_balance = await get_locked_balance(session, billing_user_id)
+        if locked_balance is None or not locked_balance >= cost:
+            raise InsufficientFundsError("Недостаточно средств для продления. Средства не списаны.")
 
     renewed_ok = await renew_key_in_cluster(
         cluster_id=cluster_id,

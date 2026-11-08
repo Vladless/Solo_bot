@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import delete_user_data
 from database.access.resolution import TelegramId, UserId, resolve_user_optional
-from database.models import BlockedUser, Key, ManualBan, User
+from database.bans import clear_blocked_chat_statuses, telegram_chat_blocked
+from database.models import Key, ManualBan, TelegramChatStatus, User
 from database.users import add_user
 from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_MANAGEMENT
@@ -98,9 +99,7 @@ async def handle_manual_bans_menu(callback_query: CallbackQuery):
 async def handle_bans_export(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_blocked_users_kb()
     try:
-        result = await session.execute(
-            select(User.tg_id).join(BlockedUser, BlockedUser.user_id == User.id).where(User.tg_id.isnot(None))
-        )
+        result = await session.execute(select(User.tg_id).where(telegram_chat_blocked(User.id, User.tg_id)))
         banned_users = [row[0] for row in result.all()]
 
         csv_output = io.StringIO()
@@ -129,23 +128,41 @@ async def handle_bans_delete_banned(callback_query: CallbackQuery, session: Asyn
     kb = build_blocked_users_kb()
     try:
         stmt = (
-            select(BlockedUser.user_id).outerjoin(Key, BlockedUser.user_id == Key.user_id).where(Key.user_id.is_(None))
+            select(User.id, User.tg_id)
+            .outerjoin(Key, User.id == Key.user_id)
+            .where(Key.user_id.is_(None), telegram_chat_blocked(User.id, User.tg_id))
+            .order_by(User.id)
+            .with_for_update(of=User)
         )
         result = await session.execute(stmt)
-        blocked_ids = [row[0] for row in result.all()]
+        blocked_users = result.all()
 
-        if not blocked_ids:
+        if not blocked_users:
             await callback_query.message.answer(
                 text=menu_text("Баны", "Никто не блокировал бота."),
                 reply_markup=kb,
             )
             return
 
-        for user_id in blocked_ids:
-            await delete_user_data(session, UserId(user_id))
+        await session.execute(
+            select(TelegramChatStatus.tg_id)
+            .where(TelegramChatStatus.tg_id.in_([tg for _, tg in blocked_users]))
+            .order_by(TelegramChatStatus.tg_id)
+            .with_for_update()
+        )
+        deleted = 0
+        for user_id, _tg_id in blocked_users:
+            eligible = await session.scalar(
+                select(User.id)
+                .where(User.id == user_id, telegram_chat_blocked(User.id, User.tg_id))
+                .where(~select(Key.client_id).where(Key.user_id == User.id).exists())
+            )
+            if eligible is not None:
+                await delete_user_data(session, UserId(user_id))
+                deleted += 1
 
         await callback_query.message.answer(
-            text=menu_text("Баны", f"🗑️ Удалены данные о {len(blocked_ids)} клиентах и связанных записях."),
+            text=menu_text("Баны", f"🗑️ Удалены данные о {deleted} клиентах и связанных записях."),
             reply_markup=kb,
         )
     except Exception as e:
@@ -232,8 +249,7 @@ async def handle_manual_bans_export(callback_query: CallbackQuery, session: Asyn
 async def handle_clear_blocked_users(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_blocked_users_kb()
     try:
-        count_result = await session.execute(select(func.count()).select_from(BlockedUser))
-        total_count = count_result.scalar() or 0
+        total_count = await clear_blocked_chat_statuses(session)
 
         if total_count == 0:
             await callback_query.message.answer(
@@ -241,8 +257,6 @@ async def handle_clear_blocked_users(callback_query: CallbackQuery, session: Asy
                 reply_markup=kb,
             )
             return
-
-        await session.execute(delete(BlockedUser))
 
         await callback_query.message.answer(
             text=menu_text("Баны", f"🗑️ Очищено {total_count} записей."),

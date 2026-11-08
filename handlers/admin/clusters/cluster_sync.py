@@ -38,8 +38,17 @@ from .keyboard import AdminClusterCallback, build_availability_kb, build_sync_cl
 SYNC_CONCURRENCY = 200
 
 
-async def _fetch_all_panel_uuids(remna: "remnawave_panel.RemnawaveAPI") -> set[str]:
+async def _fetch_all_panel_uuids(remna: "remnawave_panel.RemnawaveAPI", subscriptions: list | None = None) -> set[str]:
     uuids: set[str] = set()
+    observed_uuids: set[str] = set()
+    expected_total = None
+    bound_subscriptions: dict[str, list[str]] = {}
+    for key in subscriptions or []:
+        client_id = str(key["client_id"])
+        username = key.get("email")
+        remna.bind_subscription(client_id, username, key.get("remnawave_link"))
+        if username:
+            bound_subscriptions.setdefault(username, []).append(client_id)
     page_size = 1000
     start = 0
 
@@ -48,32 +57,54 @@ async def _fetch_all_panel_uuids(remna: "remnawave_panel.RemnawaveAPI") -> set[s
             r = await remna._request("GET", "/users", params={"size": page_size, "start": start})
         except Exception as e:
             logger.error(f"[Sync] GET /users error at start={start}: {e}")
-            break
+            raise ValueError("Не удалось получить полный список клиентов Remnawave") from e
 
         if r.status_code != 200:
             logger.error(f"[Sync] GET /users returned {r.status_code}: {r.text[:200]}")
-            break
+            raise ValueError("Не удалось получить полный список клиентов Remnawave")
 
         try:
             raw = r.json()
         except Exception as e:
             logger.error(f"[Sync] GET /users JSON parse error: {e}")
-            break
+            raise ValueError("Некорректный список клиентов Remnawave") from e
 
-        body = raw.get("response") or raw.get("data") or raw
-        users = body.get("users") or []
-        total = int(body.get("total") or 0)
+        body = (raw.get("response") or raw.get("data") or raw) if isinstance(raw, dict) else None
+        users = body.get("users") if isinstance(body, dict) else None
+        total = body.get("total") if isinstance(body, dict) else None
+        if not isinstance(users, list) or type(total) is not int or total < 0:
+            raise ValueError("Некорректный список клиентов Remnawave")
+        if expected_total is None:
+            expected_total = total
+        elif total != expected_total:
+            raise ValueError("Список клиентов Remnawave изменился во время чтения")
+        if total < start + len(users):
+            raise ValueError("Некорректное число клиентов Remnawave")
 
         if not users:
+            if total > start:
+                raise ValueError("Получен неполный список клиентов Remnawave")
             break
 
         for u in users:
+            if not isinstance(u, dict):
+                raise ValueError("Некорректные данные клиента Remnawave")
             uid = u.get("vlessUuid") or u.get("uuid")
-            if uid:
-                uuids.add(str(uid))
+            if not isinstance(uid, str) or not uid.strip():
+                raise ValueError("UUID клиента Remnawave не получен")
+            uid = uid.lower()
+            if uid in observed_uuids:
+                raise ValueError("Повторяющийся клиент в списке Remnawave")
+            observed_uuids.add(uid)
+            uuids.add(uid)
+            for client_id in bound_subscriptions.get(u.get("username"), []):
+                if remna._matches_subscription_binding(client_id, u):
+                    uuids.add(client_id)
 
         start += len(users)
-        if len(users) < page_size or (total and start >= total):
+        if total and start >= total:
+            break
+        if not total and len(users) < page_size:
             break
 
     return uuids
@@ -482,6 +513,7 @@ async def handle_sync_server(
                             continue
 
                         _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
+                        remna.bind_subscription(key["client_id"], key.get("email"), key.get("remnawave_link"))
                         success = await remna.update_user(
                             uuid=key["client_id"],
                             lookup_username=key.get("email"),
@@ -509,6 +541,9 @@ async def handle_sync_server(
                                             tg_id=UserId(key["user_id"]),
                                             remna_link_override=None,
                                             plan=tariff,
+                                        )
+                                        key_value = preserve_saved_public_link(
+                                            key_value, key.get("key"), key["email"], PUBLIC_LINK
                                         )
 
                                         await session.execute(
@@ -706,7 +741,7 @@ async def handle_sync_cluster(
                         )
                     )
                 )
-                panel_uuids = await _fetch_all_panel_uuids(remna)
+                panel_uuids = await _fetch_all_panel_uuids(remna, keys_to_sync)
                 logger.info(f"[Sync] В панели {cluster_name}: {len(panel_uuids)} юзеров")
 
                 to_update: list = []
@@ -920,6 +955,7 @@ async def handle_sync_cluster(
                             remna_link_override=None,
                             plan=item["tariff"],
                         )
+                        key_value = preserve_saved_public_link(key_value, key.get("key"), key["email"], PUBLIC_LINK)
                         bulk_updates.append({
                             "user_id": key["user_id"],
                             "client_id": key["client_id"],
@@ -1015,14 +1051,15 @@ async def handle_sync_cluster(
                         try:
                             if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                                 raise ValueError("Не удалось авторизоваться в Remnawave")
+                            remna.bind_subscription(key["client_id"], key.get("email"), key.get("remnawave_link"))
                             existing = await remna.get_user_by_uuid(key["client_id"], username=key["email"])
                             _ptg, _pemail = await panel_identity_fields(session, UserId(key["user_id"]))
                             if existing:
                                 if (
                                     str(existing.get("vlessUuid") or existing.get("uuid") or "")
                                     != str(key["client_id"])
-                                    or existing.get("username") != key["email"]
-                                ):
+                                    and not remna._matches_subscription_binding(key["client_id"], existing)
+                                ) or existing.get("username") != key["email"]:
                                     raise ValueError("Клиент Remnawave не совпадает с подпиской")
                                 confirmed = await remna.update_user(
                                     uuid=key["client_id"],

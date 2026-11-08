@@ -346,6 +346,93 @@ store(manifest,json.dumps(managed).encode(),0o600)
             raise InstallError("files", "Запись файла прервана") from None
 
 
+async def check_cascade_address(remote: RemoteServer, spec: InstallSpec) -> None:
+    """Проверяет готовность назначенного IP связи между нодами."""
+    if not spec.cascade_address:
+        return
+    try:
+        expected = ipaddress.ip_address(spec.cascade_address)
+        interfaces = json.loads(await remote.run("ip -j address show", step="cascade_verify"))
+        available = any(
+            ipaddress.ip_address(entry["local"]) == expected
+            and not entry.get("tentative")
+            and not entry.get("dadfailed")
+            and not {"tentative", "dadfailed"}.intersection(entry.get("flags") or [])
+            for interface in interfaces
+            for entry in interface.get("addr_info", [])
+            if entry.get("local")
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise InstallError("cascade_verify", "Не удалось проверить сетевые адреса для связи между нодами") from None
+    if not available:
+        raise InstallError(
+            "cascade_verify",
+            "IP связи между нодами не назначен серверу или ещё не готов; настройте его у провайдера",
+            retryable=False,
+        )
+
+
+async def check_cascade_ufw(remote: RemoteServer, spec: InstallSpec, *, enabling: bool = False) -> None:
+    """Предотвращает блокировку IPv6 каскада настройкой UFW."""
+    address = spec.transit_address()
+    if spec.role not in {"entry", "exit", "haproxy_entry", "haproxy_exit"} or not address:
+        return
+    if ipaddress.ip_address(address).version != 6:
+        return
+    if not enabling and "ufw" not in spec.addons:
+        status = await remote.run("if command -v ufw >/dev/null; then LC_ALL=C ufw status; fi", step="ufw")
+        if "Status: active" not in status:
+            return
+    configuration = await remote.run("if test -f /etc/default/ufw; then cat /etc/default/ufw; fi", step="ufw")
+    ipv6 = None
+    for line in configuration.splitlines():
+        match = re.match(r"^\s*(?:export\s+)?IPV6\s*=\s*(.*)$", line)
+        if match:
+            try:
+                values = shlex.split(match.group(1), comments=True)
+            except ValueError:
+                values = []
+            ipv6 = values[0] if len(values) == 1 else ""
+    if ipv6 is not None and ipv6 != "yes":
+        raise InstallError(
+            "ufw",
+            "UFW блокирует IPv6 связи между нодами. Установите IPV6=yes в /etc/default/ufw, примените настройки UFW и повторите установку",
+            retryable=False,
+        )
+
+
+async def check_cascade_connection(remote: RemoteServer, spec: InstallSpec, address: str, port: int) -> None:
+    """Проверяет TCP-связь с выходом через выбранный IP входа."""
+    try:
+        target = ipaddress.ip_address(address)
+        source = ipaddress.ip_address(spec.cascade_address) if spec.cascade_address else None
+    except (ValueError, TypeError):
+        raise InstallError("cascade_verify", "Некорректный IP связи между нодами", retryable=False) from None
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise InstallError("cascade_verify", "Некорректный порт выхода каскада", retryable=False)
+    if source is not None and source.version != target.version:
+        raise InstallError(
+            "cascade_verify", "IP связи входа и выхода каскада должны быть одной версии: IPv4 или IPv6", retryable=False
+        )
+    script = (
+        "import socket,sys\n"
+        "address,port,source=sys.argv[1:]\n"
+        "with socket.create_connection((address,int(port)),timeout=10,source_address=(source,0) if source else None): pass\n"
+    )
+    try:
+        await remote.run(
+            f"python3 -c {shlex.quote(script)} {shlex.quote(str(target))} {port} {shlex.quote(str(source) if source else '')}",
+            step="cascade_verify",
+            timeout=20,
+        )
+    except InstallError:
+        family = "IPv6" if target.version == 6 else "IPv4"
+        raise InstallError(
+            "cascade_verify",
+            f"Вход не может подключиться к выходу по {family}; проверьте маршрут и доступ к TCP-порту {port} на выходе",
+        ) from None
+
+
 async def preflight(remote: RemoteServer, spec: InstallSpec) -> dict:
     """Проверяет Ubuntu, права и конфликты без установки пакетов."""
     from .addons import validate_addons
@@ -371,6 +458,8 @@ async def preflight(remote: RemoteServer, spec: InstallSpec) -> dict:
     if architecture not in {"x86_64", "aarch64"}:
         raise InstallError("preflight", "Поддерживаются серверы amd64 и arm64", retryable=False)
     await remote.run("test -d /run/systemd/system && command -v python3 && command -v flock", step="preflight")
+    await check_cascade_address(remote, spec)
+    await check_cascade_ufw(remote, spec)
     marker = (await remote.run(f"cat {ROOT}/.owner 2>/dev/null || true", step="preflight")).strip()
     conflicts = []
     if marker and marker != owner_id(spec):
@@ -814,6 +903,26 @@ def _uses_tls(spec: InstallSpec) -> bool:
     return spec.transport == "vless_tcp_selfsteal" or spec.transport.startswith("cdn_")
 
 
+def _guard_cascade_alias(spec: InstallSpec, artifacts: dict) -> None:
+    """Не допускает удаления адреса действующей связи между нодами."""
+    if not spec.cascade_address:
+        return
+    state = artifacts.get("exit_ip_change") or {}
+    aliases = [artifacts.get("exit_alias"), state.get("previous") if not state.get("cleaned") else None]
+    if any(
+        alias.get("owned")
+        and alias.get("address") == spec.cascade_address
+        and (spec.exit_ip != alias["address"] or spec.exit_interface not in {"", alias.get("interface")})
+        for alias in aliases
+        if alias
+    ):
+        raise InstallError(
+            "exit_ip",
+            "Сначала перенесите IP связи между нодами на другой назначенный адрес: текущий IP создан установщиком как выходной и будет удалён при этом изменении",
+            retryable=False,
+        )
+
+
 async def prepare_remote_changes(
     remote: RemoteServer, old_spec: InstallSpec, new_spec: InstallSpec, artifacts: dict, changed, checkpoint=None
 ) -> None:
@@ -823,6 +932,10 @@ async def prepare_remote_changes(
     changed = set(changed)
     if old_spec.address != new_spec.address or old_spec.panel_ref != new_spec.panel_ref:
         raise InstallError("changes", "Перенос сервера или панели требует отдельной установки", retryable=False)
+    if changed.intersection({"exit_ip", "exit_interface"}):
+        _guard_cascade_alias(new_spec, artifacts)
+    if "cascade_address" in changed:
+        await check_cascade_address(remote, new_spec)
     artifacts.setdefault("remote_owner_id", owner_id(old_spec))
     old_spec._owner_id = artifacts["remote_owner_id"]
     new_spec._owner_id = artifacts["remote_owner_id"]
@@ -909,6 +1022,7 @@ async def _cleanup_exit_alias(remote: RemoteServer, spec: InstallSpec, artifacts
     current = artifacts.get("exit_alias") or {}
     if not previous.get("owned") or previous == current or state.get("cleaned"):
         return
+    _guard_cascade_alias(spec, artifacts)
     address = ipaddress.ip_address(previous["address"])
     interface = previous["interface"]
     if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,32}", interface):
@@ -1016,7 +1130,7 @@ async def apply_remote_changes(
     if new_spec.role == "haproxy_entry":
         from .haproxy import deploy_haproxy
 
-        if changed.intersection({"client_port", "exit_install_id", "cascade_routes"}):
+        if changed.intersection({"client_port", "exit_install_id", "cascade_routes", "cascade_address"}):
             await deploy_haproxy(remote, new_spec, artifacts, log, checkpoint)
     elif new_spec.role == "haproxy_exit" and changed.intersection({"haproxy_sources", "client_port"}):
         from .haproxy import protect_haproxy_exit

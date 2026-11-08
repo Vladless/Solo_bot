@@ -38,7 +38,7 @@ async def delete_key_from_cluster(cluster_id: str, email: str, client_id: str, s
         if remna_servers:
             key = await get_key_details(session, email)
             if key and key.get("client_id") == client_id:
-                subscription_url = key.get("remnawave_link") or key.get("link")
+                subscription_url = key.get("remnawave_link")
         results = await asyncio.gather(
             delete_on_3xui(xui_servers, email, client_id),
             delete_on_remnawave(remna_servers, client_id, email, subscription_url=subscription_url),
@@ -71,7 +71,16 @@ async def delete_on_3xui(servers: list, email: str, client_id: str) -> bool:
             logger.warning(f"{PANEL_XUI} [{name}] Удаление не подтверждено: {exc}")
             return False
 
-    results = await asyncio.gather(*(delete_one(server) for server in servers))
+    async def delete_panel(panel_servers):
+        results = []
+        for server in panel_servers:
+            results.append(await delete_one(server))
+        return all(result is True for result in results)
+
+    panels = {}
+    for server in servers:
+        panels.setdefault(str(server.get("api_url") or "").rstrip("/"), []).append(server)
+    results = await asyncio.gather(*(delete_panel(panel_servers) for panel_servers in panels.values()))
     if any(result is not True for result in results):
         raise ValueError("Удаление подписки подтверждено не на всех серверах 3x-ui")
     return True

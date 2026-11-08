@@ -91,6 +91,11 @@ FIELDS = {
     ),
     "ei": ("exit_ip", "Выходной IP", "Дополнительный IP сервера; «-» использует основной адрес."),
     "ef": ("exit_interface", "Интерфейс выходного IP", "Например: eth0; «-» для автоматического определения."),
+    "ca": (
+        "cascade_address",
+        "IP связи между нодами",
+        "Собственный IPv4 или IPv6 этого сервера для связи с другой нодой; «-» использует основной IP. Адрес должен быть уже назначен серверу.",
+    ),
     "fd": ("folder_id", "Каталог Яндекс Cloud", "ID каталога; «-» выберет первый доступный каталог."),
     "vp": (
         "project_id",
@@ -168,6 +173,8 @@ STEP_NAMES = {
 EDITABLE_STATUSES = {"draft"}
 SETTINGS_EDIT_STATUSES = {"draft", "failed", "waiting_dns", "paused", "succeeded", "warning"}
 SECRET_EDIT_STATUSES = SETTINGS_EDIT_STATUSES
+INSTALL_PAGE_SIZE = 8
+INSTALL_SELECTION_LIMIT = 100
 
 
 def _button(builder, text: str, action: str, job: str = "", value: str = "") -> None:
@@ -247,7 +254,18 @@ async def _send(event, text: str, builder: InlineKeyboardBuilder, *, state: FSMC
 async def _clear_input(state: FSMContext) -> None:
     """Сбрасывает ввод, сохраняя адрес единственного меню."""
     data = await state.get_data()
-    context = {key: data[key] for key in ("_screen_chat_id", "_screen_message_id", "_progress_job_id") if key in data}
+    context = {
+        key: data[key]
+        for key in (
+            "_screen_chat_id",
+            "_screen_message_id",
+            "_progress_job_id",
+            "_install_list_page",
+            "install_selected",
+            "install_selecting",
+        )
+        if key in data
+    }
     await state.clear()
     await state.update_data(**context)
 
@@ -368,7 +386,7 @@ async def _effective_job(job: dict, state: FSMContext) -> dict:
             "haproxy": {
                 "exit_install_id": target["id"],
                 "name": params["name"],
-                "address": params["address"],
+                "address": params["cascade_address"] or params["address"],
                 "port": params["client_port"],
                 "squad_uuid": params["squad_uuid"],
             },
@@ -512,8 +530,19 @@ def _field_button(builder, lines: list[str], params: dict, job_id: str, code: st
     if code == "dm" and params["transport"] == "hysteria2":
         title = "Домен Hysteria2"
     value = params["cloud"].get(field) if code in {"fd", "vp"} else params[field]
+    if code == "ca" and not value:
+        value = params["address"]
     lines.append(f"{title}: {_copyable(value)}")
     _button(builder, title, "f", job_id, code)
+
+
+def _cascade_address_field(builder, lines: list[str], params: dict, job_id: str) -> None:
+    """Показывает отдельный адрес связи между серверами каскада."""
+    _field_button(builder, lines, params, job_id, "ca")
+    lines.append(
+        "Для связи между нодами по IPv6 укажите собственный IPv6 на каждом сервере. "
+        "Клиенты могут подключаться ко входу по IPv4. Выходной IP для сайтов задаётся отдельно."
+    )
 
 
 async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
@@ -552,7 +581,8 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
             "<b>HAProxy</b> — вход передаёт TCP-подключения на выход с сохранением IP клиента. "
             "Мастер запросит оба сервера по порядку.\n\n"
             "<b>VLESS</b> — соединение между входом и выходом через VLESS. "
-            "Можно установить вход или выход; для подключения входа понадобится готовый выход.",
+            "Можно установить вход или выход; для подключения входа понадобится готовый выход.\n\n"
+            "В обоих вариантах можно оставить вход клиентов по IPv4 и задать IPv6 для связи между нодами.",
             builder,
             state=state,
         )
@@ -566,14 +596,19 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
         else:
             _button(builder, "Установить новую ноду 2", "newexit", job["id"])
             _button(builder, "Выбрать готовый выход", "exits", job["id"])
+        lines = [
+            "<b>Каскад HAProxy · Нода 2 — выход</b>",
+            f"Нода 1 — вход: {_copyable(params['address'])}.",
+            "",
+            "Теперь укажите сервер выхода, который будет подключаться к сайтам. "
+            "Можно установить новый сервер или выбрать уже готовый выход этой панели.",
+        ]
+        _cascade_address_field(builder, lines, params, job["id"])
         _button(builder, "← Нода 1 — вход", "step", job["id"], "1")
         _button(builder, "Сохранить и закрыть", "show", job["id"])
         return await _send(
             event,
-            "<b>Каскад HAProxy · Нода 2 — выход</b>\n"
-            f"Нода 1 — вход: {_copyable(params['address'])}.\n\n"
-            "Теперь укажите сервер выхода, который будет подключаться к сайтам. "
-            "Можно установить новый сервер или выбрать уже готовый выход этой панели.",
+            "\n".join(lines),
             builder,
             state=state,
         )
@@ -645,6 +680,8 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
         lines.append("Укажите IP и пароль сервера. Обычно логин — root, порт — 22. Подключение проверим при установке.")
     elif step == "2":
         lines.append(f"Выбрано: {TRANSPORTS[params['transport']]}")
+        if params["role"] != "normal":
+            _cascade_address_field(builder, lines, params, job_id)
         if params["role"] in {"haproxy_entry", "haproxy_exit"}:
             lines.append("Роль: " + ROLES[params["role"]])
             lines.append(
@@ -863,6 +900,8 @@ async def _advanced(event, state: FSMContext, job: dict, section: str) -> None:
                 lines.append("Профиль создаётся автоматически. Здесь можно задать собственное имя.")
         elif section == "cascade":
             lines.append(f"Роль: {ROLES[params['role']]}")
+            if params["role"] != "normal":
+                _cascade_address_field(builder, lines, params, job_id)
             if params["transport"] == "hysteria2":
                 lines.append("Hysteria2 устанавливается как обычная нода.")
             elif not job.get("cascade_pair"):
@@ -919,6 +958,7 @@ def _summary(job: dict) -> str:
         lines.insert(2, f"Имя ноды: {_copyable(name)}")
     if params["role"] != "normal":
         lines.append("Роль: " + ROLES[params["role"]])
+        lines.append("IP связи между нодами: " + _copyable(params["cascade_address"] or params["address"]))
     if params["role"] == "haproxy_entry":
         target = job.get("haproxy") or {}
         lines.append(
@@ -1104,31 +1144,159 @@ async def _changes_screen(event, state: FSMContext, job: dict, owner: int) -> No
     await _send(event, "\n".join(lines), builder, state=state)
 
 
-async def _show_jobs(event, state: FSMContext, owner: int) -> None:
-    """Показывает установки текущего администратора."""
+def _install_list_title(job: dict) -> str:
+    """Собирает короткую подпись установки в списке."""
+    params = _params(job)
+    status = STATUSES.get(job["status"], job["status"])
+    if job.get("deletion"):
+        status = {
+            "queued": "Ожидает удаления",
+            "running": "Удаление",
+            "failed": "Ошибка удаления",
+            "paused": "Удаление приостановлено",
+            "canceled": "Удаление остановлено",
+        }.get(job["status"], "Удаление")
+    return f"{params['name'] or params['address'] or 'Черновик'} · {status}"[:65]
+
+
+def _install_selectable(job: dict) -> bool:
+    """Проверяет возможность выбрать остановленную установку."""
+    return job["status"] in DELETABLE_STATUSES and job.get("can_delete") is not False
+
+
+async def _show_jobs(
+    event, state: FSMContext, owner: int, *, page: int | None = None, selecting: bool | None = None, notice: str = ""
+) -> None:
+    """Показывает страницу установок и выбранные записи."""
+    data = await state.get_data()
+    page = data.get("_install_list_page", 0) if page is None else page
+    selecting = bool(data.get("install_selecting")) if selecting is None else selecting
+    selected = list(dict.fromkeys(data.get("install_selected") or [])) if selecting else []
     await _clear_input(state)
+    result = await jobs.list_jobs_page(owner, page=page, page_size=INSTALL_PAGE_SIZE)
+    items = result["items"]
+    await state.update_data(
+        _install_list_page=result["page"],
+        install_selecting=selecting,
+        install_selected=selected,
+        install_page_ids=[job["id"] for job in items],
+    )
     builder = InlineKeyboardBuilder()
-    _button(builder, "➕ Установить ноду (beta)", "new")
-    for job in (await jobs.list_jobs(owner))[:30]:
-        params = _params(job)
-        status = STATUSES.get(job["status"], job["status"])
-        if job.get("deletion"):
-            status = {
-                "queued": "Ожидает удаления",
-                "running": "Удаление",
-                "failed": "Ошибка удаления",
-                "paused": "Удаление приостановлено",
-                "canceled": "Удаление остановлено",
-            }.get(job["status"], "Удаление")
-        title = f"{params['name'] or params['address'] or 'Черновик'} · {status}"
-        _button(builder, title[:65], "show", job["id"])
+    if not selecting:
+        _button(builder, "➕ Установить ноду (beta)", "new")
+    for job in items:
+        title = _install_list_title(job)
+        if selecting and _install_selectable(job):
+            builder.row(
+                InlineKeyboardButton(
+                    text=("☑ " if job["id"] in selected else "☐ ") + title,
+                    callback_data=InstallCallback(action="toggle", job=job["id"]).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="Открыть", callback_data=InstallCallback(action="show", job=job["id"]).pack()
+                ),
+            )
+        else:
+            _button(builder, title, "show", job["id"])
+    navigation = []
+    if result["page"] > 0:
+        navigation.append(
+            InlineKeyboardButton(
+                text="←", callback_data=InstallCallback(action="page", value=str(result["page"] - 1)).pack()
+            )
+        )
+    if result["page"] + 1 < result["pages"]:
+        navigation.append(
+            InlineKeyboardButton(
+                text="→", callback_data=InstallCallback(action="page", value=str(result["page"] + 1)).pack()
+            )
+        )
+    if navigation:
+        builder.row(*navigation)
+    if selecting:
+        if any(_install_selectable(job) for job in items):
+            _button(builder, "Выбрать страницу", "pickpage")
+        if selected:
+            _button(builder, "Снять выбор", "unselect")
+            _button(builder, "Удалить из бота", "bulkask", value="record")
+            _button(builder, "Удалить отовсюду", "bulkask", value="full")
+        _button(builder, "← Завершить выбор", "select", value="off")
+    elif items:
+        _button(builder, "Выбрать ноды", "select")
     _button(builder, "← Remnawave", "exit")
+    lines = [
+        "<b>Установка нод Remnawave</b>",
+        f"Страница {result['page'] + 1} из {result['pages']} · Всего: {result['total']}",
+    ]
+    if notice:
+        lines.extend(["", escape(notice)])
+    if selecting:
+        lines.extend([
+            "",
+            f"Выбрано: {len(selected)} из {INSTALL_SELECTION_LIMIT}. Выбор сохраняется между страницами.",
+            "Отметьте ноды и выберите вариант удаления. Для активной установки сначала откройте карточку и остановите её.",
+        ])
+    elif not items:
+        lines.append("Установок пока нет. Нажмите «Установить ноду», чтобы создать первую.")
+    else:
+        lines.append("Здесь можно создать ноду, продолжить установку и управлять дополнениями.")
     await _send(
         event,
-        "<b>Установка нод Remnawave</b>\nЗдесь можно создать ноду, продолжить установку и управлять дополнениями.",
+        "\n".join(lines),
         builder,
         state=state,
     )
+
+
+async def _bulk_delete_preview(event, state: FSMContext, owner: int, mode: str) -> None:
+    """Показывает проверенный состав и последствия группового удаления."""
+    from secrets import token_hex
+
+    data = await state.get_data()
+    selected = list(data.get("install_selected") or [])
+    if mode not in {"record", "full"} or not data.get("install_selecting") or not selected:
+        raise ValueError("Выберите ноды в списке установок заново")
+    await _clear_input(state)
+    result = await jobs.prepare_bulk_deletion(owner, selected, remove_server=mode == "full")
+    builder = InlineKeyboardBuilder()
+    lines = [
+        "<b>Удалить выбранные ноды отовсюду?</b>" if mode == "full" else "<b>Удалить выбранные ноды из бота?</b>",
+        f"Выбрано нод: {len(selected)}",
+        "",
+    ]
+    for item in result["items"][:10]:
+        lines.append(escape(str(item.get("name") or "Черновик")[:60]) + " · " + _copyable(item.get("address")))
+    if len(result["items"]) > 10:
+        lines.append(f"И ещё нод: {len(result['items']) - 10}")
+    lines.extend([
+        "",
+        "Будут удалены созданные установщиком файлы, контейнеры и настройки нод на VPS, их собственные объекты Remnawave, ресурсы CDN, записи и сохранённые доступы из бота. Подключения через ноды перестанут работать. Сам VPS и общие объекты сохранятся."
+        if mode == "full"
+        else "Будут удалены записи и сохранённые доступы из бота. Настройки VPS, объекты Remnawave и облачные ресурсы сохранятся; CDN может продолжать оплачиваться.",
+    ])
+    errors = result.get("errors") or []
+    if errors or not result.get("token"):
+        lines.extend(["", "Удаление не начато. Исправьте причины или измените выбор:"])
+        for item in errors[:5]:
+            name = str(item.get("name") or "Нода")[:50]
+            lines.append(escape(name) + ": " + escape(str(item.get("error") or "Удаление недоступно")[:250]))
+            _button(builder, "Открыть: " + name, "show", item["id"])
+        if len(errors) > 5:
+            lines.append(f"Ещё ошибок: {len(errors) - 5}")
+    else:
+        nonce = token_hex(8)
+        await state.update_data(
+            install_delete_preview={"nonce": nonce, "ids": selected, "mode": mode, "token": result["token"]}
+        )
+        lines.extend(["", "Восстановить удалённые записи из этого меню нельзя."])
+        _button(
+            builder,
+            "Подтвердить удаление отовсюду" if mode == "full" else "Подтвердить удаление из бота",
+            "bulkdelete",
+            value=nonce,
+        )
+    _button(builder, "← К выбору нод", "list")
+    await _send(event, "\n".join(lines), builder, state=state)
 
 
 async def _shaping(event, state: FSMContext, job: dict, *, manage: bool = False) -> None:
@@ -1175,8 +1343,8 @@ def _parse_value(code: str, text: str):
         if not value.isdecimal() or not 1 <= int(value) <= 65535:
             raise ValueError("Порт должен быть от 1 до 65535")
         return int(value)
-    if code in {"ip", "ei"}:
-        if code == "ei" and not value:
+    if code in {"ip", "ei", "ca"}:
+        if code in {"ei", "ca"} and not value:
             return ""
         try:
             return str(ipaddress.ip_address(value))
@@ -1239,6 +1407,13 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
     else:
         _, title, hint = (SECRET_FIELDS if secret else FIELDS)[code]
     params = _params(job)
+    if code == "ca":
+        hint += (
+            " На входной ноде это адрес, с которого она соединяется с выходом. Для IPv6 укажите IPv6 входного сервера."
+            if params["role"] in {"entry", "haproxy_entry"}
+            else " На выходной ноде это адрес, к которому подключается вход. Для IPv6 укажите IPv6 выходного сервера."
+        )
+        hint += " Основной IP для SSH и подключения клиентов сохраняется."
     if data.get("step") == "routes" and data.get("route_exit_id") and code in {"cp", "hr"}:
         title = "Порт входа для страны" if code == "cp" else "Название хоста страны"
         hint = (
@@ -1392,7 +1567,7 @@ async def open_installer(callback: CallbackQuery, state: FSMContext, session=Non
     await callback.answer()
     await release_session_early(session)
     await _detach_progress(state, callback.from_user.id)
-    await _show_jobs(callback, state, callback.from_user.id)
+    await _show_jobs(callback, state, callback.from_user.id, page=0, selecting=False)
 
 
 @router.callback_query(InstallCallback.filter())
@@ -1407,6 +1582,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
         if action == "exit":
             from . import settings_remnawave as remna_settings
 
+            await state.update_data(install_selected=[], install_selecting=False, _install_list_page=0)
             await _clear_input(state)
             markup = remna_settings.build_settings_remnawave_kb(
                 remna_settings._node_health_enabled(),
@@ -1418,12 +1594,71 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             )
         if action == "list":
             return await _show_jobs(callback, state, owner)
+        if action == "page":
+            if not value.isdecimal():
+                raise ValueError("Неизвестная страница установок")
+            return await _show_jobs(callback, state, owner, page=int(value))
+        if action == "select":
+            if value not in {"", "off"}:
+                raise ValueError("Неизвестный вариант выбора нод")
+            return await _show_jobs(callback, state, owner, selecting=value != "off")
+        if action in {"toggle", "pickpage", "unselect"}:
+            data = await state.get_data()
+            if not data.get("install_selecting"):
+                raise ValueError("Откройте выбор нод в списке установок заново")
+            selected = list(data.get("install_selected") or [])
+            if action == "unselect":
+                selected = []
+            elif action == "toggle":
+                if job_id not in (data.get("install_page_ids") or []):
+                    raise ValueError("Страница изменилась. Откройте список установок заново")
+                if job_id in selected:
+                    selected.remove(job_id)
+                else:
+                    if not _install_selectable(await jobs.get_job(job_id, owner)):
+                        raise ValueError("Сначала остановите текущую операцию с этой нодой")
+                    selected.append(job_id)
+            else:
+                visible = data.get("install_page_ids") or []
+                if not visible:
+                    raise ValueError("Страница изменилась. Откройте список установок заново")
+                items = [await jobs.get_job(identifier, owner) for identifier in visible]
+                selected = list(dict.fromkeys([*selected, *[job["id"] for job in items if _install_selectable(job)]]))
+            if len(selected) > INSTALL_SELECTION_LIMIT:
+                raise ValueError(f"За один раз можно выбрать не больше {INSTALL_SELECTION_LIMIT} нод")
+            await state.update_data(install_selected=selected)
+            return await _show_jobs(callback, state, owner)
+        if action == "bulkask":
+            return await _bulk_delete_preview(callback, state, owner, value)
+        if action == "bulkdelete":
+            data = await state.get_data()
+            preview = data.get("install_delete_preview") or {}
+            if (
+                not value
+                or preview.get("nonce") != value
+                or not preview.get("token")
+                or preview.get("mode") not in {"record", "full"}
+                or preview.get("ids") != data.get("install_selected")
+                or not data.get("install_selecting")
+            ):
+                raise ValueError("Подтверждение устарело. Выберите вариант удаления заново")
+            await state.update_data(install_delete_preview=None)
+            result = await jobs.delete_jobs(
+                owner, preview["ids"], token=preview["token"], remove_server=preview["mode"] == "full"
+            )
+            notice = (
+                f"Полное удаление поставлено в очередь: {len(result['queued'])}. Ход удаления доступен в карточках нод."
+                if preview["mode"] == "full"
+                else f"Удалено из бота: {len(result['removed'])}."
+            )
+            return await _show_jobs(callback, state, owner, selecting=False, notice=notice)
         if action == "new":
             source = None
             if value == "vless_exit":
                 source = await jobs.get_job(job_id, owner)
                 if source["status"] != "draft" or _params(source)["role"] != "entry" or source.get("deletion"):
                     raise ValueError("Создайте выход из мастера входной ноды VLESS")
+            await state.update_data(install_selected=[], install_selecting=False, _install_list_page=0)
             await _clear_input(state)
             job = await jobs.create_draft(
                 owner, callback.message.chat.id, **({"panel_ref": _params(source)["panel_ref"]} if source else {})
@@ -1731,6 +1966,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             ):
                 raise ValueError("Hysteria2 устанавливается только как обычная нода")
             values = {"role": value}
+            if value == "normal":
+                values["cascade_address"] = ""
             if value != params["role"]:
                 values["exit_install_id"] = None
                 values["cascade_routes"] = []
@@ -1935,7 +2172,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                     {
                         "id": item["id"],
                         "name": _params(item)["host_remark"] or _params(item)["name"],
-                        "address": _params(item)["address"],
+                        "address": _params(item)["cascade_address"] or _params(item)["address"],
                         "port": _params(item)["client_port"],
                         "squad_uuid": _params(item)["squad_uuid"],
                     }
@@ -1946,6 +2183,11 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                     and item["id"] not in selected_ids
                     and _params(item)["address"] != params["address"]
                     and _params(item)["panel_ref"] == params["panel_ref"]
+                    and (
+                        not params["cascade_address"]
+                        or ipaddress.ip_address(params["cascade_address"]).version
+                        == ipaddress.ip_address(_params(item)["cascade_address"] or _params(item)["address"]).version
+                    )
                     and (params["role"] != "haproxy_entry" or _params(item)["squad_uuid"])
                     and (
                         action != "routeadd"
@@ -1956,7 +2198,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                         action != "routeadd"
                         or params["role"] != "haproxy_entry"
                         or any(
-                            ipaddress.ip_address(params["address"]) in ipaddress.ip_network(source)
+                            ipaddress.ip_address(params["cascade_address"] or params["address"])
+                            in ipaddress.ip_network(source)
                             for source in _params(item)["haproxy_sources"]
                         )
                     )
@@ -2391,7 +2634,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             str(error),
             job_id,
             host_key_changed=getattr(error, "step", "") == "ssh_host_key",
-            deleting=action in {"delask", "delconfirm", "delete"},
+            deleting=action in {"delask", "delconfirm", "delete", "bulkask", "bulkdelete"},
         )
     except Exception as error:
         _log_unexpected(error, action, job_id)
@@ -2400,7 +2643,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             state,
             "Не удалось выполнить действие. Обновите список установок и повторите попытку.",
             job_id,
-            deleting=action in {"delask", "delconfirm", "delete"},
+            deleting=action in {"delask", "delconfirm", "delete", "bulkask", "bulkdelete"},
         )
 
 

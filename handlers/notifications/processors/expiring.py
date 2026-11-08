@@ -9,7 +9,7 @@ import pytz
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from core.bootstrap import NOTIFICATIONS_CONFIG
-from database import add_notification, check_notification_time_bulk, check_notifications_bulk
+from database import add_notification, check_notification_time_bulk, check_notifications_bulk, get_key_details
 from database.access.resolution import UserId, notify_telegram_chat_id
 from database.tariffs import get_tariffs
 from database.web_notifications import notify_web
@@ -30,7 +30,7 @@ from handlers.utils import get_russian_month, render_text
 from logger import logger
 from middlewares.session import release_session_early, wrap_session
 from services.formatting import build_renewal_done_text
-from services.tariffs.tariff_display import GB, get_effective_limits_for_key
+from services.tariffs.tariff_display import GB, get_effective_limits_for_key, resolve_effective_limit
 from settings.config import EXECUTOR_POOL_SIZE
 from settings.texts import KEY_CANNOT_RENEW_TEXT, KEY_EXPIRY_TEXT
 
@@ -235,8 +235,20 @@ async def _send_change_tariff(ctx: NotificationContext, key, photo: str) -> bool
 
 
 async def _send_renewed(ctx: NotificationContext, key, tariff: dict, new_expiry_time: int) -> bool:
-    selected_device_limit = getattr(key, "selected_device_limit", None)
-    selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
+    details = await get_key_details(ctx.session, key.email or "")
+    if (
+        not details
+        or details.get("user_id") != key.user_id
+        or details.get("client_id") != key.client_id
+        or details.get("expiry_time") != new_expiry_time
+    ):
+        return False
+    selected_device_limit = resolve_effective_limit(
+        details.get("current_device_limit"), details.get("selected_device_limit")
+    )
+    selected_traffic_limit = resolve_effective_limit(
+        details.get("current_traffic_limit"), details.get("selected_traffic_limit")
+    )
     selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
 
     device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(

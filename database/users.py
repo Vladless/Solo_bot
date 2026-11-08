@@ -346,29 +346,37 @@ async def upsert_user(
     returning_cols = list(User.__table__.c)
 
     if only_if_exists:
-        username_value = username if username else User.username
-        first_name_value = first_name if first_name else User.first_name
-        last_name_value = last_name if last_name else User.last_name
-        language_code_value = language_code if language_code else User.language_code
+        profile_values = {
+            name: value
+            for name, value in {
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "language_code": language_code,
+                "is_bot": is_bot,
+            }.items()
+            if name == "is_bot" or value
+        }
+        current_stmt = select(*returning_cols).where(User.tg_id == tg_id)
+        current = (await session.execute(current_stmt)).mappings().one_or_none()
+        if current is None:
+            return None
+        if all(current[name] == value for name, value in profile_values.items()):
+            return dict(current)
 
         res = await session.execute(
             update(User)
-            .where(User.tg_id == tg_id)
-            .values(
-                username=username_value,
-                first_name=first_name_value,
-                last_name=last_name_value,
-                language_code=language_code_value,
-                is_bot=is_bot,
-                updated_at=now,
+            .where(
+                User.tg_id == tg_id,
+                or_(*(getattr(User, name).is_distinct_from(value) for name, value in profile_values.items())),
             )
+            .values(**profile_values, updated_at=now)
             .returning(*returning_cols)
         )
         row = res.mappings().one_or_none()
         if row is None:
-            return None
-        await cache_set(cache_key("user_exists", tg_id), True, USER_EXISTS_CACHE_TTL_SEC)
-        return dict(row)
+            row = (await session.execute(current_stmt)).mappings().one_or_none()
+        return dict(row) if row is not None else None
 
     res = await session.execute(
         insert(User)
@@ -396,7 +404,6 @@ async def upsert_user(
         .returning(*returning_cols)
     )
     row = res.mappings().one()
-    await cache_set(cache_key("user_exists", tg_id), True, USER_EXISTS_CACHE_TTL_SEC)
     return dict(row)
 
 

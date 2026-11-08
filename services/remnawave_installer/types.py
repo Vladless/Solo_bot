@@ -107,6 +107,7 @@ class InstallSpec:
     squad_uuid: str | None = None
     exit_install_id: str | None = None
     cascade_routes: list[dict[str, Any]] = field(default_factory=list)
+    cascade_address: str = ""
     exit_ip: str = ""
     exit_interface: str = ""
     panel_sources: list[str] = field(default_factory=list)
@@ -137,6 +138,23 @@ class InstallSpec:
             raise ValueError("Неизвестный транспорт или роль ноды")
         if spec.transport == "hysteria2" and spec.role != "normal":
             raise ValueError("Hysteria2 доступна только для обычной ноды")
+        if spec.cascade_address:
+            if spec.role not in ENTRY_ROLES | EXIT_ROLES:
+                raise ValueError("IP связи между нодами доступен только для каскада")
+            try:
+                address = ipaddress.ip_address(spec.cascade_address.strip())
+            except ValueError as error:
+                raise ValueError("Укажите IPv4 или IPv6 связи между нодами без порта и подсети") from error
+            if (
+                address.is_unspecified
+                or address.is_loopback
+                or address.is_multicast
+                or address.is_link_local
+                or getattr(address, "scope_id", None)
+                or getattr(address, "ipv4_mapped", None)
+            ):
+                raise ValueError("Для связи между нодами нужен доступный unicast IP сервера")
+            spec.cascade_address = str(address)
         if spec.site_template not in {"standard", "streaming"}:
             raise ValueError("Неизвестный шаблон сайта")
         if spec.role in EXIT_ROLES:
@@ -320,6 +338,10 @@ class InstallSpec:
         """Возвращает параметры для сохранения задачи."""
         return asdict(self)
 
+    def transit_address(self) -> str:
+        """Возвращает собственный IP связи между нодами."""
+        return self.cascade_address or self.address
+
     def cascade_specs(self) -> list["InstallSpec"]:
         """Возвращает параметры отдельных направлений входной ноды."""
         primary = copy.deepcopy(self)
@@ -343,6 +365,8 @@ class InstallSpec:
             values.pop("haproxy_sources")
         if not values["cascade_routes"]:
             values.pop("cascade_routes")
+        if not values["cascade_address"]:
+            values.pop("cascade_address")
         payload = json.dumps(values, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()
 

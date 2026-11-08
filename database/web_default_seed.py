@@ -139,6 +139,28 @@ def merge_theme_tokens(base: dict, overlay: dict) -> dict:
     return out
 
 
+def merge_design_theme_tokens(base: dict, overlay: dict) -> dict:
+    """Меняет оформление, убирая обвязку прежнего набора."""
+    cleaned = dict(base)
+    for key in ("chromePack", "cabinetNavTemplate"):
+        cleaned.pop(key, None)
+    for slot in ("header", "footer"):
+        config = cleaned.get(slot)
+        if isinstance(config, dict):
+            cleaned[slot] = {key: value for key, value in config.items() if key != "template"}
+    wiring = cleaned.get("customPackWiring")
+    chrome = wiring.get("chrome") if isinstance(wiring, dict) else None
+    if isinstance(chrome, dict):
+        cleaned["customPackWiring"] = {
+            **wiring,
+            "chrome": {key: value for key, value in chrome.items() if key not in ("header", "footer")},
+        }
+    light = cleaned.get("lightModeTokens")
+    if isinstance(light, dict):
+        cleaned["lightModeTokens"] = merge_design_theme_tokens(light, {})
+    return merge_theme_tokens(cleaned, overlay)
+
+
 def _apply_support_links_to_pages(pages: dict) -> None:
     try:
         from settings.config import SUPPORT_CHAT_URL, USERNAME_BOT
@@ -263,7 +285,7 @@ async def _apply_site(
             .all()
         )
         for variant in rest:
-            variant.theme_tokens = merge_theme_tokens(dict(variant.theme_tokens or {}), global_theme)
+            variant.theme_tokens = merge_design_theme_tokens(dict(variant.theme_tokens or {}), global_theme)
             seeded = True
 
     for flow in flows:

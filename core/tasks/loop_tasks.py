@@ -1,4 +1,8 @@
 import asyncio
+import json
+
+from datetime import UTC, datetime
+from math import isfinite
 
 from logger import logger
 
@@ -92,34 +96,66 @@ def backup_thread_loop(stop_event, _bot, _sessionmaker) -> None:
 
 
 async def blocked_drain_loop(_bot, sessionmaker) -> None:
-    from core.redis_cache import cache_lpop_batch
-    from database.bans import remove_blocked_user_ids, save_blocked_user_ids
+    from core.redis_cache import cache_lack_batch, cache_lmove_batch, cache_lrange
+    from database.bans import apply_telegram_chat_observations
     from settings.cache_config import BLOCKED_DRAIN_BATCH, BLOCKED_DRAIN_INTERVAL_SEC, BLOCKED_EVENTS_REDIS_KEY
 
+    processing_key = f"{BLOCKED_EVENTS_REDIS_KEY}:processing"
     while True:
         try:
-            events = await cache_lpop_batch(BLOCKED_EVENTS_REDIS_KEY, BLOCKED_DRAIN_BATCH)
+            events = await cache_lrange(processing_key, 0, BLOCKED_DRAIN_BATCH - 1, raw=True)
+            if not events:
+                await cache_lmove_batch(BLOCKED_EVENTS_REDIS_KEY, processing_key, BLOCKED_DRAIN_BATCH)
+                events = await cache_lrange(processing_key, 0, BLOCKED_DRAIN_BATCH - 1, raw=True)
             if events:
-                final: dict[int, str] = {}
-                for ev in events:
+                observations = []
+                ignored = 0
+                for raw in events:
+                    try:
+                        ev = json.loads(raw)
+                    except (TypeError, ValueError, RecursionError):
+                        ignored += 1
+                        continue
+                    if not isinstance(ev, dict):
+                        ignored += 1
+                        continue
                     tg_id = ev.get("tg_id")
+                    user_id = ev.get("user_id")
                     action = ev.get("action")
-                    if tg_id and action:
-                        final[int(tg_id)] = action
-
-                to_add = [tid for tid, act in final.items() if act == "block"]
-                to_remove = [tid for tid, act in final.items() if act == "unblock"]
-
-                if to_add or to_remove:
+                    observed_at = ev.get("observed_at")
+                    if (
+                        not isinstance(tg_id, int)
+                        or isinstance(tg_id, bool)
+                        or tg_id <= 0
+                        or (
+                            user_id is not None
+                            and (not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0)
+                        )
+                        or action not in ("block", "unblock")
+                        or not isinstance(observed_at, int | float)
+                        or isinstance(observed_at, bool)
+                    ):
+                        ignored += 1
+                        continue
+                    try:
+                        if not isfinite(observed_at):
+                            raise ValueError("Некорректное время события")
+                        observation_time = datetime.fromtimestamp(observed_at, UTC)
+                    except (ValueError, OverflowError, OSError):
+                        ignored += 1
+                        continue
+                    observations.append((user_id, tg_id, action == "block", observation_time))
+                if ignored:
+                    logger.warning("[BlockedDrain] Пропущено событий без подтверждённого времени: {}", ignored)
+                if observations:
                     async with sessionmaker() as session:
-                        if to_add:
-                            await save_blocked_user_ids(session, to_add)
-                        if to_remove:
-                            await remove_blocked_user_ids(session, to_remove)
+                        added, removed = await apply_telegram_chat_observations(session, observations)
                         await session.commit()
-                    logger.info("[BlockedDrain] add={}, remove={}", len(to_add), len(to_remove))
+                    logger.info("[BlockedDrain] add={}, remove={}", added, removed)
+                if not await cache_lack_batch(processing_key, events, raw=True):
+                    logger.warning("[BlockedDrain] Пакет сохранён для повторной проверки: {}", len(events))
         except Exception as e:
-            logger.error("[BlockedDrain] Ошибка: {}", e)
+            logger.exception("[BlockedDrain] Ошибка {}", type(e).__name__)
         await asyncio.sleep(BLOCKED_DRAIN_INTERVAL_SEC)
 
 

@@ -4,7 +4,7 @@ from core.redis_cache import (
     cache_compare_and_delete,
     cache_delete,
     cache_get,
-    cache_incr,
+    cache_incr_checked,
     cache_key,
     cache_set,
     cache_setnx,
@@ -42,17 +42,20 @@ class EmailCodeFlow:
     async def try_consume_ip_budget(self, ip: str) -> bool:
         if not ip:
             return True
-        return await cache_incr(self._key("send_ip", ip), IP_WINDOW_SEC) <= self.ip_max_sends
+        count, available = await cache_incr_checked(self._key("send_ip", ip), IP_WINDOW_SEC)
+        return available and 0 < count <= self.ip_max_sends
 
     async def try_consume_email_send_budget(self, email_norm: str) -> bool:
         if not email_norm:
             return True
-        return await cache_incr(self._key("sends", email_norm), EMAIL_WINDOW_SEC) <= EMAIL_MAX_SENDS
+        count, available = await cache_incr_checked(self._key("sends", email_norm), EMAIL_WINDOW_SEC)
+        return available and 0 < count <= EMAIL_MAX_SENDS
 
     async def try_consume_verify_budget(self, email_norm: str) -> bool:
         if not email_norm:
             return True
-        return await cache_incr(self._key("verify", email_norm), VERIFY_WINDOW_SEC) <= MAX_VERIFY_ATTEMPTS
+        count, available = await cache_incr_checked(self._key("verify", email_norm), VERIFY_WINDOW_SEC)
+        return available and 0 < count <= MAX_VERIFY_ATTEMPTS
 
     async def try_acquire_cooldown(self, email_norm: str) -> bool:
         return await cache_setnx(self._key("cooldown", email_norm), 1, RESEND_COOLDOWN_SEC)
@@ -67,11 +70,14 @@ class EmailCodeFlow:
         await cache_delete(self._key("code", email_norm))
 
     async def verify_and_consume_code(self, email_norm: str, code: str) -> bool:
+        candidate = (code or "").strip()
+        if len(candidate) != 6 or not candidate.isascii() or not candidate.isdigit():
+            return False
         key = self._key("code", email_norm)
         stored = await cache_get(key)
-        if not isinstance(stored, str):
+        if not isinstance(stored, str) or not stored.isascii():
             return False
-        if not hmac.compare_digest(stored.strip(), (code or "").strip()):
+        if not hmac.compare_digest(stored.strip(), candidate):
             return False
         return await cache_compare_and_delete(key, stored)
 

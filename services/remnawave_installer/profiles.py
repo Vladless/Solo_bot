@@ -48,6 +48,15 @@ def _encoded(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
 
+def reality_public_key(private_key: str) -> str:
+    """Вычисляет открытый ключ из приватного ключа Reality."""
+    if not isinstance(private_key, str):
+        raise ValueError("Некорректный приватный ключ Reality")
+    raw = base64.urlsafe_b64decode(private_key + "=" * (-len(private_key) % 4))
+    public = X25519PrivateKey.from_private_bytes(raw).public_key()
+    return _encoded(public.public_bytes(Encoding.Raw, PublicFormat.Raw))
+
+
 def generate_keys(spec: InstallSpec) -> dict:
     """Генерирует ключи транспорта и случайный путь."""
     if spec.transport.startswith("cdn_"):
@@ -150,6 +159,8 @@ def build_profile(spec: InstallSpec, artifacts: dict) -> dict:
         "settings": {"clients": [], "decryption": "none"},
         "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"]},
     }
+    if spec.role in {"exit", "haproxy_exit"} and spec.cascade_address:
+        inbound["listen"] = spec.cascade_address
     if spec.transport == "hysteria2":
         certificate, private_key = certificate_paths(spec)
         inbound.update(protocol="hysteria", settings={"clients": [], "version": 2})
@@ -255,6 +266,14 @@ def build_profile(spec: InstallSpec, artifacts: dict) -> dict:
                 },
             },
         )
+        if spec.cascade_address:
+            if ipaddress.ip_address(spec.cascade_address).version != ipaddress.ip_address(cascade["address"]).version:
+                raise InstallError(
+                    "cascade",
+                    "IP связи входа и выхода каскада должны быть одной версии: IPv4 или IPv6",
+                    retryable=False,
+                )
+            outbounds[0]["sendThrough"] = spec.cascade_address
         rules.append({"type": "field", "inboundTag": [inbound["tag"]], "outboundTag": "CASCADE"})
     profile = {
         "log": {"loglevel": "warning"},

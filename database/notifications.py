@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.access.resolution import TelegramId, UserId, resolve_user_optional
+from database.bans import telegram_chat_blocked
 from database.models import BlockedUser, Key, Notification, User
 from logger import logger
 from settings.config import DISCOUNT_ACTIVE_HOURS
@@ -497,7 +498,7 @@ async def check_notifications_bulk(
             and_(
                 User.trial.in_([0, -1]),
                 User.tg_id > 0,
-                ~User.id.in_(select(BlockedUser.user_id)),
+                ~telegram_chat_blocked(User.id, User.tg_id),
                 ~User.id.in_(select(Key.user_id.distinct())),
             )
         )
@@ -561,7 +562,7 @@ async def check_notifications_bulk(
                 and_(
                     User.trial.in_([0, -1]),
                     User.tg_id > 0,
-                    ~User.id.in_(select(BlockedUser.user_id)),
+                    ~telegram_chat_blocked(User.id, User.tg_id),
                     ~User.id.in_(select(Key.user_id.distinct())),
                 )
             )

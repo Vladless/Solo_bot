@@ -1,5 +1,7 @@
 import asyncio
 import copy
+import re
+import traceback
 import uuid
 
 from datetime import UTC, datetime, timedelta
@@ -16,6 +18,7 @@ from logger import logger
 
 
 _LEASE_SECONDS = 90
+_MAX_ATTEMPTS = 10
 _KINDS = {
     "event",
     "telegram_forum",
@@ -159,7 +162,11 @@ async def _dispatch(job: dict, *, sessionmaker=None) -> None:
 async def _finish(job: dict, error: Exception | None = None, *, sessionmaker=None) -> bool:
     """Фиксирует результат только для действующего владельца аренды."""
     now = datetime.now(UTC)
-    failed = isinstance(error, ValueError | TelegramBadRequest | TelegramForbiddenError)
+    failed = error is not None and (
+        isinstance(error, TypeError | ValueError | TelegramBadRequest | TelegramForbiddenError)
+        or job["attempts"] >= _MAX_ATTEMPTS
+    )
+    status = "done" if error is None else "failed" if failed else "retry"
     delay = min(3600, 5 * (2 ** min(max(job["attempts"] - 1, 0), 10)))
     if isinstance(error, TelegramRetryAfter):
         delay = max(1, int(error.retry_after))
@@ -173,7 +180,7 @@ async def _finish(job: dict, error: Exception | None = None, *, sessionmaker=Non
                 TicketDelivery.lease_token == job["lease_token"],
             )
             .values(
-                status="done" if error is None else "failed" if failed else "retry",
+                status=status,
                 next_retry_at=now + timedelta(seconds=delay) if error is not None and not failed else None,
                 lease_token=None,
                 lease_until=None,
@@ -192,7 +199,18 @@ async def _finish(job: dict, error: Exception | None = None, *, sessionmaker=Non
                 await publish_tickets_changed(session, ticket.identity_id, client=msg is None or msg.author != "note")
         await session.commit()
         if error is not None and result.rowcount == 1:
-            logger.warning("[TicketsDelivery] job={} kind={} error={}", job["id"], job["kind"], type(error).__name__)
+            trace = "".join(traceback.format_exception(error))
+            trace = re.sub(r"[A-Za-z][A-Za-z0-9+.-]*://\S+", "<url>", trace)
+            trace = re.sub(r"\b\d{5,}:[A-Za-z0-9_-]{20,}\b", "<token>", trace)
+            logger.warning(
+                "[TicketsDelivery] job={} kind={} status={} attempts={} error={}\n{}",
+                job["id"],
+                job["kind"],
+                status,
+                job["attempts"],
+                type(error).__name__,
+                trace,
+            )
         return result.rowcount == 1
 
 

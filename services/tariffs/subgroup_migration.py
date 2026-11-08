@@ -325,6 +325,9 @@ async def migrate_between_subgroups(
         old_device_limit=old_device_limit,
     )
 
+    if not new_remna_id:
+        raise ValueError("Перенос подписки не подтверждён на серверах целевой подгруппы")
+
     if new_remna_id and new_remna_id != old_id:
         client_id = new_remna_id
         await delete_on_3xui(xui_tgt, email, old_id)

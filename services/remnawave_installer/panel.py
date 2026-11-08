@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 from .defaults import get_install_defaults as get_install_defaults
+from .profiles import reality_public_key
 from .types import NODE_VERSION, PANEL_MIN_VERSION, InstallError, InstallSpec
 
 
@@ -42,6 +43,92 @@ def _uuid(value: Any, label: str) -> str:
         return str(uuid.UUID(str(value)))
     except (ValueError, TypeError, AttributeError) as error:
         raise InstallError("panel", f"Панель вернула некорректный UUID: {label}") from error
+
+
+def _listens_on(inbound: dict, address: str) -> bool:
+    """Проверяет доступность нужного IP в настройках инбаунда."""
+    try:
+        listener = ipaddress.ip_address(inbound.get("listen", "::"))
+        target = ipaddress.ip_address(address)
+    except (ValueError, TypeError):
+        return False
+    if not listener.is_unspecified:
+        return listener == target
+    stream = inbound.get("streamSettings") or {}
+    if not isinstance(stream, dict):
+        return False
+    sockopt = stream.get("sockopt") or {}
+    if not isinstance(sockopt, dict):
+        return False
+    return target.version == 6 or sockopt.get("v6only") is not True
+
+
+def _validate_cascade_profile(profile: dict, target: dict, *, proxy_protocol: bool, step: str) -> None:
+    """Сверяет живой транспорт выхода с сохранёнными параметрами."""
+    config = profile.get("config") if isinstance(profile, dict) else None
+    configured = config.get("inbounds") if isinstance(config, dict) else None
+    metadata = profile.get("inbounds") if isinstance(profile, dict) else None
+    inbound = configured[0] if isinstance(configured, list) and len(configured) == 1 else None
+    stream = inbound.get("streamSettings") if isinstance(inbound, dict) else None
+    tcp = stream.get("rawSettings", stream.get("tcpSettings")) if isinstance(stream, dict) else None
+    reality = stream.get("realitySettings") if isinstance(stream, dict) else None
+    names = reality.get("serverNames") if isinstance(reality, dict) else None
+    short_ids = reality.get("shortIds") if isinstance(reality, dict) else None
+    try:
+        public_key = reality_public_key(reality.get("privateKey")) if isinstance(reality, dict) else None
+    except (ValueError, TypeError):
+        public_key = None
+    if (
+        not isinstance(profile, dict)
+        or profile.get("uuid") != target.get("profile_uuid")
+        or not isinstance(metadata, list)
+        or len(metadata) != 1
+        or not isinstance(metadata[0], dict)
+        or metadata[0].get("uuid") != target.get("inbound_uuid")
+        or metadata[0].get("profileUuid") != target.get("profile_uuid")
+        or not isinstance(inbound, dict)
+        or metadata[0].get("tag") != inbound.get("tag")
+        or target.get("inbound_tag")
+        and inbound.get("tag") != target["inbound_tag"]
+        or inbound.get("protocol") != "vless"
+        or inbound.get("port") != target.get("port")
+        or not _listens_on(inbound, target.get("address"))
+        or not isinstance(stream, dict)
+        or stream.get("network") not in {"tcp", "raw"}
+        or stream.get("security") != "reality"
+        or proxy_protocol
+        and (not isinstance(tcp, dict) or tcp.get("acceptProxyProtocol") is not True)
+        or not proxy_protocol
+        and isinstance(tcp, dict)
+        and tcp.get("acceptProxyProtocol") is True
+        or not isinstance(names, list)
+        or target.get("server_name") not in names
+        or not isinstance(short_ids, list)
+        or not target.get("short_id")
+        or target["short_id"] not in short_ids
+        or not public_key
+        or public_key != target.get("public_key")
+    ):
+        raise InstallError(
+            step,
+            "Профиль выхода HAProxy не подтвердил TCP Reality и PROXY protocol"
+            if proxy_protocol
+            else "Профиль выхода каскада изменён вне установщика; проверьте адрес, порт и параметры Reality",
+            retryable=False,
+        )
+
+
+def _node_online(node: dict) -> bool:
+    """Подтверждает готовность ноды получать конфигурацию и пользователей."""
+    versions = node.get("versions") or {}
+    return bool(
+        isinstance(versions, dict)
+        and node.get("isConnected") is True
+        and node.get("isDisabled") is False
+        and node.get("isConnecting") is False
+        and versions.get("node") == NODE_VERSION
+        and versions.get("xray")
+    )
 
 
 def _approved_specs(artifacts: dict, previous_spec: InstallSpec, spec: InstallSpec) -> list[InstallSpec]:
@@ -861,7 +948,7 @@ class InstallerPanel:
                 or target.get("panel_ref") != spec.panel_ref
                 or not isinstance(node, dict)
                 or node.get("uuid") != target.get("node_uuid")
-                or node.get("address") != target.get("address")
+                or node.get("address") != (target.get("node_address") or target.get("address"))
                 or not isinstance(profile, dict)
                 or profile.get("activeConfigProfileUuid") != target.get("profile_uuid")
                 or not isinstance(inbounds, list)
@@ -870,47 +957,12 @@ class InstallerPanel:
             ):
                 raise InstallError("verify", "Выходная нода HAProxy изменилась вне установщика", retryable=False)
             saved = await self._call("GET", f"/config-profiles/{_uuid(target.get('profile_uuid'), 'профиль')}")
-            config = saved.get("config") if isinstance(saved, dict) else None
-            configured = config.get("inbounds") if isinstance(config, dict) else None
-            metadata = saved.get("inbounds") if isinstance(saved, dict) else None
-            inbound = configured[0] if isinstance(configured, list) and len(configured) == 1 else None
-            stream = inbound.get("streamSettings") if isinstance(inbound, dict) else None
-            tcp = stream.get("rawSettings", stream.get("tcpSettings")) if isinstance(stream, dict) else None
-            reality = stream.get("realitySettings") if isinstance(stream, dict) else None
-            names = reality.get("serverNames") if isinstance(reality, dict) else None
-            if (
-                not isinstance(saved, dict)
-                or saved.get("uuid") != target.get("profile_uuid")
-                or not isinstance(metadata, list)
-                or len(metadata) != 1
-                or not isinstance(metadata[0], dict)
-                or metadata[0].get("uuid") != target.get("inbound_uuid")
-                or metadata[0].get("profileUuid") != target.get("profile_uuid")
-                or not isinstance(inbound, dict)
-                or metadata[0].get("tag") != inbound.get("tag")
-                or inbound.get("protocol") != "vless"
-                or inbound.get("port") != target.get("port")
-                or not isinstance(stream, dict)
-                or stream.get("network") not in {"tcp", "raw"}
-                or stream.get("security") != "reality"
-                or not isinstance(tcp, dict)
-                or tcp.get("acceptProxyProtocol") is not True
-                or not isinstance(names, list)
-                or target.get("reality_domain") not in names
-            ):
-                raise InstallError(
-                    "verify", "Профиль выхода HAProxy не подтвердил TCP Reality и PROXY protocol", retryable=False
-                )
+            _validate_cascade_profile(
+                saved, {**target, "server_name": target.get("reality_domain")}, proxy_protocol=True, step="verify"
+            )
         else:
             self._validate_node(spec, artifacts, node)
-        versions = node.get("versions") or {}
-        return bool(
-            node.get("isConnected") is True
-            and node.get("isDisabled") is False
-            and node.get("isConnecting") is False
-            and versions.get("node") == NODE_VERSION
-            and versions.get("xray")
-        )
+        return _node_online(node)
 
     async def ensure_cascade(
         self,
@@ -935,11 +987,55 @@ class InstallerPanel:
             return True
         return await _resolve_panel_url(spec.panel_ref) == await _resolve_panel_url(self.spec.panel_ref)
 
+    async def check_cascade_exit(self, exit_spec: InstallSpec, exit_artifacts: dict) -> None:
+        """Проверяет живой выход каскада на нужной панели без изменений."""
+        if not await self._same_panel(exit_spec):
+            async with InstallerPanel(exit_spec) as panel:
+                await panel._check_cascade_exit(exit_spec, exit_artifacts)
+            return
+        await self._check_cascade_exit(exit_spec, exit_artifacts)
+
+    async def _check_cascade_exit(self, exit_spec: InstallSpec, exit_artifacts: dict) -> None:
+        """Сверяет профиль и ноду выхода с параметрами установки."""
+        if exit_spec.role != "exit" or exit_spec.transport not in {"vless_tcp_reality", "vless_tcp_selfsteal"}:
+            raise InstallError("cascade", "Для выхода каскада нужна выходная нода TCP Reality", retryable=False)
+        await self._ready()
+        profile_uuid = _uuid(exit_artifacts.get("profile_uuid"), "профиль выхода")
+        config = exit_artifacts.get("profile_config") or {}
+        saved_inbounds = config.get("inbounds") if isinstance(config, dict) else None
+        saved_inbound = saved_inbounds[0] if isinstance(saved_inbounds, list) and len(saved_inbounds) == 1 else None
+        if not isinstance(saved_inbound, dict) or not saved_inbound.get("tag"):
+            raise InstallError("cascade", "Не сохранён профиль выходной ноды", retryable=False)
+        profile = await self._call("GET", f"/config-profiles/{profile_uuid}")
+        _validate_cascade_profile(
+            profile,
+            {
+                "profile_uuid": profile_uuid,
+                "inbound_uuid": exit_artifacts.get("inbound_uuid"),
+                "inbound_tag": exit_artifacts.get("inbound_tag") or saved_inbound["tag"],
+                "address": exit_spec.transit_address(),
+                "port": exit_spec.client_port,
+                "server_name": exit_spec.domain
+                if exit_spec.transport == "vless_tcp_selfsteal"
+                else exit_spec.reality_domain,
+                "public_key": exit_artifacts.get("public_key"),
+                "short_id": exit_artifacts.get("short_id"),
+            },
+            proxy_protocol=False,
+            step="cascade",
+        )
+        node = await self._call("GET", f"/nodes/{_uuid(exit_artifacts.get('node_uuid'), 'выходная нода')}")
+        self._validate_node(exit_spec, exit_artifacts, node)
+        if not _node_online(node):
+            raise InstallError(
+                "cascade", "Выходная нода не подтвердила подключение к панели и готовность принимать пользователей"
+            )
+
     async def _create_cascade(
         self, exit_spec: InstallSpec, exit_artifacts: dict, artifacts: dict, checkpoint: Checkpoint | None
     ) -> dict:
         """Создаёт приватный сквад и технического пользователя."""
-        await self._ready()
+        await self._check_cascade_exit(exit_spec, exit_artifacts)
         cascade = artifacts.setdefault("cascade", {})
         if not cascade.get("nonce"):
             cascade["nonce"] = uuid.uuid4().hex[:22]
@@ -1007,7 +1103,7 @@ class InstallerPanel:
             raise InstallError("cascade", "Технический пользователь каскада не подтверждён", retryable=False)
         cascade.update(
             user_id=user["id"],
-            address=str(ipaddress.ip_address(exit_spec.address)),
+            address=str(ipaddress.ip_address(exit_spec.transit_address())),
             port=exit_spec.client_port,
             public_key=exit_artifacts["public_key"],
             short_id=exit_artifacts["short_id"],

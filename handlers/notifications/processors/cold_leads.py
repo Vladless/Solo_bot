@@ -115,4 +115,4 @@ async def process_cold_leads(bot: Bot, session: AsyncSession):
         logger.info(f"[ColdLeads] Отправлено: {notified}")
 
     except Exception as e:
-        logger.error(f"[ColdLeads] Ошибка: {e}")
+        logger.opt(exception=True).error("[ColdLeads] Ошибка {}: {}", type(e).__name__, e)

@@ -19,11 +19,12 @@ from database import (
 from database.access.resolution import UserId
 from database.keys import lock_owned_key_for_operation, resolve_current_key_owner, resolve_key_operation_owner
 from database.models import Key
-from database.tariffs import check_tariff_exists, get_tariff_by_id
+from database.tariffs import get_tariff_by_id
 from handlers.notifications.context import NotificationContext
 from hooks.hooks import run_hooks
 from logger import logger
 from middlewares.session import operation_session
+from services.addons import resolve_carried_addons
 from services.errors import ServiceError
 from services.operations import renew_key_in_cluster
 from services.renewal_access import resolve_key_renewal_scope
@@ -70,16 +71,17 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
     server_id = key.server_id
     tariff_id = key.tariff_id
 
-    current_tariff = None
-    if tariff_id:
-        current_tariff = ctx.get_tariff(tariff_id)
-        if not current_tariff and await check_tariff_exists(ctx.session, tariff_id):
-            current_tariff = await get_tariff_by_id(ctx.session, tariff_id)
+    current_tariff = await get_tariff_by_id(ctx.session, tariff_id) if tariff_id else None
 
     if not current_tariff:
         return RenewalResult(RenewalStatus.NO_TARIFF)
 
     if current_tariff.get("is_active") is False:
+        return RenewalResult(RenewalStatus.FORBIDDEN_TARIFF)
+
+    duration_days = int(current_tariff.get("duration_days") or 0)
+    if duration_days <= 0:
+        logger.warning("[RENEW] У тарифа {} некорректный срок, автопродление пропущено", tariff_id)
         return RenewalResult(RenewalStatus.FORBIDDEN_TARIFF)
 
     forbidden = list(FORBIDDEN_GROUPS)
@@ -110,8 +112,11 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
         },
     )
 
-    if renewal_cost is None or balance < renewal_cost:
+    if renewal_cost is None:
         return RenewalResult(RenewalStatus.NO_BALANCE)
+    if renewal_cost < 0:
+        logger.warning("[RENEW] У тарифа {} отрицательная цена, автопродление пропущено", tariff_id)
+        return RenewalResult(RenewalStatus.FORBIDDEN_TARIFF)
 
     client_id = key.client_id
     current_expiry = key.expiry_time
@@ -120,8 +125,6 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
         "current_traffic_limit": key.current_traffic_limit,
         "selected_price_rub": key.selected_price_rub,
     }
-    duration_days = current_tariff["duration_days"]
-
     selected_device_limit = getattr(key, "selected_device_limit", None)
     selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
     selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
@@ -133,6 +136,25 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
         selected_traffic_gb=selected_traffic_gb,
     )
     traffic_limit_gb = int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
+    carried = resolve_carried_addons(
+        current_tariff,
+        {
+            "tariff_id": tariff_id,
+            "selected_device_limit": selected_device_limit,
+            "selected_traffic_limit": selected_traffic_limit,
+            **original_config,
+        },
+        selected_device_limit,
+        selected_traffic_limit,
+        current_tariff=current_tariff,
+    )
+    renewal_cost += carried.price_rub
+    if balance < renewal_cost:
+        return RenewalResult(RenewalStatus.NO_BALANCE)
+    if carried.device_limit is not None:
+        device_limit_effective = carried.device_limit
+    if carried.traffic_gb is not None:
+        traffic_limit_gb = carried.traffic_gb
 
     now_ms = datetime.now(timezone.utc).timestamp() * 1000
     base_expiry = current_expiry if current_expiry > now_ms else now_ms
@@ -148,15 +170,6 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
 
     await update_key_expiry(ctx.session, client_id, new_expiry_time, record_event=False, user_id=owner_ref)
     await update_key_tariff(ctx.session, client_id, current_tariff["id"], user_id=owner_ref)
-    await ctx.session.execute(
-        update(Key)
-        .where(Key.user_id == owner_ref, Key.client_id == client_id)
-        .values(
-            current_device_limit=selected_device_limit,
-            current_traffic_limit=selected_traffic_limit,
-            selected_price_rub=renewal_cost,
-        )
-    )
     await add_notification(ctx.session, owner_ref, renew_notification_id, commit=False)
 
     try:
@@ -194,6 +207,15 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
     current_owner = await resolve_key_operation_owner(ctx.session, owner_ref, client_id, email)
     if current_owner is None:
         raise ValueError("Владелец продлённого ключа изменился")
+    await ctx.session.execute(
+        update(Key)
+        .where(Key.user_id == current_owner, Key.client_id == client_id)
+        .values(
+            current_device_limit=device_limit_effective,
+            current_traffic_limit=traffic_limit_gb,
+            selected_price_rub=renewal_cost,
+        )
+    )
     await update_key_expiry(
         ctx.session, client_id, new_expiry_time, price_rub=float(renewal_cost), user_id=current_owner
     )

@@ -347,40 +347,27 @@ async def request_password_reset(
     if not smtp_configured() or not await pwd_reset.redis_ready():
         return _RESET_OK_MESSAGE
     identity = await idb.get_identity_by_email(session, email_norm)
-    if not identity:
+    if not identity or not identity.password_hash:
         return _RESET_OK_MESSAGE
     ip = _client_ip(request)
     if not await pwd_reset.try_consume_ip_budget(ip):
-        raise HTTPException(
-            status_code=429,
-            detail="Слишком много запросов с вашего адреса. Попробуйте позже.",
-        )
+        return _RESET_OK_MESSAGE
     if not await pwd_reset.try_consume_email_send_budget(email_norm):
-        raise HTTPException(
-            status_code=429,
-            detail="Слишком много запросов для этого адреса. Попробуйте позже.",
-        )
+        return _RESET_OK_MESSAGE
     if not await pwd_reset.try_acquire_cooldown(email_norm):
-        raise HTTPException(
-            status_code=429,
-            detail="Код уже отправлен. Подождите перед повторной отправкой.",
-        )
+        return _RESET_OK_MESSAGE
     code = "".join(secrets.choice("0123456789") for _ in range(6))
     if not await pwd_reset.store_code(email_norm, code):
         await pwd_reset.release_cooldown(email_norm)
-        raise HTTPException(
-            status_code=503,
-            detail="Не удалось сохранить код. Попробуйте позже.",
-        )
+        logger.warning("[Site:Auth] Не удалось сохранить код восстановления пароля")
+        return _RESET_OK_MESSAGE
     try:
         await send_password_reset_code_email(email_norm, code, session=session)
-    except Exception:
+    except Exception as exc:
         await pwd_reset.release_cooldown(email_norm)
         await pwd_reset.delete_code(email_norm)
-        raise HTTPException(
-            status_code=503,
-            detail="Не удалось отправить письмо. Попробуйте позже.",
-        ) from None
+        logger.warning("[Site:Auth] Не удалось отправить код восстановления пароля: {}", type(exc).__name__)
+        return _RESET_OK_MESSAGE
     return _RESET_OK_MESSAGE
 
 
@@ -411,8 +398,8 @@ async def confirm_password_reset(
     if not await pwd_reset.verify_and_consume_code(email_norm, body.code.strip()):
         raise HTTPException(status_code=401, detail="Неверный код или срок действия истёк")
     identity = await idb.get_identity_by_email(session, email_norm)
-    if not identity:
-        raise HTTPException(status_code=400, detail="Аккаунт не найден")
+    if not identity or not identity.password_hash:
+        raise HTTPException(status_code=401, detail="Неверный код или срок действия истёк")
     updated = await idb.set_password_for_identity(session, identity.id, body.password, expected_email=email_norm)
     if not updated:
         raise HTTPException(status_code=400, detail="Не удалось обновить пароль")

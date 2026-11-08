@@ -246,7 +246,7 @@ async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSess
         timeout_sec=10.0,
         client_id=client_id,
         username=key_email,
-        subscription_url=record.get("remnawave_link") or record.get("link"),
+        subscription_url=record.get("remnawave_link"),
     )
     if result is None:
         await safe_answer_callback(callback_query, "❌ Устройство не найдено.", show_alert=True)

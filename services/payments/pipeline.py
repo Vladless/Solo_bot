@@ -54,10 +54,11 @@ class ParsedPayment:
 
 @dataclass(frozen=True)
 class CheckoutCompletion:
-    """Результат фактически исполненной покупки или продления подписки."""
+    """Результат фактически исполненного заказа подписки."""
 
     flow: str
     client_id: str
+    addon_pack_mode: bool | None = None
 
 
 @dataclass
@@ -215,6 +216,10 @@ async def process_success_payment(
                 completed_checkout_flow = await completion(session, tg_id, credit_amount, row)
                 if isinstance(completed_checkout_flow, CheckoutCompletion):
                     notification_kwargs["completed_checkout_client_id"] = completed_checkout_flow.client_id
+                    if completed_checkout_flow.addon_pack_mode is not None:
+                        notification_kwargs["completed_checkout_addon_pack_mode"] = (
+                            completed_checkout_flow.addon_pack_mode
+                        )
                     completed_checkout_flow = completed_checkout_flow.flow
                 if isinstance(completed_checkout_flow, str) and completed_checkout_flow:
                     notification_kwargs["completed_checkout_flow"] = completed_checkout_flow

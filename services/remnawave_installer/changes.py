@@ -26,6 +26,7 @@ LABELS = {
     "squad_uuid": "Сквад",
     "exit_install_id": "Выход каскада",
     "cascade_routes": "Дополнительные выходы каскада",
+    "cascade_address": "IP связи между нодами",
     "exit_ip": "Выходной IP",
     "exit_interface": "Интерфейс выходного IP",
     "panel_sources": "Адреса панели",
@@ -59,6 +60,7 @@ PROFILE_FIELDS = {
     "exit_ip",
     "exit_install_id",
     "cascade_routes",
+    "cascade_address",
 }
 REMOTE_FIELDS = {
     "transport",
@@ -76,6 +78,7 @@ REMOTE_FIELDS = {
     "shaping",
     "haproxy_sources",
     "cascade_routes",
+    "cascade_address",
 }
 CLOUD_FIELDS = {"transport", "domain", "cdn_domain", "email", "cloud"}
 HOST_FIELDS = {"host_remark", "transport", "client_port", "domain", "cdn_domain", "publish_host", "cascade_routes"}
@@ -116,7 +119,15 @@ def build_change_plan(
     remote_fields = REMOTE_FIELDS | ({"exit_install_id"} if old.role == "haproxy_entry" else set())
     remote_needed = bool(artifacts.get("remote_deployed") and changed & remote_fields)
     prepare = (
-        bool(artifacts.get("profile_uuid") and changed & {"transport", "exit_ip", "exit_interface"}) or remote_needed
+        bool(
+            artifacts.get("profile_uuid")
+            and (
+                changed & {"transport", "exit_ip", "exit_interface", "cascade_address"}
+                or old.role == "entry"
+                and changed & {"exit_install_id", "cascade_routes"}
+            )
+        )
+        or remote_needed
     )
     if changed & CONNECTION_FIELDS:
         operations.append("connection")
@@ -125,10 +136,10 @@ def build_change_plan(
     if (
         artifacts.get("profile_uuid")
         and old.role == "entry"
-        and changed & {"exit_install_id", "cascade_routes"}
+        and changed & {"exit_install_id", "cascade_routes", "cascade_address"}
         or old.role == "haproxy_entry"
         and artifacts.get("haproxy")
-        and changed & {"exit_install_id", "cascade_routes"}
+        and changed & {"exit_install_id", "cascade_routes", "cascade_address"}
     ):
         operations.append("cascade")
     if artifacts.get("profile_uuid") and changed & PROFILE_FIELDS:
@@ -163,6 +174,7 @@ def build_change_plan(
             "exit_install_id",
             "haproxy_sources",
             "cascade_routes",
+            "cascade_address",
         }
     ):
         operations.append("verify")
@@ -185,7 +197,7 @@ def build_change_plan(
         warnings.append("Изменится доступ пользователей выбранных сквадов к этому инбаунду")
     if (
         (
-            changed & {"transport", "reality_domain", "domain", "cdn_domain", "client_port"}
+            changed & {"transport", "reality_domain", "domain", "cdn_domain", "client_port", "cascade_address"}
             or old.role == "haproxy_exit"
             and "squad_uuid" in changed
             or old.role == "haproxy_exit"

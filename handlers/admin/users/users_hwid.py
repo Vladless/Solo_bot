@@ -80,7 +80,7 @@ async def _render_admin_devices(
         timeout_sec=8.0,
         client_id=client_id,
         username=key_email,
-        subscription_url=key_obj.remnawave_link or key_obj.key,
+        subscription_url=key_obj.remnawave_link,
     )
     if result is None:
         await callback_query.message.edit_text(menu_text("Устройства", "❌ Ошибка авторизации в Remnawave."))
@@ -228,7 +228,7 @@ async def handle_hwid_unbind(
         timeout_sec=10.0,
         client_id=client_id,
         username=key_email,
-        subscription_url=key_obj.remnawave_link or key_obj.key,
+        subscription_url=key_obj.remnawave_link,
     )
     if result is None:
         await callback_query.answer("Устройство не найдено", show_alert=True)

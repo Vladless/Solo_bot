@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.access.resolution import UserId
+from database.bans import telegram_chat_blocked
 from database.models import Key, Payment, Tariff, User
 
 
@@ -32,6 +33,7 @@ async def get_cold_leads(session: AsyncSession):
 
     stmt = (
         select(User.id)
+        .where(User.tg_id > 0, ~telegram_chat_blocked(User.id, User.tg_id))
         .where(~User.id.in_(sub_active))
         .where(~User.id.in_(paid))
         .where(

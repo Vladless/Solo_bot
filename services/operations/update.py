@@ -141,7 +141,8 @@ async def update_key_on_cluster(
                 logger.debug(f"{PANEL_REMNA} Добавлен short_uuid: {short_uuid}")
 
             async def _recreate(api):
-                await api.delete_user(client_id, username=email)
+                if await api.delete_user(client_id, username=email) is not True:
+                    raise ValueError("Удаление прежнего клиента Remnawave не подтверждено")
                 created = await api.create_user(user_data)
                 if (
                     not isinstance(created, dict)
@@ -171,6 +172,9 @@ async def update_key_on_cluster(
                 _recreate,
                 fallback_any=True,
                 timeout_sec=12.0,
+                client_id=client_id,
+                username=email,
+                subscription_url=remnawave_link,
             )
             if (
                 isinstance(remna_result, dict)

@@ -27,6 +27,7 @@ _EDIT_LABELS = {
     "host": "Обновление хоста",
 }
 _DELETE_LABELS = {
+    "waiting": "Ожидание удаления входных нод каскада",
     "server_cleanup": "Удаление ноды с VPS",
     "cloud_cleanup": "Удаление ресурсов CDN",
     "cloud_resource": "Удаление CDN-ресурса",
@@ -54,6 +55,7 @@ _EXTRA_LABELS = {
     "origin": "Проверка origin",
     "firewall": "Настройка сетевого доступа",
     "exit_ip": "Проверка выходного IP",
+    "cascade_verify": "Проверка связи между нодами",
     "bbr": "Настройка BBR",
     "fail2ban": "Настройка fail2ban",
     "warp": "Настройка WARP",
@@ -208,6 +210,8 @@ def job_status_text(view: dict) -> str:
         "<b>" + escape(str(params.get("name") or "Новая нода")[:80]) + "</b> · " + label,
         "Сервер: <code>" + escape(str(params.get("address") or "не задано")[:64]) + "</code>",
     ]
+    if params.get("cascade_address"):
+        lines.append("IP связи между нодами: <code>" + escape(str(params["cascade_address"])[:64]) + "</code>")
     pair = view.get("cascade_pair") or {}
     if pair:
         entry = view.get("id") == pair.get("entry_id")

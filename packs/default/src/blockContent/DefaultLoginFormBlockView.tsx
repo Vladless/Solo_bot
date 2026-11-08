@@ -24,6 +24,7 @@ import { SurfaceEffectFrame } from "@/components/constructor/SurfaceEffectFrame"
 import { buildSurfaceEffectFrameProps } from "@/components/constructor/visualBindings";
 import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor";
 import { pickContrastInk } from "@/lib/visual-settings/color-math";
+import { authHrefWithReturn, safeAuthReturnPath } from "../../../_shared/authReturn";
 
 
 type Mode = "password" | "code";
@@ -54,6 +55,7 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
   const router = useRouter();
   const flowPage = useFlowPage();
   const searchParams = useSearchParams();
+  const requestedRedirect = safeAuthReturnPath(searchParams.get("from"));
   const { botUsername, auth } = useAppInfo();
   const t = useDefaultTheme(d);
   const decor = usePanelDecor(t.panel);
@@ -156,9 +158,9 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
   const rememberLabel = typeof d.rememberLabel === "string" ? d.rememberLabel : "Запомнить";
   const forgotLabel = typeof d.forgotLabel === "string" ? d.forgotLabel : "Забыли пароль?";
   const savedForgotHref = typeof d.forgotHref === "string" ? d.forgotHref.trim() : "";
-  const forgotHref = !savedForgotHref || savedForgotHref === "/reset-password"
+  const forgotHref = authHrefWithReturn(!savedForgotHref || savedForgotHref === "/reset-password"
     ? slugToPath("forgot-password")
-    : savedForgotHref;
+    : savedForgotHref, requestedRedirect);
   const submitLabel = typeof d.submitLabel === "string" ? d.submitLabel : "Войти";
   const sendCodeLabel = typeof d.sendCodeLabel === "string" ? d.sendCodeLabel : "Получить код";
   const requestNewCodeLabel = typeof d.requestNewCodeLabel === "string" ? d.requestNewCodeLabel : "Запросить новый код";
@@ -219,13 +221,10 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
   const inviteTitle = inviteKind === "gift" ? inviteGiftTitle : inviteKind === "referral" ? inviteReferralTitle : invitePartnerTitle;
   const inviteText = inviteKind === "gift" ? inviteGiftText : inviteKind === "referral" ? inviteReferralText : invitePartnerText;
 
-  const requestedRedirect = searchParams.get("from");
   const adminRedirect = typeof d.successRedirect === "string" && d.successRedirect.startsWith("/") && !d.successRedirect.startsWith("//")
     ? d.successRedirect
     : null;
-  const redirectPath = requestedRedirect && requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//")
-    ? requestedRedirect
-    : (adminRedirect ?? slugToPath("dashboard"));
+  const redirectPath = requestedRedirect || adminRedirect || slugToPath("dashboard");
   const { widgetRef, telegramWidgetReady } = useTelegramLoginWidget({
     botUsername,
     redirectPath,

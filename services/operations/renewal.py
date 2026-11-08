@@ -123,8 +123,10 @@ async def renew_on_remnawave(
                     )
                 else:
                     logger.warning(f"{PANEL_REMNA} Ошибка сброса HWID: панель не подтвердила удаление устройств")
+                    return False
             except Exception as e:
                 logger.warning(f"{PANEL_REMNA} Ошибка сброса HWID: {e}")
+                return False
 
         updated_local = await api.update_user(**update_kwargs)
         if updated_local and reset_traffic and not expiry_only:
@@ -367,7 +369,7 @@ async def renew_key_in_cluster(
                 reset_traffic=reset_traffic,
                 external_squad_uuid=external_squad_uuid,
                 billing_user_id=billing_user_id,
-                subscription_url=kd.get("remnawave_link") or kd.get("link"),
+                subscription_url=kd.get("remnawave_link"),
                 target_servers=cluster_scope,
                 old_servers=old_servers,
                 old_device_limit=old_device_limit,
@@ -421,10 +423,13 @@ async def renew_key_in_cluster(
             external_squad_uuid=external_squad_uuid,
             old_device_limit=old_device_limit,
             billing_user_id=billing_user_id,
-            subscription_url=kd.get("remnawave_link") or kd.get("link"),
+            subscription_url=kd.get("remnawave_link"),
             preserve_placement=scope.preserve_placement,
             expiry_only=expiry_only,
         )
+
+        if not remna_ok and any(str(s.get("panel_type", "3x-ui")).lower() == "remnawave" for s in cluster_scope):
+            return False
 
         succeeded, _ = await renew_on_3xui(
             cluster=cluster_scope,

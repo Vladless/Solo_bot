@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
@@ -14,6 +15,7 @@ from database.models import (
     Payment,
     Referral,
     SubscriptionEvent,
+    TelegramChatStatus,
     TemporaryData,
     User,
 )
@@ -58,7 +60,7 @@ async def release_tg_mirrors(session: AsyncSession, tg_id: int) -> None:
 
 
 async def refresh_tg_mirrors_for_user(session: AsyncSession, user_id: int) -> None:
-    r = await session.execute(select(User.tg_id).where(User.id == user_id))
+    r = await session.execute(select(User.tg_id).where(User.id == user_id).with_for_update())
     tg = r.scalar_one_or_none()
 
     await session.execute(update(Key).where(Key.user_id == user_id).values(tg_id=tg))
@@ -67,7 +69,21 @@ async def refresh_tg_mirrors_for_user(session: AsyncSession, user_id: int) -> No
     await session.execute(update(GiftUsage).where(GiftUsage.user_id == user_id).values(tg_id=tg))
     await session.execute(update(CouponUsage).where(CouponUsage.user_id == user_id).values(tg_id=tg))
     await session.execute(update(TemporaryData).where(TemporaryData.user_id == user_id).values(tg_id=tg))
-    await session.execute(update(BlockedUser).where(BlockedUser.user_id == user_id).values(tg_id=tg))
+    if tg is None or tg <= 0:
+        await session.execute(delete(BlockedUser).where(BlockedUser.user_id == user_id))
+    else:
+        await session.execute(
+            delete(BlockedUser).where(BlockedUser.user_id == user_id, BlockedUser.tg_id.is_distinct_from(tg))
+        )
+        blocked = await session.scalar(select(TelegramChatStatus.is_blocked).where(TelegramChatStatus.tg_id == tg))
+        if blocked is True:
+            await session.execute(
+                insert(BlockedUser)
+                .values(user_id=user_id, tg_id=tg)
+                .on_conflict_do_nothing(index_elements=[BlockedUser.user_id])
+            )
+        elif blocked is False:
+            await session.execute(delete(BlockedUser).where(BlockedUser.user_id == user_id))
     await session.execute(update(ManualBan).where(ManualBan.user_id == user_id).values(tg_id=tg))
 
     await session.execute(update(Referral).where(Referral.referred_user_id == user_id).values(referred_tg_id=tg))

@@ -14,7 +14,7 @@ from contextlib import AsyncExitStack, suppress
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from database.db import async_session_maker
@@ -60,6 +60,7 @@ _STAGES = (
 )
 _LEASE_SECONDS = 120
 _DELETION_KEY = token_secrets.token_bytes(32)
+MAX_BULK_DELETE = 100
 
 
 async def _authorize(owner_id: int) -> None:
@@ -287,6 +288,16 @@ async def _unlink_pair(session, row) -> None:
             other.encrypted_artifacts = vault.seal(other.id, artifacts)
 
 
+def _validate_cascade_addresses(entry: InstallSpec, exit_spec: InstallSpec) -> None:
+    """Проверяет отдельные адреса связи входа и выхода."""
+    source = ipaddress.ip_address(entry.transit_address())
+    target = ipaddress.ip_address(exit_spec.transit_address())
+    if source == target:
+        raise ValueError("Для связи входа и выхода каскада нужны разные IP")
+    if (entry.cascade_address or entry.role == "haproxy_entry") and (source.version != target.version):
+        raise ValueError("Для связи между нодами укажите на входе и выходе IP одной версии: IPv4 или IPv6")
+
+
 async def create_draft(owner_id: int, chat_id: int, panel_ref: str = "", *, entry_job_id: str = "") -> dict:
     """Создаёт черновик установки без сетевых изменений."""
     await _authorize(owner_id)
@@ -303,7 +314,8 @@ async def create_draft(owner_id: int, chat_id: int, panel_ref: str = "", *, entr
                 return _view(paired[1])
             if entry.params.get("exit_install_id"):
                 raise ValueError("Для входа уже выбран установленный выход каскада")
-            address = str(ipaddress.ip_address(entry.params.get("address") or ""))
+            address = InstallSpec.from_dict(entry.params, complete=False).transit_address()
+            address = str(ipaddress.ip_address(address))
             job_id = uuid.uuid4().hex
             pair = {"entry_id": entry.id, "exit_id": job_id}
             params = InstallSpec.from_dict(
@@ -378,15 +390,16 @@ async def update_draft(job_id: str, owner_id: int, *, params: dict | None = None
                     raise ValueError("Для входа и выхода каскада нужны разные серверы")
                 if row.id == entry.id and spec.exit_install_id:
                     raise ValueError("Выход новой пары назначается при запуске каскада")
-                if row.id == entry.id and spec.address != row.params.get("address"):
+                previous_spec = InstallSpec.from_dict(row.params, complete=False)
+                if row.id == entry.id and spec.transit_address() != previous_spec.transit_address():
                     if exit_row.status != "draft":
-                        raise ValueError("Выход уже запущен; IP входного сервера менять нельзя")
-                    previous = str(ipaddress.ip_network(row.params["address"], strict=False))
+                        raise ValueError("Выход уже запущен; IP связи входного сервера менять нельзя")
+                    previous = str(ipaddress.ip_network(previous_spec.transit_address(), strict=False))
                     sources = [value for value in exit_row.params.get("haproxy_sources", []) if value != previous]
                     exit_row.params = InstallSpec.from_dict(
                         {
                             **exit_row.params,
-                            "haproxy_sources": [*sources, spec.address],
+                            "haproxy_sources": [*sources, spec.transit_address()],
                         },
                         complete=False,
                     ).to_dict()
@@ -430,7 +443,7 @@ async def bind_progress_message(
 
 
 async def list_jobs(owner_id: int, *, exits_only: bool = False) -> list[dict]:
-    """Показывает последние установки текущего администратора."""
+    """Показывает установки текущего администратора."""
     await _authorize(owner_id)
     async with async_session_maker() as session:
         query = select(RemnawaveInstall).where(RemnawaveInstall.owner_id == owner_id)
@@ -439,10 +452,34 @@ async def list_jobs(owner_id: int, *, exits_only: bool = False) -> list[dict]:
                 RemnawaveInstall.params["role"].as_string().in_(EXIT_ROLES),
                 RemnawaveInstall.status.in_({"succeeded", "warning"}),
             )
-        else:
-            query = query.limit(30)
-        rows = (await session.execute(query.order_by(RemnawaveInstall.created_at.desc()))).scalars()
+        rows = (
+            await session.execute(query.order_by(RemnawaveInstall.created_at.desc(), RemnawaveInstall.id.desc()))
+        ).scalars()
         return [_view(row) for row in rows]
+
+
+async def list_jobs_page(owner_id: int, *, page: int = 0, page_size: int = 8) -> dict:
+    """Показывает страницу установок и общее число записей."""
+    await _authorize(owner_id)
+    if type(page) is not int or page < 0 or type(page_size) is not int or not 1 <= page_size <= 30:
+        raise ValueError("Некорректная страница списка установок")
+    async with async_session_maker() as session:
+        condition = RemnawaveInstall.owner_id == owner_id
+        total = (
+            await session.execute(select(func.count()).select_from(RemnawaveInstall).where(condition))
+        ).scalar_one()
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages - 1)
+        rows = (
+            await session.execute(
+                select(RemnawaveInstall)
+                .where(condition)
+                .order_by(RemnawaveInstall.created_at.desc(), RemnawaveInstall.id.desc())
+                .offset(page * page_size)
+                .limit(page_size)
+            )
+        ).scalars()
+        return {"items": [_view(row) for row in rows], "page": page, "pages": pages, "total": total}
 
 
 async def _snapshot(job_id: str, owner_id: int | None = None, *, include_secrets: bool = True) -> dict:
@@ -709,7 +746,8 @@ async def start_job(job_id: str, owner_id: int, message_id: int | None = None) -
             exit_spec = InstallSpec.from_dict(exit_row.params)
             if entry_spec.address == exit_spec.address:
                 raise ValueError("Для входа и выхода каскада нужны разные серверы")
-            source = ipaddress.ip_address(entry_spec.address)
+            _validate_cascade_addresses(entry_spec, exit_spec)
+            source = ipaddress.ip_address(entry_spec.transit_address())
             if not any(source in ipaddress.ip_network(value) for value in exit_spec.haproxy_sources):
                 raise ValueError("В доступе выхода каскада отсутствует IP входного сервера")
     for _, spec in prepared.values():
@@ -773,10 +811,7 @@ def _require_credentials(spec: InstallSpec, secrets: dict) -> None:
 def _require_change_credentials(spec: InstallSpec, secrets: dict, operations: list[str]) -> bool:
     """Требует доступы только к затрагиваемым системам."""
     remote = bool(set(operations) & {"connection", "prepare", "remote"}) or (
-        spec.role == "haproxy_entry"
-        and "verify" in operations
-        or spec.transport == "hysteria2"
-        and "verify" in operations
+        spec.role in ENTRY_ROLES and "verify" in operations or spec.transport == "hysteria2" and "verify" in operations
     )
     cloud = "cloud" in operations and spec.transport.startswith("cdn_")
     if remote and not (secrets.get("ssh_password") or secrets.get("ssh_private_key")):
@@ -1158,6 +1193,9 @@ async def _guard_exit_reference(session, row, spec: InstallSpec) -> None:
         candidate = await _row(session, route.exit_install_id, row.owner_id, lock=True)
         if (candidate.params or {}).get("role") != expected_role or _deleting(candidate):
             raise ValueError("Выходная нода удаляется или больше недоступна для каскада")
+        target_spec = InstallSpec.from_dict(candidate.params, complete=False)
+        if target_spec.address:
+            _validate_cascade_addresses(route, target_spec)
         if index and (
             candidate.status not in {"succeeded", "warning"}
             or candidate.params.get("panel_ref") != route.panel_ref
@@ -1171,7 +1209,7 @@ async def _guard_exit_reference(session, row, spec: InstallSpec) -> None:
             or candidate.params.get("address") == route.address
             or candidate.params.get("squad_uuid") != squad_uuid
             or not any(
-                ipaddress.ip_address(route.address) in ipaddress.ip_network(source)
+                ipaddress.ip_address(route.transit_address()) in ipaddress.ip_network(source)
                 for source in candidate.params.get("haproxy_sources", [])
             )
         ):
@@ -1208,55 +1246,111 @@ async def _assignment_row(session, job_id: str, owner_id: int, params: dict | No
     return row
 
 
-async def _guard_dependents(session, row) -> None:
+def _dependency_error(row, own: dict, other, artifacts: dict, *, known: bool = True) -> str | None:
+    """Определяет ссылку другой установки на удаляемый выход."""
+    own_specs = _approved_specs(row, own)
+    is_exit = any(item.get("role") in EXIT_ROLES for item in own_specs)
+    addresses = {item.get(key) for item in own_specs for key in ("address", "cascade_address") if item.get(key)}
+    if not known:
+        if row.id in _exit_ids(other.params or {}) or is_exit:
+            return "Нельзя проверить связи каскада: сохранённые параметры другой установки недоступны"
+        return None
+    if any(row.id in _exit_ids(item) for item in _approved_specs(other, artifacts)):
+        return "Выходная нода используется другой установкой каскада. Сначала удалите или измените входную ноду"
+    cascades = [
+        item
+        for state in _route_states(artifacts)
+        if not (
+            state in artifacts.get("retired_cascade_routes", [])
+            and state.get("host_removed")
+            and (
+                not state.get("cascade")
+                and not state.get("retained_cascades")
+                or (state.get("panel_cleanup") or {}).get("completed")
+            )
+        )
+        for item in [
+            state.get("cascade"),
+            *state.get("retained_cascades", []),
+            state.get("haproxy"),
+            *state.get("haproxy_targets", []),
+        ]
+    ]
+    contexts = (artifacts.get("cleanup_cascade_contexts") or {}).values()
+    if any(isinstance(item, dict) and item.get("exit_install_id") == row.id for item in [*cascades, *contexts]):
+        return "Выходная нода используется сохранённым техническим каскадом"
+    if is_exit and any(isinstance(item, dict) and item.get("address") in addresses for item in cascades):
+        return "Выходная нода используется техническим каскадом без полного идентификатора"
+    return None
+
+
+def _batch_waiter(row, own: dict, other) -> bool:
+    """Разрешает входу удаляться перед ожидающим выходом той же пачки."""
+    if (
+        other.status != "queued"
+        or other.stage != "delete:waiting"
+        or other.lease_token
+        or other.lease_until
+        or other.pause_requested
+    ):
+        return False
+    try:
+        saved = vault.open(other.id, other.encrypted_artifacts)
+    except InstallError:
+        return False
+    first, second = own.get("deletion") or {}, saved.get("deletion") or {}
+    return bool(
+        first.get("batch_id")
+        and first.get("batch_id") == second.get("batch_id")
+        and row.id in second.get("wait_for", [])
+        and _full_deletion(own)
+        and _full_deletion(saved)
+    )
+
+
+def _pending_batch_dependency(row, dependency, batch_id: str) -> bool:
+    """Проверяет ожидаемое удаление входа той же подтверждённой пачки."""
+    if (
+        not batch_id
+        or dependency.owner_id != row.owner_id
+        or dependency.status not in _ACTIVE
+        or dependency.pause_requested
+        or not _deleting(dependency)
+    ):
+        return False
+    try:
+        saved = vault.open(dependency.id, dependency.encrypted_artifacts)
+    except InstallError:
+        return False
+    return _full_deletion(saved) and (saved.get("deletion") or {}).get("batch_id") == batch_id
+
+
+async def _guard_dependents(session, row, *, ignore_ids: set[str] | None = None) -> None:
     """Сохраняет выход, пока на него ссылается любая запись каскада."""
+    ignore_ids = ignore_ids or set()
     own = {}
     with suppress(InstallError):
         own = vault.open(row.id, row.encrypted_artifacts)
     for other in await _pair_rows(session, row):
-        if other.id != row.id and (other.status in _ACTIVE or other.lease_token):
+        if (
+            other.id != row.id
+            and other.id not in ignore_ids
+            and (other.status in _ACTIVE or other.lease_token)
+            and not _batch_waiter(row, own, other)
+        ):
             raise ValueError("Сначала остановите установку связанного сервера каскада и дождитесь завершения этапа")
-    own_specs = _approved_specs(row, own)
-    is_exit = any(item.get("role") in EXIT_ROLES for item in own_specs)
-    addresses = {item.get("address") for item in own_specs if item.get("address")}
     others = (await session.execute(select(RemnawaveInstall).where(RemnawaveInstall.id != row.id))).scalars()
     for other in others:
+        if other.id in ignore_ids:
+            continue
+        known = True
         try:
             artifacts = vault.open(other.id, other.encrypted_artifacts)
-        except InstallError as error:
-            if row.id in _exit_ids(other.params or {}) or is_exit:
-                raise ValueError(
-                    "Нельзя проверить связи каскада: сохранённые параметры другой установки недоступны"
-                ) from error
-            continue
-        if any(row.id in _exit_ids(item) for item in _approved_specs(other, artifacts)):
-            raise ValueError(
-                "Выходная нода используется другой установкой каскада. Сначала удалите или измените входную ноду"
-            )
-        cascades = [
-            item
-            for state in _route_states(artifacts)
-            if not (
-                state in artifacts.get("retired_cascade_routes", [])
-                and state.get("host_removed")
-                and (
-                    not state.get("cascade")
-                    and not state.get("retained_cascades")
-                    or (state.get("panel_cleanup") or {}).get("completed")
-                )
-            )
-            for item in [
-                state.get("cascade"),
-                *state.get("retained_cascades", []),
-                state.get("haproxy"),
-                *state.get("haproxy_targets", []),
-            ]
-        ]
-        contexts = (artifacts.get("cleanup_cascade_contexts") or {}).values()
-        if any(isinstance(item, dict) and item.get("exit_install_id") == row.id for item in [*cascades, *contexts]):
-            raise ValueError("Выходная нода используется сохранённым техническим каскадом")
-        if is_exit and any(isinstance(item, dict) and item.get("address") in addresses for item in cascades):
-            raise ValueError("Выходная нода используется техническим каскадом без полного идентификатора")
+        except InstallError:
+            artifacts, known = {}, False
+        error = _dependency_error(row, own, other, artifacts, known=known)
+        if error:
+            raise ValueError(error)
 
 
 async def _guard_remote_owner(session, row, artifacts: dict) -> None:
@@ -1491,6 +1585,212 @@ async def delete_job(
         return _view(row, include_credentials=False)
 
 
+def _bulk_ids(job_ids: list[str]) -> list[str]:
+    """Проверяет ограниченный набор выбранных установок."""
+    if (
+        not isinstance(job_ids, list)
+        or not job_ids
+        or len(job_ids) > MAX_BULK_DELETE
+        or any(not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{32}", value) for value in job_ids)
+    ):
+        raise ValueError(f"Выберите от 1 до {MAX_BULK_DELETE} установок")
+    return sorted(set(job_ids))
+
+
+def _bulk_item(row) -> dict:
+    """Возвращает название выбранной установки без доступов."""
+    params = row.params or {}
+    return {
+        "id": row.id,
+        "name": str(params.get("host_remark") or params.get("name") or params.get("address") or "Новая нода"),
+        "address": str(params.get("address") or ""),
+    }
+
+
+async def _bulk_rows(session, owner_id: int, identifiers: list[str]) -> list:
+    """Блокирует выбранные установки и связанные пары в едином порядке."""
+    rows = (
+        (
+            await session.execute(
+                select(RemnawaveInstall).where(
+                    RemnawaveInstall.id.in_(identifiers), RemnawaveInstall.owner_id == owner_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(rows) != len(identifiers):
+        raise InstallError("permission", "Одна из выбранных установок недоступна или уже удалена", retryable=False)
+    locked_ids = set(identifiers)
+    for row in rows:
+        locked_ids.update(item.id for item in await _pair_rows(session, row))
+    locked = (
+        (
+            await session.execute(
+                select(RemnawaveInstall)
+                .where(RemnawaveInstall.id.in_(locked_ids))
+                .order_by(RemnawaveInstall.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    result = {row.id: row for row in locked if row.id in identifiers and row.owner_id == owner_id}
+    if len(result) != len(identifiers):
+        raise ValueError("Список выбранных установок изменился. Выберите ноды заново")
+    current_ids = set(identifiers)
+    for row in result.values():
+        current_ids.update(item.id for item in await _pair_rows(session, row))
+    if current_ids != locked_ids:
+        raise ValueError("Связи выбранных каскадов изменились. Выберите ноды заново")
+    return [result[identifier] for identifier in identifiers]
+
+
+def _bulk_digest(rows: list, remove_server: bool) -> str:
+    """Привязывает подтверждение к режиму и состоянию всех выбранных нод."""
+    payload = {"full": remove_server, "rows": [[row.id, _deletion_digest(row)] for row in rows]}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _bulk_token(rows: list, remove_server: bool) -> str:
+    """Выдаёт общее подтверждение удаления сроком на пятнадцать минут."""
+    payload = f"{int(time.time()) + 900}.{_bulk_digest(rows, remove_server)}"
+    return payload + "." + hmac.new(_DELETION_KEY, payload.encode(), hashlib.sha256).hexdigest()
+
+
+def _check_bulk_token(rows: list, remove_server: bool, token: str) -> None:
+    """Проверяет режим, состав и состояние подтверждённого удаления."""
+    try:
+        expires, digest, signature = token.split(".")
+        payload = expires + "." + digest
+        valid = (
+            int(expires) >= time.time()
+            and hmac.compare_digest(digest, _bulk_digest(rows, remove_server))
+            and hmac.compare_digest(signature, hmac.new(_DELETION_KEY, payload.encode(), hashlib.sha256).hexdigest())
+        )
+    except (ValueError, AttributeError, TypeError):
+        valid = False
+    if not valid:
+        raise ValueError("Подтверждение удаления устарело. Проверьте выбранные ноды заново")
+
+
+async def _prepare_bulk_rows(session, rows: list, remove_server: bool) -> tuple[dict, dict, list, list]:
+    """Проверяет всю пачку и порядок удаления без изменения записей."""
+    identifiers = {row.id for row in rows}
+    artifacts, known, errors = {}, {}, []
+    for row in rows:
+        saved, available = {}, not bool(row.encrypted_artifacts)
+        with suppress(InstallError):
+            saved = vault.open(row.id, row.encrypted_artifacts)
+            available = True
+        artifacts[row.id], known[row.id] = saved, available
+        try:
+            if not _idle_deletable(row):
+                raise ValueError("Сначала остановите установку и дождитесь освобождения текущего этапа")
+            await _guard_dependents(session, row, ignore_ids=identifiers)
+            if remove_server:
+                if not available:
+                    raise ValueError("Снимок установки недоступен. Можно удалить только запись из бота")
+                spec = InstallSpec.from_dict(row.params)
+                if saved.get("install_id") not in {None, row.id}:
+                    raise ValueError("Снимок относится к другой установке")
+                operations = ["server_cleanup", "cloud_cleanup", "panel_cleanup", "record"]
+                saved = copy.deepcopy(saved)
+                deletion = saved.setdefault("deletion", {"operations": operations, "done": []})
+                if deletion.get("operations") != operations:
+                    raise ValueError("Для этой записи уже выбран другой вариант удаления. Продолжите его из карточки")
+                secrets = {}
+                if _deletion_requires_credentials(saved) and (
+                    not row.secrets_expire_at or row.secrets_expire_at > datetime.utcnow()
+                ):
+                    secrets = vault.open(row.id, row.encrypted_secrets)
+                _require_deletion_credentials(spec, secrets, saved)
+                await _guard_remote_owner(session, row, saved)
+                artifacts[row.id] = saved
+        except (InstallError, ValueError) as error:
+            errors.append({**_bulk_item(row), "error": str(error)})
+    dependencies = {
+        row.id: {
+            other.id
+            for other in rows
+            if other.id != row.id
+            and _dependency_error(row, artifacts[row.id], other, artifacts[other.id], known=known[other.id])
+        }
+        for row in rows
+    }
+    ordered, remaining = [], set(identifiers)
+    while remaining:
+        ready = sorted(identifier for identifier in remaining if not dependencies[identifier] & remaining)
+        if not ready:
+            errors.extend(
+                {**_bulk_item(row), "error": "Связи выбранных каскадов образуют цикл. Проверьте направления нод"}
+                for row in rows
+                if row.id in remaining and not any(item["id"] == row.id for item in errors)
+            )
+            break
+        ordered.extend(ready)
+        remaining.difference_update(ready)
+    return artifacts, dependencies, ordered, errors
+
+
+async def prepare_bulk_deletion(owner_id: int, job_ids: list[str], *, remove_server: bool = False) -> dict:
+    """Готовит подтверждение выбранных удалений без сетевых изменений."""
+    await _authorize(owner_id)
+    identifiers = _bulk_ids(job_ids)
+    if type(remove_server) is not bool:
+        raise ValueError("Некорректный режим удаления")
+    async with async_session_maker() as session:
+        rows = await _bulk_rows(session, owner_id, identifiers)
+        _, _, _, errors = await _prepare_bulk_rows(session, rows, remove_server)
+        return {
+            "items": [_bulk_item(row) for row in rows],
+            "token": "" if errors else _bulk_token(rows, remove_server),
+            "errors": errors,
+        }
+
+
+async def delete_jobs(owner_id: int, job_ids: list[str], *, token: str, remove_server: bool = False) -> dict:
+    """Удаляет выбранные записи либо ставит полную очистку в устойчивую очередь."""
+    await _authorize(owner_id)
+    identifiers = _bulk_ids(job_ids)
+    if type(remove_server) is not bool:
+        raise ValueError("Некорректный режим удаления")
+    async with async_session_maker() as session:
+        rows = await _bulk_rows(session, owner_id, identifiers)
+        _check_bulk_token(rows, remove_server, token)
+        artifacts, dependencies, ordered, errors = await _prepare_bulk_rows(session, rows, remove_server)
+        if errors:
+            raise ValueError(f"Нельзя удалить «{errors[0]['name']}»: {errors[0]['error']}")
+        by_id = {row.id: row for row in rows}
+        if not remove_server:
+            for identifier in ordered:
+                row = by_id[identifier]
+                await _guard_dependents(session, row)
+                await _unlink_pair(session, row)
+                await session.delete(row)
+                await session.flush()
+            await session.commit()
+            return {"removed": ordered, "queued": []}
+        batch_id = uuid.uuid4().hex
+        for identifier in ordered:
+            row, saved = by_id[identifier], artifacts[identifier]
+            saved["deletion"].update(batch_id=batch_id, wait_for=sorted(dependencies[identifier]))
+            row.encrypted_artifacts = vault.seal(row.id, saved)
+            row.status, row.stage = "queued", "delete:waiting" if dependencies[identifier] else "delete:server_cleanup"
+            row.error, row.retryable, row.pause_requested = None, True, False
+            row.lease_token, row.lease_until, row.progress_message_id = None, None, None
+            row.next_retry_at = datetime.utcnow()
+        try:
+            await session.commit()
+        except IntegrityError as error:
+            await session.rollback()
+            raise ValueError("На одном из выбранных серверов уже выполняется другая операция") from error
+        return {"removed": [], "queued": ordered}
+
+
 async def list_panel_options(panel_ref: str) -> dict:
     """Возвращает доступные сквады выбранной панели."""
     from .panel import InstallerPanel
@@ -1662,10 +1962,7 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
     operations = edit["operations"]
     panel_needed = bool(set(operations) & {"cascade", "profile", "node", "cloud", "verify", "squad", "host"})
     remote_needed = bool(set(operations) & {"connection", "prepare", "remote"}) or (
-        new.role == "haproxy_entry"
-        and "verify" in operations
-        or new.transport == "hysteria2"
-        and "verify" in operations
+        new.role in ENTRY_ROLES and "verify" in operations or new.transport == "hysteria2" and "verify" in operations
     )
     async with AsyncExitStack() as stack:
         panel = await stack.enter_async_context(InstallerPanel(old, checkpoint=checkpoint)) if panel_needed else None
@@ -1677,6 +1974,7 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
             checking.addons = [addon for addon in new.addons if addon not in old.addons]
             checking.shaping = new.shaping if "shaping" in changed else {}
             await preflight(remote, checking)
+        routes_checked = False
         for step in operations:
             if step in edit["done"]:
                 continue
@@ -1693,11 +1991,20 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
                     await check_origin_dns(new)
                 await prepare_remote_changes(remote, previous, new, artifacts, changed, checkpoint=checkpoint)
             elif step == "cascade":
-                await _prepare_cascade_routes(snapshot, new, artifacts, checkpoint, panel, previous=previous, log=log)
+                await _prepare_cascade_routes(
+                    snapshot, new, artifacts, checkpoint, panel, previous=previous, log=log, remote=remote
+                )
+                routes_checked = remote is not None
             elif step == "profile":
+                if remote and new.role in ENTRY_ROLES and not routes_checked:
+                    await _check_cascade_routes(remote, new, artifacts, snapshot=snapshot, panel=panel)
+                    routes_checked = True
                 await panel.update_profile(new, artifacts, build_profile(new, artifacts), previous_spec=previous)
             elif step == "remote":
+                if new.role in ENTRY_ROLES and not routes_checked:
+                    await _check_cascade_routes(remote, new, artifacts, snapshot=snapshot, panel=panel)
                 await apply_remote_changes(remote, previous, new, artifacts, changed, log, checkpoint=checkpoint)
+                routes_checked = False
                 if "addons" in changed and artifacts.get("profile_uuid"):
                     await panel.update_profile(new, artifacts, build_profile(new, artifacts), previous_spec=new)
             elif step == "node":
@@ -1707,6 +2014,8 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
                     previous, new, secrets, artifacts, checkpoint, allow_recreate=edit["requires_replacement"]
                 )
             elif step == "verify":
+                if new.role in ENTRY_ROLES:
+                    await _check_cascade_routes(remote, new, artifacts, snapshot=snapshot, panel=panel)
                 if not await panel.check_online(new, artifacts):
                     started = edit.setdefault("verify_started_at", time.time())
                     await checkpoint(artifacts)
@@ -1753,8 +2062,44 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
     return {"params": new.to_dict(), "fingerprint": new.fingerprint(), "resume_install": edit["resume_install"]}
 
 
-async def _prepare_cascade_routes(snapshot, spec, artifacts, checkpoint, panel, *, previous=None, log=None) -> None:
+async def _check_cascade_targets(snapshot: dict, spec: InstallSpec, remote=None, panel=None) -> dict:
+    """Проверяет все выходы до изменения действующих хостов и доступов."""
+    targets = {}
+
+    async def checked(_state):
+        return None
+
+    for route in spec.cascade_specs():
+        target = await _snapshot(route.exit_install_id, snapshot["owner_id"], include_secrets=False)
+        target_spec = InstallSpec.from_dict(target["params"])
+        if route.role == "haproxy_entry":
+            scratch = {}
+            await _prepare_haproxy_target(snapshot, route, scratch, checked, target_snapshot=target)
+            if panel is not None and not await panel.check_online(route, scratch):
+                raise InstallError("cascade", "Выходная нода HAProxy сейчас недоступна", retryable=False)
+        else:
+            if (
+                target["status"] not in {"succeeded", "warning"}
+                or target_spec.role != "exit"
+                or target_spec.address == route.address
+            ):
+                raise InstallError("cascade", "Выберите установленный выход каскада на другом сервере", retryable=False)
+            _validate_cascade_addresses(route, target_spec)
+            if panel is not None:
+                await panel.check_cascade_exit(target_spec, target["artifacts"])
+        if remote is not None:
+            from .remote import check_cascade_connection
+
+            await check_cascade_connection(remote, route, target_spec.transit_address(), target_spec.client_port)
+        targets[route.exit_install_id] = target
+    return targets
+
+
+async def _prepare_cascade_routes(
+    snapshot, spec, artifacts, checkpoint, panel, *, previous=None, log=None, remote=None
+) -> None:
     """Подготавливает выходы и сохраняет каждый маршрут в общем снимке."""
+    targets = await _check_cascade_targets(snapshot, spec, remote, panel)
     routes = spec.cascade_specs()
     scopes = artifacts.setdefault("cascade_routes", {}) if spec.cascade_routes else artifacts.get("cascade_routes", {})
     current = {route.exit_install_id: route for route in routes}
@@ -1802,9 +2147,11 @@ async def _prepare_cascade_routes(snapshot, spec, artifacts, checkpoint, panel, 
                 state["exit_install_id"] = route.exit_install_id
                 state["params"] = route.to_dict()
             if route.role == "haproxy_entry":
-                await _prepare_haproxy_target(snapshot, route, state, save_root)
+                await _prepare_haproxy_target(
+                    snapshot, route, state, save_root, target_snapshot=targets[route.exit_install_id]
+                )
                 continue
-            exit_snapshot = await _snapshot(route.exit_install_id, snapshot["owner_id"])
+            exit_snapshot = targets[route.exit_install_id]
             exit_spec = InstallSpec.from_dict(exit_snapshot["params"])
             if (
                 exit_snapshot["status"] not in {"succeeded", "warning"}
@@ -1812,6 +2159,7 @@ async def _prepare_cascade_routes(snapshot, spec, artifacts, checkpoint, panel, 
                 or exit_spec.address == route.address
             ):
                 raise InstallError("cascade", "Выберите установленный выход каскада на другом сервере", retryable=False)
+            _validate_cascade_addresses(route, exit_spec)
             existing = state.get("cascade")
             if existing and (
                 existing.get("exit_install_id") not in (None, route.exit_install_id)
@@ -1833,15 +2181,19 @@ async def _prepare_cascade_routes(snapshot, spec, artifacts, checkpoint, panel, 
         panel.checkpoint = callback
 
 
-async def _prepare_haproxy_target(snapshot: dict, spec: InstallSpec, artifacts: dict, checkpoint) -> None:
+async def _prepare_haproxy_target(
+    snapshot: dict, spec: InstallSpec, artifacts: dict, checkpoint, *, target_snapshot: dict | None = None
+) -> None:
     """Закрепляет проверенный выход, сохраняя прежние цели для восстановления."""
     from .panel import _uuid
 
     if spec.role != "haproxy_entry" or not spec.exit_install_id or spec.exit_install_id == snapshot["id"]:
         raise InstallError("cascade", "Выберите отдельный установленный выход HAProxy", retryable=False)
-    target_snapshot = await _snapshot(spec.exit_install_id, snapshot["owner_id"], include_secrets=False)
+    if target_snapshot is None:
+        target_snapshot = await _snapshot(spec.exit_install_id, snapshot["owner_id"], include_secrets=False)
     target_spec = InstallSpec.from_dict(target_snapshot["params"])
     target_artifacts = target_snapshot["artifacts"]
+    _validate_cascade_addresses(spec, target_spec)
     if (
         target_snapshot["status"] not in {"succeeded", "warning"}
         or target_spec.role != "haproxy_exit"
@@ -1854,7 +2206,8 @@ async def _prepare_haproxy_target(snapshot: dict, spec: InstallSpec, artifacts: 
         or spec.squad_uuid != target_spec.squad_uuid
         or target_artifacts.get("squad_uuid") != target_spec.squad_uuid
         or not any(
-            ipaddress.ip_address(spec.address) in ipaddress.ip_network(source) for source in target_spec.haproxy_sources
+            ipaddress.ip_address(spec.transit_address()) in ipaddress.ip_network(source)
+            for source in target_spec.haproxy_sources
         )
     ):
         raise InstallError(
@@ -1870,15 +2223,20 @@ async def _prepare_haproxy_target(snapshot: dict, spec: InstallSpec, artifacts: 
         is not True
     ):
         raise InstallError("cascade", "Выход HAProxy не подтвердил приём PROXY protocol", retryable=False)
+    if not all(target_artifacts.get(key) for key in ("public_key", "short_id")):
+        raise InstallError("cascade", "Не сохранены ключи Reality выходной ноды HAProxy", retryable=False)
     target = {
         "exit_install_id": target_snapshot["id"],
         "panel_ref": target_spec.panel_ref,
         "name": target_spec.name,
-        "address": target_spec.address,
+        "address": target_spec.transit_address(),
+        "node_address": target_spec.address,
         "port": target_spec.client_port,
         "profile_uuid": _uuid(target_artifacts.get("profile_uuid"), "профиль выхода HAProxy"),
         "inbound_uuid": _uuid(target_artifacts.get("inbound_uuid"), "инбаунд выхода HAProxy"),
         "node_uuid": _uuid(target_artifacts.get("node_uuid"), "нода выхода HAProxy"),
+        "public_key": target_artifacts["public_key"],
+        "short_id": target_artifacts["short_id"],
         "reality_domain": target_spec.reality_domain,
         "squad_uuid": target_spec.squad_uuid,
     }
@@ -1889,6 +2247,21 @@ async def _prepare_haproxy_target(snapshot: dict, spec: InstallSpec, artifacts: 
             history.append(copy.deepcopy(previous))
     artifacts["haproxy"] = target
     await checkpoint(artifacts)
+
+
+async def _check_cascade_routes(
+    remote, spec: InstallSpec, artifacts: dict, *, snapshot: dict | None = None, panel=None
+) -> None:
+    """Проверяет новую связь между серверами до публикации профиля."""
+    if snapshot is not None:
+        await _check_cascade_targets(snapshot, spec, panel=panel)
+    for index, route in enumerate(spec.cascade_specs()):
+        state = artifacts if index == 0 else (artifacts.get("cascade_routes") or {}).get(route.exit_install_id, {})
+        target = state.get("haproxy" if route.role == "haproxy_entry" else "cascade") or {}
+        address = target.get("address", "")
+        from .remote import check_cascade_connection
+
+        await check_cascade_connection(remote, route, address, target.get("port"))
 
 
 async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
@@ -1922,7 +2295,7 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
             await check_origin_dns(spec)
             await prepare_exit_ip(remote, spec, artifacts, checkpoint=checkpoint)
             if spec.role in ENTRY_ROLES:
-                await _prepare_cascade_routes(snapshot, spec, artifacts, checkpoint, panel, log=log)
+                await _prepare_cascade_routes(snapshot, spec, artifacts, checkpoint, panel, log=log, remote=remote)
             confirmed_runtime = "docker" in artifacts["done"]
             previous_update = artifacts.get("node_image_update") or {}
             resuming_runtime = bool(
@@ -1993,6 +2366,8 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                 elif stage == "panel_host" and spec.publish_host:
                     if not verified_now and not await panel.check_online(spec, artifacts):
                         raise InstallError("verify", "Нода отключилась во время ожидания DNS; хост ещё не опубликован")
+                    if spec.role in ENTRY_ROLES and not verified_now:
+                        await _check_cascade_routes(remote, spec, artifacts, snapshot=snapshot, panel=panel)
                     if spec.role == "haproxy_entry":
                         from .haproxy import check_haproxy
 
@@ -2000,6 +2375,8 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                         await panel.add_to_squad(spec, artifacts)
                     await panel.ensure_host(spec, artifacts)
                 elif stage == "verify":
+                    if spec.role in ENTRY_ROLES:
+                        await _check_cascade_routes(remote, spec, artifacts, snapshot=snapshot, panel=panel)
                     if not await panel.check_online(spec, artifacts):
                         started = artifacts.setdefault("verify_started_at", time.time())
                         await checkpoint(artifacts)
@@ -2058,7 +2435,7 @@ async def _cleanup_cascade_contexts(snapshot: dict, checkpoint) -> None:
                 if params.get("role") != "exit":
                     continue
                 candidates.append({
-                    "address": params.get("address"),
+                    "address": params.get("cascade_address") or params.get("address"),
                     "port": params.get("client_port", 443),
                     "public_key": saved.get("public_key"),
                     "panel_ref": params.get("panel_ref"),
@@ -2262,6 +2639,33 @@ async def process_job(job_id: str, bot=None) -> None:
             await session.commit()
             return
         deletion = _deleting(row)
+        if deletion:
+            artifacts = {}
+            with suppress(InstallError):
+                artifacts = vault.open(row.id, row.encrypted_artifacts)
+            cleanup = artifacts.get("deletion") or {}
+            waiting = cleanup.get("wait_for") or []
+            if waiting:
+                dependencies = (
+                    (await session.execute(select(RemnawaveInstall).where(RemnawaveInstall.id.in_(waiting))))
+                    .scalars()
+                    .all()
+                )
+                if dependencies:
+                    blocked = any(
+                        not _pending_batch_dependency(row, dependency, cleanup.get("batch_id"))
+                        for dependency in dependencies
+                    )
+                    row.stage = "delete:waiting"
+                    row.status = "failed" if blocked else "queued"
+                    row.next_retry_at = None if blocked else now + timedelta(seconds=10)
+                    row.error = (
+                        "Сначала завершите удаление входных нод этой пачки, затем повторите удаление выхода"
+                        if blocked
+                        else None
+                    )
+                    await session.commit()
+                    return
         if len(paired) == 2 and row.id == paired[0].id and not deletion:
             artifacts = vault.open(row.id, row.encrypted_artifacts)
             exit_row = paired[1]
@@ -2430,6 +2834,25 @@ async def process_job(job_id: str, bot=None) -> None:
             await _notify(bot, job_id)
 
 
+def _due_jobs_query(now: datetime):
+    """Выбирает готовые задачи раньше ожидающих удалений каскада."""
+    return (
+        select(RemnawaveInstall.id)
+        .where(
+            RemnawaveInstall.status.in_(_ACTIVE),
+            or_(RemnawaveInstall.status != "waiting_dns", RemnawaveInstall.next_retry_at.is_not(None)),
+            or_(RemnawaveInstall.lease_until.is_(None), RemnawaveInstall.lease_until <= now),
+            or_(RemnawaveInstall.next_retry_at.is_(None), RemnawaveInstall.next_retry_at <= now),
+        )
+        .order_by(
+            case((RemnawaveInstall.stage == "delete:waiting", 1), else_=0),
+            RemnawaveInstall.created_at,
+            RemnawaveInstall.id,
+        )
+        .limit(10)
+    )
+
+
 async def installer_loop(bot, sessionmaker=None) -> None:
     """Возобновляет устойчивую очередь и удаляет просроченные доступы."""
     from logger import logger
@@ -2453,28 +2876,7 @@ async def installer_loop(bot, sessionmaker=None) -> None:
                         )
                         .values(encrypted_secrets=None, secrets_expire_at=None)
                     )
-                    due = (
-                        (
-                            await session.execute(
-                                select(RemnawaveInstall.id)
-                                .where(
-                                    RemnawaveInstall.status.in_(_ACTIVE),
-                                    or_(
-                                        RemnawaveInstall.status != "waiting_dns",
-                                        RemnawaveInstall.next_retry_at.is_not(None),
-                                    ),
-                                    or_(RemnawaveInstall.lease_until.is_(None), RemnawaveInstall.lease_until <= now),
-                                    or_(
-                                        RemnawaveInstall.next_retry_at.is_(None), RemnawaveInstall.next_retry_at <= now
-                                    ),
-                                )
-                                .order_by(RemnawaveInstall.created_at)
-                                .limit(10)
-                            )
-                        )
-                        .scalars()
-                        .all()
-                    )
+                    due = (await session.execute(_due_jobs_query(now))).scalars().all()
                     await session.commit()
                 for job_id in due:
                     if len(active) >= 2:

@@ -343,13 +343,17 @@ async def set_password_for_identity(
     *,
     expected_email: str | None = None,
 ) -> Identity | None:
-    """Меняет пароль после проверки текущей привязки почты."""
+    """Меняет существующий пароль после проверки почты."""
     identity = await get_identity_by_id(session, identity_id)
     if not identity:
         return None
     password_hash = await run_cpu(hash_password, new_password)
     identity = (await _lock_identities(session, identity_id)).get(identity_id)
-    if identity is None or (expected_email is not None and identity.email != expected_email.strip().lower()):
+    if (
+        identity is None
+        or not identity.password_hash
+        or (expected_email is not None and identity.email != expected_email.strip().lower())
+    ):
         return None
     identity.password_hash = password_hash
     await session.flush()
@@ -717,9 +721,8 @@ async def _transfer_user_data(
                 setattr(dst_ban, field, getattr(src_ban, field))
 
     dst_block = (await session.execute(select(BlockedUser).where(BlockedUser.user_id == dst_uid))).scalar_one_or_none()
-    src_block = (await session.execute(select(BlockedUser).where(BlockedUser.user_id == src_uid))).scalar_one_or_none()
-    if src_block is not None and dst_block is None:
-        session.add(BlockedUser(user_id=dst_uid, tg_id=dst_tg))
+    if dst_block is not None and (dst_tg is None or dst_tg <= 0 or dst_block.tg_id != dst_tg):
+        await session.delete(dst_block)
 
     if dst_tg is not None and dst_tg > 0:
         await session.execute(

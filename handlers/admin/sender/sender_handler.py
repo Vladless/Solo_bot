@@ -10,8 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.executor import run_io, should_run_heavy_tasks_separately, spawn
-from database import async_session_maker, save_blocked_user_ids
-from database.bans import save_blocked_user_pairs
+from database import async_session_maker
 from database.broadcasts import get_broadcast_addresses
 from database.models import Server
 from database.scheduled_broadcasts import (
@@ -29,6 +28,7 @@ from filters.admin import IsAdminFilter
 from logger import logger
 from middlewares.session import release_session_early
 from settings.config import API_TOKEN
+from utils.telegram_delivery import blocked_observation_times
 
 from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
@@ -540,11 +540,19 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
     blocked_pairs = stats.get("blocked_user_pairs") or []
     paired_chats = {tg for _, tg in blocked_pairs}
     blocked_ids = [tg for tg in stats.get("blocked_user_ids", []) if tg not in paired_chats]
-    if blocked_ids or blocked_pairs:
+    reachable_at = blocked_observation_times(stats, "reachable_at")
+    if blocked_ids or blocked_pairs or reachable_at:
+        from database.bans import save_blocked_recipients
+
         try:
             async with async_session_maker() as db_session:
-                await save_blocked_user_ids(db_session, blocked_ids)
-                await save_blocked_user_pairs(db_session, blocked_pairs)
+                await save_blocked_recipients(
+                    db_session,
+                    blocked_ids,
+                    blocked_pairs,
+                    observed_at=blocked_observation_times(stats),
+                    reachable_at=reachable_at,
+                )
                 await db_session.commit()
         except Exception as e:
             logger.error(f"❌ Ошибка при сохранении заблокированных пользователей: {e}")

@@ -5,7 +5,16 @@ import re
 import shlex
 
 from .psiphon import public_psiphon_config
-from .remote import APT, ROOT, RemoteServer, _ufw_rules, claim_paths, transport_bindings, transport_ports
+from .remote import (
+    APT,
+    ROOT,
+    RemoteServer,
+    _ufw_rules,
+    check_cascade_ufw,
+    claim_paths,
+    transport_bindings,
+    transport_ports,
+)
 from .types import InstallError, InstallSpec
 
 
@@ -419,6 +428,7 @@ async def _nft_service(remote: RemoteServer, name: str, rules: str) -> None:
 
 async def _ufw(remote: RemoteServer, spec: InstallSpec, artifacts: dict, checkpoint) -> None:
     """Включает UFW, сохраняя SSH и порты установщика."""
+    await check_cascade_ufw(remote, spec, enabling=True)
     if "ufw_was_active" not in artifacts:
         previous = await remote.run("if command -v ufw >/dev/null; then LC_ALL=C ufw status; fi", step="ufw")
         artifacts["ufw_was_active"] = "Status: active" in previous

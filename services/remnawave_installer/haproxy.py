@@ -51,6 +51,10 @@ def _route_targets(spec: InstallSpec, artifacts: dict) -> list[tuple[InstallSpec
             raise InstallError("haproxy", "Некорректный или повторяющийся клиентский порт HAProxy", retryable=False)
         child = artifacts if index == 0 else children.get(route.exit_install_id, {})
         address, port = _target(child)
+        if ipaddress.ip_address(spec.transit_address()).version != ipaddress.ip_address(address).version:
+            raise InstallError(
+                "haproxy", "IP связи входа и выхода каскада должны быть одной версии: IPv4 или IPv6", retryable=False
+            )
         ports.add(route.client_port)
         result.append((route, address, port))
     return result
@@ -76,12 +80,21 @@ def build_haproxy_config(spec: InstallSpec, artifacts: dict) -> str:
     for index, (route, address, port) in enumerate(routes):
         name = "reality" if index == 0 else f"reality_{route.client_port}"
         endpoint = f"[{address}]:{port}" if ipaddress.ip_address(address).version == 6 else f"{address}:{port}"
+        source = ""
+        if spec.cascade_address:
+            source_address = (
+                f"ipv6@[{spec.cascade_address}]"
+                if ipaddress.ip_address(spec.cascade_address).version == 6
+                else f"ipv4@{spec.cascade_address}"
+            )
+            source = f"    source {source_address}\n"
         config += (
             f"frontend {name}\n"
             f"    bind 0.0.0.0:{route.client_port}\n"
             f"    bind [::]:{route.client_port} v6only\n"
             f"    default_backend {name}_exit\n"
             f"backend {name}_exit\n"
+            f"{source}"
             f"    server exit {endpoint} send-proxy-v2 check inter 5s fall 3 rise 2\n"
         )
     return config
@@ -114,7 +127,7 @@ async def check_haproxy(remote: RemoteServer, spec: InstallSpec, artifacts: dict
     expected = hashlib.sha256(build_haproxy_config(spec, artifacts).encode()).hexdigest()
     script = (
         "import hashlib,json,socket,subprocess,sys\n"
-        "owner,expected,targets=sys.argv[1:]\n"
+        "owner,expected,source,targets=sys.argv[1:]\n"
         f"data=json.loads(subprocess.run(['docker','inspect',{HAPROXY_CONTAINER!r}],capture_output=True,check=True).stdout)[0]\n"
         "if (data.get('Config',{}).get('Labels') or {}).get('io.solobot.remnawave.owner')!=owner: raise SystemExit(33)\n"
         "if not data.get('State',{}).get('Running'): raise SystemExit(34)\n"
@@ -126,11 +139,11 @@ async def check_haproxy(remote: RemoteServer, spec: InstallSpec, artifacts: dict
         "if hashlib.sha256(runtime.stdout).hexdigest()!=expected: raise SystemExit(37)\n"
         f"subprocess.run(['docker','exec',{HAPROXY_CONTAINER!r},'haproxy','-c','-f','/usr/local/etc/haproxy/haproxy.cfg'],check=True,capture_output=True)\n"
         "for address,port in json.loads(targets):\n"
-        " with socket.create_connection((address,int(port)),timeout=10): pass\n"
+        " with socket.create_connection((address,int(port)),timeout=10,source_address=(source,0) if source else None): pass\n"
     )
     targets = json.dumps([[address, port] for _route, address, port in routes])
     await remote.run(
-        f"python3 -c {shlex.quote(script)} {owner_id(spec)} {expected} {shlex.quote(targets)}",
+        f"python3 -c {shlex.quote(script)} {owner_id(spec)} {expected} {shlex.quote(spec.cascade_address)} {shlex.quote(targets)}",
         step="haproxy_verify",
         timeout=30,
     )

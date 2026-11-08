@@ -249,6 +249,11 @@ async def process_start_logic(
         if await handle_cabinet_tab_link(message, tl[4:]):
             return
 
+    if MODES_CONFIG.get("WEBAPP_ONLY_MODE", False):
+        if await show_webapp_only_start(message, os.path.join("img", "pic.jpg")):
+            await release_session_early(session)
+            return
+
     trial_key = await get_or_load_user_snapshot(session, user_snapshot, user_data["tg_id"])
     trial = 0
     key_count = 0

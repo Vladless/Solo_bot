@@ -19,8 +19,9 @@ from database.kassa2328 import load_order
 from database.keys import get_key_by_email, get_key_by_server
 from database.payments import resolve_payment_creation_owner
 from database.temporary_data import get_temporary_data
-from handlers.keys.view.payload import build_key_view_message, send_key_info
+from handlers.keys.view.payload import build_key_view_message
 from handlers.notifications.webapp_only import webapp_only_markup
+from handlers.payments.completion import notify_completed_addons, notify_completed_checkout
 from handlers.payments.constants import ALLOWED_TEMP_PAYMENT_STATES
 from handlers.payments.keyboards import (
     back_keyboard,
@@ -354,7 +355,7 @@ async def handle_custom_amount_input_kassa2328(event: CallbackQuery, session: As
 
 
 async def notify_checkout_completed(session: AsyncSession, owner: int, intent: dict, result: dict) -> None:
-    """Показывает подписку или ссылку уже оплаченного подарка."""
+    """Показывает результат оплаченной операции или ссылку подарка."""
     data = intent.get("data") or {}
     if (
         result.get("status") != "applied"
@@ -401,8 +402,11 @@ async def notify_checkout_completed(session: AsyncSession, owner: int, intent: d
     if key is None:
         logger.warning("[2328] Подписка оплаченного заказа не найдена у владельца {}", int(owner_id))
         return
+    if intent.get("state") == "waiting_for_renewal_payment":
+        await notify_completed_checkout(session, owner_id, "key_renewal", key.client_id)
+        return
     if intent.get("state") == "waiting_for_addons_payment":
-        await send_key_info(bot, session, owner_id, key.email)
+        await notify_completed_addons(session, owner_id, key.client_id, pack_mode=bool(data.get("pack_mode")))
         return
     text, keyboard = await build_key_view_message(session=session, email=key.email)
     await bot.send_message(chat_id=chat_id, text=text, reply_markup=webapp_only_markup() or keyboard)

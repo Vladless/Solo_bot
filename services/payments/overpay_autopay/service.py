@@ -803,6 +803,10 @@ async def _complete_attempt(session, owner, amount, payment_row, *, attempt_id: 
     attempt.payment_finalized = True
     await session.flush()
 
+    if completed_client_id and completed_flow == "key_addons":
+        return CheckoutCompletion(
+            completed_flow, completed_client_id, addon_pack_mode=bool((checkout.get("data") or {}).get("pack_mode"))
+        )
     if completed_client_id and completed_flow in {"tariff_purchase", "trial_purchase", "key_renewal"}:
         return CheckoutCompletion(completed_flow, completed_client_id)
     return completed_flow if completed_flow != "balance_topup" else None

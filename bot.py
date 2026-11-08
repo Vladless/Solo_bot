@@ -1,7 +1,7 @@
 from importlib import import_module
 
 
-version = "6.1-b3110261453"
+version = "6.0.1-0811262309"
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties

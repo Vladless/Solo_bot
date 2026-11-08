@@ -283,7 +283,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
             str(server_name),
             client_id,
             username=str(record.get("email") or "") or None,
-            subscription_url=record.get("remnawave_link") or record.get("link"),
+            subscription_url=record.get("remnawave_link"),
         )
         if profile:
             hwid_count = profile.get("hwid_count")
@@ -536,7 +536,7 @@ async def _build_single_subscription_text(
                     str(key.server_id),
                     key.client_id,
                     username=key.email,
-                    subscription_url=key.remnawave_link or key.key,
+                    subscription_url=key.remnawave_link,
                 )
                 if isinstance(profile, dict):
                     hwid_count = profile.get("hwid_count")
@@ -668,7 +668,7 @@ async def _render_my_devices(
         timeout_sec=10.0,
         client_id=client_id,
         username=key_email,
-        subscription_url=record.get("remnawave_link") or record.get("link"),
+        subscription_url=record.get("remnawave_link"),
     )
     if devices is None:
         await safe_answer_callback(callback_query, MY_DEVICES_UNAVAILABLE_TEXT, show_alert=True)

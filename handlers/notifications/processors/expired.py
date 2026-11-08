@@ -13,8 +13,9 @@ from database import (
     get_last_notification_times_bulk,
 )
 from database.access.resolution import UserId
+from database.bans import telegram_chat_blocked
 from database.keys import lock_owned_key_for_operation, resolve_key_operation_owner
-from database.models import Key
+from database.models import Key, User
 from database.models.users import BlockedUser, ManualBan
 from database.web_notifications import notify_web
 from handlers.notifications.context import NotificationContext
@@ -234,17 +235,21 @@ async def process_expired_keys(
 
 
 async def _get_blocked_expired_keys(session, current_time: int) -> list:
-    stmt = select(Key).where(
-        Key.is_frozen.is_(False),
-        Key.expiry_time.isnot(None),
-        Key.expiry_time < current_time,
-        or_(
-            exists().where(BlockedUser.user_id == Key.user_id),
-            exists().where(
-                ManualBan.user_id == Key.user_id,
-                or_(ManualBan.until.is_(None), ManualBan.until > datetime.now(timezone.utc)),
+    stmt = (
+        select(Key)
+        .join(User, User.id == Key.user_id)
+        .where(
+            Key.is_frozen.is_(False),
+            Key.expiry_time.isnot(None),
+            Key.expiry_time < current_time,
+            or_(
+                telegram_chat_blocked(User.id, User.tg_id),
+                exists().where(
+                    ManualBan.user_id == Key.user_id,
+                    or_(ManualBan.until.is_(None), ManualBan.until > datetime.now(timezone.utc)),
+                ),
             ),
-        ),
+        )
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())

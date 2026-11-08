@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_all_keys
 from database.access.resolution import UserId
+from database.bans import telegram_chat_blocked
 from database.models import Key, Tariff, User
 from database.models.users import BlockedUser, ManualBan
 from logger import logger
@@ -23,7 +24,7 @@ async def preload_notification_data(session: AsyncSession) -> dict:
         .outerjoin(User, Key.user_id == User.id)
         .where(
             Key.is_frozen.is_(False),
-            ~exists().where(BlockedUser.user_id == Key.user_id),
+            ~telegram_chat_blocked(User.id, User.tg_id),
             ~exists().where(
                 ManualBan.user_id == Key.user_id,
                 or_(ManualBan.until.is_(None), ManualBan.until > datetime.now(timezone.utc)),

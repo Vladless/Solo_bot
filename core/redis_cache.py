@@ -174,9 +174,18 @@ async def cache_incr_checked(key: str, ttl_sec: float) -> tuple[int, bool]:
     if client is None:
         return 1, False
     try:
-        value = await client.incr(key)
-        if value == 1:
-            await client.expire(key, max(1, int(ttl_sec)))
+        value = await client.eval(
+            """
+            local value = redis.call('INCR', KEYS[1])
+            if redis.call('PTTL', KEYS[1]) < 0 then
+                redis.call('EXPIRE', KEYS[1], ARGV[1])
+            end
+            return value
+            """,
+            1,
+            key,
+            max(1, int(ttl_sec)),
+        )
         return int(value), True
     except Exception:
         return 1, False
@@ -223,17 +232,19 @@ async def cache_expire(key: str, ttl_sec: int) -> bool:
         return False
 
 
-async def cache_lrange(key: str, start: int, end: int) -> list[Any]:
+async def cache_lrange(key: str, start: int, end: int, *, raw: bool = False) -> list[Any]:
     """Возвращает срез списка. end=-1 — до конца. Элементы десериализуются из JSON."""
     client = await _get_redis()
     if client is None:
         return []
     try:
+        if raw:
+            return list(await client.execute_command("LRANGE", key, start, end, NEVER_DECODE=True))
         raw_list = await client.lrange(key, start, end)
         out = []
-        for raw in raw_list:
+        for value in raw_list:
             try:
-                out.append(json.loads(raw))
+                out.append(json.loads(value))
             except Exception:
                 pass
         return out
@@ -300,6 +311,40 @@ async def cache_lmove_batch(source: str, destination: str, count: int) -> list[A
     except Exception as exc:
         logger.warning(f"[Redis] lmove_batch({source}->{destination}) не удался: {exc}")
         return []
+
+
+async def cache_lack_batch(key: str, values: list[Any], *, raw: bool = False) -> bool:
+    """Подтверждает обработку только неизменившегося начала списка."""
+    if not values:
+        return True
+    client = await _get_redis()
+    if client is None:
+        return False
+    try:
+        expected = list(values) if raw else [json.dumps(value, ensure_ascii=False) for value in values]
+        result = await client.eval(
+            """
+            local count = #ARGV
+            local current = redis.call('LRANGE', KEYS[1], 0, count - 1)
+            if #current ~= count then
+                return 0
+            end
+            for i = 1, count do
+                if current[i] ~= ARGV[i] then
+                    return 0
+                end
+            end
+            redis.call('LTRIM', KEYS[1], count, -1)
+            return 1
+            """,
+            1,
+            key,
+            *expected,
+        )
+        return bool(result)
+    except Exception as exc:
+        logger.warning(f"[Redis] lack_batch({key}) не удался: {exc}")
+        return False
 
 
 async def cache_publish(channel: str, payload: Any, *, strict: bool = False) -> int:

@@ -5,11 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.access.resolution import TelegramId, UserId, public_tg_id
+from database.bans import telegram_chat_blocked
 from database.models import BlockedUser, Identity, Key, ManualBan, Payment, Server, Tariff, User
 
 
 def _not_banned(user_id_col):
-    return ~exists().where(BlockedUser.user_id == user_id_col) & ~exists().where(
+    return ~telegram_chat_blocked(user_id_col, User.tg_id) & ~exists().where(
         ManualBan.user_id == user_id_col,
         (ManualBan.until.is_(None)) | (ManualBan.until > datetime.now(timezone.utc)),
     )
@@ -123,7 +124,7 @@ async def get_recipients(
             .select_from(unsub_base)
             .where(*unsub_tg_filters)
             .where(
-                ~exists().where(BlockedUser.user_id == unsub_base.c.uid),
+                ~telegram_chat_blocked(unsub_base.c.uid, unsub_base.c.tg_id),
                 ~exists().where(
                     ManualBan.user_id == unsub_base.c.uid,
                     (ManualBan.until.is_(None)) | (ManualBan.until > datetime.now(timezone.utc)),

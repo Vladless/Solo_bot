@@ -437,8 +437,8 @@ async def extend_client_key(
         return False
 
 
-async def _client_is_detached(xui: AsyncApi, inbound_id: int, email: str, client_id: str) -> bool:
-    """Подтверждает отсутствие клиента или его связи с входящим подключением."""
+async def _client_is_absent(xui: AsyncApi, email: str, client_id: str) -> bool:
+    """Подтверждает отсутствие клиента по полной выдаче панели."""
     rows = await _panel_request(xui, "panel/api/clients/list")
     if not isinstance(rows, list):
         return False
@@ -457,7 +457,7 @@ async def _client_is_detached(xui: AsyncApi, inbound_id: int, email: str, client
             if row["email"] != email or row["uuid"] != client_id or match is not None:
                 return False
             match = row
-    return match is None or int(inbound_id) not in (match.get("inboundIds") or [])
+    return match is None
 
 
 async def delete_client(
@@ -466,42 +466,53 @@ async def delete_client(
     email: str,
     client_id: str,
 ) -> bool:
-    """Отсоединяет клиента и подтверждает отсутствие его связи."""
-    try:
+    """Отсоединяет клиента и удаляет запись без оставшихся подключений."""
+
+    async def read_inbounds() -> list[int] | None:
         try:
             obj = await _panel_request(xui, f"panel/api/clients/get/{quote(email, safe='')}")
         except httpx.HTTPStatusError as error:
-            if error.response.status_code != 404 or not await _client_is_detached(xui, inbound_id, email, client_id):
-                return False
-            _inbound_cache.pop(f"{id(xui)}|{inbound_id}", None)
-            return True
+            if error.response.status_code != 404:
+                raise
+            if await _client_is_absent(xui, email, client_id):
+                return None
+            raise
         except json.JSONDecodeError:
-            return False
+            raise
         except ValueError:
-            if not await _client_is_detached(xui, inbound_id, email, client_id):
-                return False
-            _inbound_cache.pop(f"{id(xui)}|{inbound_id}", None)
-            return True
+            if await _client_is_absent(xui, email, client_id):
+                return None
+            raise
         if not isinstance(obj, dict) or not isinstance(obj.get("client"), dict):
-            return False
+            raise ValueError("3x-ui: некорректные данные клиента")
         if "inboundIds" not in obj:
-            return False
+            raise ValueError("3x-ui: не получены входящие подключения клиента")
         record, inbound_ids = obj["client"], obj.get("inboundIds")
         if record.get("email") != email or record.get("uuid") != client_id:
-            return False
+            raise ValueError("3x-ui: идентификаторы клиента не совпадают")
         if inbound_ids is not None and (
             not isinstance(inbound_ids, list) or any(type(value) is not int or value <= 0 for value in inbound_ids)
         ):
-            return False
-        if int(inbound_id) not in (inbound_ids or []):
+            raise ValueError("3x-ui: некорректные входящие подключения клиента")
+        return inbound_ids or []
+
+    try:
+        inbound_ids = await read_inbounds()
+        if inbound_ids is not None and int(inbound_id) in inbound_ids:
+            await _panel_request(
+                xui,
+                f"panel/api/clients/{quote(email, safe='')}/detach",
+                method="POST",
+                data={"inboundIds": [int(inbound_id)]},
+            )
             _inbound_cache.pop(f"{id(xui)}|{inbound_id}", None)
-            return True
-        await _panel_request(
-            xui,
-            f"panel/api/clients/{quote(email, safe='')}/detach",
-            method="POST",
-            data={"inboundIds": [int(inbound_id)]},
-        )
+            inbound_ids = await read_inbounds()
+            if inbound_ids is not None and int(inbound_id) in inbound_ids:
+                raise ValueError("3x-ui: панель не подтвердила отсоединение клиента")
+        if inbound_ids == []:
+            await _panel_request(xui, f"panel/api/clients/del/{quote(email, safe='')}", method="POST")
+            if not await _client_is_absent(xui, email, client_id):
+                raise ValueError("3x-ui: панель не подтвердила удаление клиента")
         _inbound_cache.pop(f"{id(xui)}|{inbound_id}", None)
         logger.info(f"Клиент с ID {client_id} удалён из inbound {inbound_id}")
         return True

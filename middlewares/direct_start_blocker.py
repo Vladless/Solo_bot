@@ -54,12 +54,8 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
 
         tg_id = message.from_user.id
         text = message.text.strip()
-        user_in_data = bool(data.get("user"))
 
         async def user_exists_cached() -> bool:
-            if user_in_data:
-                return True
-
             cached = await cache_get(cache_key("direct_start_user_exists", "tg", tg_id))
             if isinstance(cached, bool):
                 return cached

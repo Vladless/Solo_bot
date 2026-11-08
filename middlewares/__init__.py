@@ -17,6 +17,7 @@ from .maintenance import MaintenanceModeMiddleware
 from .probe import MiddlewareProbe, StreamProbeMiddleware, TailHandlerProbe
 from .runtime_config_sync import RuntimeConfigSyncMiddleware
 from .session import SessionMiddleware
+from .telegram_reachability import TelegramReachabilityMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
 
@@ -70,6 +71,12 @@ def register_middleware(
         dispatcher.update.outer_middleware(wrap(RuntimeConfigSyncMiddleware(), "runtime_config_sync"))
     if sessionmaker and middleware_enabled("concurrency"):
         dispatcher.update.outer_middleware(wrap(ConcurrencyLimiterMiddleware(), "concurrency"))
+    if middlewares is None and middleware_enabled("user"):
+        dispatcher.update.outer_middleware(wrap(UserMiddleware(sessionmaker=sessionmaker), "user"))
+    if sessionmaker and middleware_enabled("telegram_reachability"):
+        dispatcher.update.outer_middleware(
+            wrap(TelegramReachabilityMiddleware(sessionmaker=sessionmaker), "telegram_reachability")
+        )
     if sessionmaker and middleware_enabled("session"):
         dispatcher.update.outer_middleware(wrap(SessionMiddleware(sessionmaker), "session"))
     if middleware_enabled("ban_checker"):
@@ -87,7 +94,6 @@ def register_middleware(
         available_middlewares = {
             "logging": LoggingMiddleware(sessionmaker) if sessionmaker else LoggingMiddleware(),
             "throttling": ThrottlingMiddleware(),
-            "user": UserMiddleware(),
             "actor": ActorMiddleware(),
         }
         middlewares = [wrap(mw, name) for name, mw in available_middlewares.items() if middleware_enabled(name)]

@@ -314,6 +314,8 @@ async def complete_first_payment(session: AsyncSession, owner: UserId, amount: f
     row.metadata_ = metadata
     await session.flush()
     flow = checkout_flow(checkout)
+    if client_id and flow == "key_addons":
+        return CheckoutCompletion(flow, client_id, addon_pack_mode=bool((checkout.get("data") or {}).get("pack_mode")))
     return CheckoutCompletion(flow, client_id) if client_id else None
 
 

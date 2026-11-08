@@ -78,6 +78,14 @@ class BlockedUser(DictLikeMixin, Base):
     tg_id = Column(BigInteger, nullable=True, index=True)
 
 
+class TelegramChatStatus(DictLikeMixin, Base):
+    __tablename__ = "telegram_chat_status"
+
+    tg_id = Column(BigInteger, primary_key=True, nullable=False, autoincrement=False)
+    is_blocked = Column(Boolean, nullable=False)
+    observed_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class TrackingSource(DictLikeMixin, Base):
     __tablename__ = "tracking_sources"
 

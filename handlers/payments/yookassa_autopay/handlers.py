@@ -6,7 +6,7 @@ from decimal import Decimal
 from html import escape
 from typing import Any
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
@@ -41,7 +41,6 @@ from database.yookassa_autopay import (
 )
 from filters.admin import IsAdminFilter
 from handlers.admin.users.keyboard import AdminUserEditorCallback
-from handlers.keys.view.payload import send_key_info
 from handlers.payments.autopay_management import (
     AutopayManagementProvider,
     management_back_button,
@@ -51,6 +50,7 @@ from handlers.payments.autopay_management import (
     register_autopay_management,
     remember_management_checkout,
 )
+from handlers.payments.completion import notify_completed_addons
 from handlers.utils import edit_or_send_message
 from hooks.hooks import register_hook
 from logger import logger
@@ -83,8 +83,15 @@ YOOKASSA_AUTOPAY_RESOLVE_PROMPT = "Попытка: <code>{attempt_id}</code>\n\n
 YOOKASSA_AUTOPAY_RESOLVE_REOPEN = "Откройте незавершённую попытку в карточке клиента заново."
 
 
+async def notify_addons_completed(
+    bot_instance: Bot, session: AsyncSession, owner: int, client_id: str, *, pack_mode: bool
+) -> None:
+    """Подтверждает докупку после сохранённого уведомления ЮКассы."""
+    await notify_completed_addons(session, owner, client_id, pack_mode=pack_mode, bot_instance=bot_instance)
+
+
 router = Router(name="core_yookassa_autopay")
-register_addons_notifier(send_key_info)
+register_addons_notifier(notify_addons_completed)
 _PAGE_SIZE = 8
 _FLOW_BY_STATE = {
     "waiting_for_payment": "tariff_purchase",

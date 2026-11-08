@@ -23,7 +23,7 @@ from .tariffs import Tariff, TariffSubgroupSetting
 from .ticket_deliveries import TicketDelivery
 from .tickets import Ticket, TicketMessage, TicketTelegramMessage
 from .traffic_notifications import TrafficNotificationState
-from .users import BlockedUser, ManualBan, TemporaryData, TrackingSource, User
+from .users import BlockedUser, ManualBan, TelegramChatStatus, TemporaryData, TrackingSource, User
 from .web import (
     WebBlock,
     WebCustomElementBuild,
@@ -59,6 +59,7 @@ __all__ = [
     "ManualBan",
     "TemporaryData",
     "BlockedUser",
+    "TelegramChatStatus",
     "TrackingSource",
     "Key",
     "KeyTrafficHistory",

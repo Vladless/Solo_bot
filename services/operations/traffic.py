@@ -114,7 +114,7 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
         key = await get_key_details(session, email)
         subscription_url = None
         if key and key.get("user_id") == u.id and key.get("client_id") == remnawave_client_id:
-            subscription_url = key.get("remnawave_link") or key.get("link")
+            subscription_url = key.get("remnawave_link")
         profile = await get_remnawave_profile(
             session,
             str(remnawave_server_ref),
@@ -200,7 +200,7 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
                         fallback_any=False,
                         client_id=client_id,
                         username=email,
-                        subscription_url=key.get("remnawave_link") or key.get("link"),
+                        subscription_url=key.get("remnawave_link"),
                     )
                 )
                 resources.append((panel_type, traffic_resource_id(panel_type, api_url or ""), server_name))
