@@ -707,7 +707,14 @@ async def probe_host(job_id: str, owner_id: int, *, params: dict | None = None) 
     result = {"fingerprint": spec.host_fingerprint, "trusted": True, "authenticated": False, "params": spec.to_dict()}
     if snapshot["secrets"].get("ssh_password") or snapshot["secrets"].get("ssh_private_key"):
         async with RemoteServer(spec, snapshot["secrets"]) as remote:
-            result.update(await preflight(remote, spec))
+            try:
+                result.update(await preflight(remote, spec))
+            except InstallError as error:
+                raise InstallError(
+                    error.step,
+                    "Подключение и вход по SSH выполнены. Проверка готовности сервера: " + error.message,
+                    retryable=error.retryable,
+                ) from error
         result["authenticated"] = True
     return result
 

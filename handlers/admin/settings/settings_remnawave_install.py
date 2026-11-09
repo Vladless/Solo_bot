@@ -55,7 +55,7 @@ class InstallCallback(CallbackData, prefix="rwi"):
 
 FIELDS = {
     "nm": ("name", "Название ноды", "3–30 символов, включая кириллицу; без управляющих символов."),
-    "ip": ("address", "IP сервера", "Укажите IPv4 или IPv6 сервера."),
+    "ip": ("address", "IP сервера", "Укажите IPv4 или IPv6 для подключения бота к серверу по SSH."),
     "us": ("ssh_username", "SSH-логин", "Например: root."),
     "sp": ("ssh_port", "SSH-порт", "Целое число от 1 до 65535."),
     "np": ("node_port", "Порт управления нодой", "Обычно 2222/TCP; должен отличаться от SSH-порта."),
@@ -89,12 +89,17 @@ FIELDS = {
         "Название хоста",
         "До 100 символов; «-» использует название ноды. Имя новой ноды создаётся из названия хоста без эмодзи и сокращается до 30 символов.",
     ),
-    "ei": ("exit_ip", "Выходной IP", "Дополнительный IP сервера; «-» использует основной адрес."),
-    "ef": ("exit_interface", "Интерфейс выходного IP", "Например: eth0; «-» для автоматического определения."),
+    "ei": (
+        "exit_ip",
+        "IP для подключения к сайтам",
+        "Дополнительный IP этого сервера для подключения к сайтам; это не адрес другой ноды. "
+        "«-» оставляет обычный выход сервера.",
+    ),
+    "ef": ("exit_interface", "Интерфейс IP для сайтов", "Например: eth0; «-» для автоматического определения."),
     "ca": (
         "cascade_address",
         "IP связи между нодами",
-        "Собственный IPv4 или IPv6 этого сервера для связи с другой нодой; «-» использует основной IP. Адрес должен быть уже назначен серверу.",
+        "Собственный IPv4 или IPv6 этого сервера, уже назначенный ему у провайдера.",
     ),
     "fd": ("folder_id", "Каталог Яндекс Cloud", "ID каталога; «-» выберет первый доступный каталог."),
     "vp": (
@@ -284,7 +289,14 @@ async def _detach_progress(state: FSMContext, owner: int, job_id: str = "") -> N
 
 
 async def _report_error(
-    event, state: FSMContext, text: str, job_id: str = "", *, host_key_changed: bool = False, deleting: bool = False
+    event,
+    state: FSMContext,
+    text: str,
+    job_id: str = "",
+    *,
+    host_key_changed: bool = False,
+    deleting: bool = False,
+    checking_server: bool = False,
 ) -> None:
     """Показывает ошибку внутри меню, сохраняя возможность повторить ввод."""
     data = await state.get_data()
@@ -311,6 +323,8 @@ async def _report_error(
         if deleting
         else "<b>Изменился ключ сервера</b>"
         if host_key_changed
+        else "<b>Проверка SSH и готовности сервера</b>"
+        if checking_server
         else "<b>Не удалось сохранить настройку</b>",
         escape(text[:1000]),
     ]
@@ -524,11 +538,18 @@ async def _vk_auth_setup(event, state: FSMContext, job: dict) -> None:
     return await _step(event, state, job, "2")
 
 
+def _cascade_address_title(params: dict) -> str:
+    """Различает исходящий адрес входа и адрес назначения выхода."""
+    return "IP входа для каскада" if params["role"] in {"entry", "haproxy_entry"} else "IP выхода для каскада"
+
+
 def _field_button(builder, lines: list[str], params: dict, job_id: str, code: str) -> None:
     """Добавляет текущее значение и кнопку изменения поля."""
     field, title, _ = FIELDS[code]
     if code == "dm" and params["transport"] == "hysteria2":
         title = "Домен Hysteria2"
+    if code == "ca":
+        title = _cascade_address_title(params)
     value = params["cloud"].get(field) if code in {"fd", "vp"} else params[field]
     if code == "ca" and not value:
         value = params["address"]
@@ -539,9 +560,21 @@ def _field_button(builder, lines: list[str], params: dict, job_id: str, code: st
 def _cascade_address_field(builder, lines: list[str], params: dict, job_id: str) -> None:
     """Показывает отдельный адрес связи между серверами каскада."""
     _field_button(builder, lines, params, job_id, "ca")
+    entry = params["role"] in {"entry", "haproxy_entry"}
     lines.append(
-        "Для связи между нодами по IPv6 укажите собственный IPv6 на каждом сервере. "
-        "Клиенты могут подключаться ко входу по IPv4. Выходной IP для сайтов задаётся отдельно."
+        "Это IP входа, с которого он подключается к выходу. "
+        "Для связи по IPv6 укажите IPv6 входного сервера; IPv6 выхода задаётся на ноде 2."
+        if entry
+        else "Это IP выхода, к которому подключается вход. "
+        "Для связи по IPv6 укажите IPv6 выходного сервера, а не входа."
+    )
+    if entry and not params["cascade_address"]:
+        lines.append(
+            "Без отдельного адреса для доступа к выходу ожидается основной IP входа. Для отдельного IPv6 укажите его явно."
+        )
+    lines.append(
+        "Основной IPv4 для SSH и подключения клиентов можно оставить. "
+        "IP для подключения к сайтам — отдельная настройка."
     )
 
 
@@ -582,7 +615,8 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
             "Мастер запросит оба сервера по порядку.\n\n"
             "<b>VLESS</b> — соединение между входом и выходом через VLESS. "
             "Можно установить вход или выход; для подключения входа понадобится готовый выход.\n\n"
-            "В обоих вариантах можно оставить вход клиентов по IPv4 и задать IPv6 для связи между нодами.",
+            "Клиенты → вход → выход → сайты. Связь входа с выходом может работать по IPv6, "
+            "а SSH и подключение клиентов — по IPv4. Адреса связи между серверами задаются отдельно.",
             builder,
             state=state,
         )
@@ -591,19 +625,26 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
             return await _step(event, state, job, "2")
         await _reset_input(state, job_id=job["id"], step=step, wizard_step="2", server_field="ip")
         builder = InlineKeyboardBuilder()
+        lines = [
+            "<b>Каскад HAProxy · Связь серверов</b>",
+            f"Нода 1 — вход (SSH и клиенты): {_copyable(params['address'])}",
+            "",
+            "<b>1. Адрес входа для связи с выходом</b>",
+        ]
+        _cascade_address_field(builder, lines, params, job["id"])
+        lines.extend([
+            "",
+            "<b>2. Нода 2 — выход</b>",
+            "Установите новый выход или выберите готовый. На ноде 2 укажите её собственный IP для каскада.",
+            "",
+            "Пример связи по IPv6: <code>IPv6 входа → IPv6 выхода</code>. "
+            "На входе нужен свой IPv6 как источник соединения; на выходе он должен быть разрешён в списке входных IP.",
+        ])
         if pair:
             _button(builder, "Настроить ноду 2 — выход", "newexit", job["id"])
         else:
             _button(builder, "Установить новую ноду 2", "newexit", job["id"])
             _button(builder, "Выбрать готовый выход", "exits", job["id"])
-        lines = [
-            "<b>Каскад HAProxy · Нода 2 — выход</b>",
-            f"Нода 1 — вход: {_copyable(params['address'])}.",
-            "",
-            "Теперь укажите сервер выхода, который будет подключаться к сайтам. "
-            "Можно установить новый сервер или выбрать уже готовый выход этой панели.",
-        ]
-        _cascade_address_field(builder, lines, params, job["id"])
         _button(builder, "← Нода 1 — вход", "step", job["id"], "1")
         _button(builder, "Сохранить и закрыть", "show", job["id"])
         return await _send(
@@ -762,7 +803,9 @@ async def _step(event, state: FSMContext, job: dict, step: str = "1") -> None:
                 target = job.get("haproxy") or {}
                 lines.append(f"Выход HAProxy: {_copyable(target.get('name') or params['exit_install_id'])}")
                 if target.get("address"):
-                    lines.append(f"Адрес выхода: {_copyable(target['address'])}, порт {_copyable(target.get('port'))}")
+                    lines.append(
+                        f"IP выхода для каскада: {_copyable(target['address'])}, порт {_copyable(target.get('port'))}"
+                    )
                 if pair:
                     if not editing and job["cascade_exit"]["status"] == "draft":
                         _button(builder, "Настройки ноды 2 — выхода", "step", pair["exit_id"], "2")
@@ -958,7 +1001,7 @@ def _summary(job: dict) -> str:
         lines.insert(2, f"Имя ноды: {_copyable(name)}")
     if params["role"] != "normal":
         lines.append("Роль: " + ROLES[params["role"]])
-        lines.append("IP связи между нодами: " + _copyable(params["cascade_address"] or params["address"]))
+        lines.append(_cascade_address_title(params) + ": " + _copyable(params["cascade_address"] or params["address"]))
     if params["role"] == "haproxy_entry":
         target = job.get("haproxy") or {}
         lines.append(
@@ -966,9 +1009,11 @@ def _summary(job: dict) -> str:
             f"{_copyable(target.get('name') or params['exit_install_id'])}:{_copyable(target.get('port'))}"
         )
         if target.get("address"):
-            lines.append("IP выхода: " + _copyable(target["address"]))
+            lines.append("IP выхода для каскада: " + _copyable(target["address"]))
     elif params["role"] == "haproxy_exit":
         lines.append("Доверенные входы HAProxy: " + _copyable(params["haproxy_sources"]))
+    if params["exit_ip"]:
+        lines.append("IP для подключения к сайтам: " + _copyable(params["exit_ip"]))
     if params["client_port"] != 443 and not params["transport"].startswith("cdn_"):
         lines.append(f"Порт клиентов: {_copyable(params['client_port'])}")
     if params["transport"] in CERTIFICATE_TRANSPORTS:
@@ -1408,12 +1453,20 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
         _, title, hint = (SECRET_FIELDS if secret else FIELDS)[code]
     params = _params(job)
     if code == "ca":
+        title = _cascade_address_title(params)
         hint += (
-            " На входной ноде это адрес, с которого она соединяется с выходом. Для IPv6 укажите IPv6 входного сервера."
+            " Это IP входа, с которого он соединяется с выходом. Для IPv6 укажите IPv6 входного сервера, а не выходного."
             if params["role"] in {"entry", "haproxy_entry"}
-            else " На выходной ноде это адрес, к которому подключается вход. Для IPv6 укажите IPv6 выходного сервера."
+            else " Это IP выхода, к которому подключается вход. Для IPv6 укажите IPv6 выходного сервера, а не входного."
         )
-        hint += " Основной IP для SSH и подключения клиентов сохраняется."
+        if params["role"] == "haproxy_entry":
+            hint += " На выходе этот адрес входа должен быть разрешён в списке входных IP."
+        hint += (
+            " «-» — без отдельного исходящего IP; для доступа к выходу ожидается основной IP входа. Для отдельного IPv6 задайте его явно."
+            if params["role"] in {"entry", "haproxy_entry"}
+            else " «-» использует основной IP этого выходного сервера."
+        )
+        hint += " Основной IP для SSH и подключения клиентов сохраняется; менять его на IPv6 не нужно."
     if data.get("step") == "routes" and data.get("route_exit_id") and code in {"cp", "hr"}:
         title = "Порт входа для страны" if code == "cp" else "Название хоста страны"
         hint = (
@@ -1424,25 +1477,30 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
     if code == "ip" and params["role"] == "haproxy_exit":
         title = "IP сервера выхода HAProxy"
         hint = (
-            "Укажите IPv4 или IPv6 ноды 2 — выходного сервера, обычно за границей. "
+            "Укажите IP ноды 2 — выходного сервера для подключения бота по SSH. "
+            "Можно оставить IPv4: IPv6 для связи с входом задаётся отдельно в поле «IP выхода для каскада». "
             "IP ноды 1 уже добавлен в доверенные входы."
             if job.get("cascade_pair")
-            else "Укажите IPv4 или IPv6 выходного сервера, обычно за границей. IP входных серверов будут запрошены отдельно."
+            else "Укажите IP выходного сервера для подключения бота по SSH. Можно оставить IPv4: "
+            "IPv6 для связи с входом задаётся отдельно в поле «IP выхода для каскада». IP входных серверов будут запрошены отдельно."
         )
     elif code == "ip" and params["role"] == "haproxy_entry":
         title = "IP сервера входа HAProxy"
         hint = (
-            "Укажите IPv4 или IPv6 входного сервера, к которому будут подключаться клиенты, например в России. "
+            "Укажите основной IP входного сервера для SSH и подключения клиентов, например IPv4 сервера в России. "
+            "IPv6 для связи с выходом задаётся отдельно в поле «IP входа для каскада»; здесь можно оставить IPv4. "
             "Затем укажите ноду 2 — выход или выберите уже установленный выход."
         )
     elif code == "ip" and params["role"] in {"entry", "exit"}:
         entry = params["role"] == "entry"
         title = "IP сервера входа VLESS" if entry else "IP сервера выхода VLESS"
         hint = (
-            "Укажите IPv4 или IPv6 ноды 1 — сервера, к которому подключаются клиенты. "
+            "Укажите основной IP ноды 1 для SSH и подключения клиентов. Можно оставить IPv4, "
+            "а IPv6 для связи между серверами задать отдельно в поле «IP входа для каскада». "
             "Готовую ноду 2 — выход выберете на шаге «Сквад и хост»."
             if entry
-            else "Укажите IPv4 или IPv6 ноды 2 — выходного сервера, который подключается к сайтам. "
+            else "Укажите IP ноды 2 для подключения бота по SSH. Можно оставить IPv4, "
+            "а IPv6 для связи с входом задать отдельно в поле «IP выхода для каскада». "
             "После установки его можно выбрать на входной ноде каскада."
         )
     if code == "dm" and params["transport"] == "hysteria2":
@@ -1477,7 +1535,7 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
             if set(job.get("credential_fields") or []).intersection({"ssh_password", "ssh_private_key"}):
                 _button(builder, "Использовать сохранённый доступ →", "servernext", job["id"], "2")
             _button(builder, "← Изменить IP", "f", job["id"], "ip")
-        lines.append(f"Подключение: {_copyable(params['ssh_username'])}, порт {_copyable(params['ssh_port'])}.")
+        lines.append(f"Подключение SSH: {_copyable(params['ssh_username'])}, порт {_copyable(params['ssh_port'])}.")
         _button(builder, "⚙️ Дополнительные настройки SSH", "step", job["id"], "ssh")
         _button(builder, "Сохранить и закрыть", "show", job["id"])
         if secret:
@@ -2015,7 +2073,9 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 if result.get("authenticated")
                 else "Укажите пароль или приватный ключ. Подключение будет проверено при установке; его также можно проверить этой кнопкой."
             )
-            return await _send(callback, "<b>Проверка подключения</b>\n" + escape(text), builder, state=state)
+            return await _send(
+                callback, "<b>Проверка SSH и готовности сервера</b>\n" + escape(text), builder, state=state
+            )
         if action == "resetfp":
             result = await jobs.inspect_host_key(job_id, owner, params=params)
             fingerprint = result.get("fingerprint")
@@ -2162,6 +2222,10 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 options = (await jobs.list_panel_options(params["panel_ref"])).get("squads") or []
                 options = [{"id": item["uuid"], "name": item.get("name") or item["uuid"]} for item in options]
             else:
+                if params["role"] == "haproxy_entry" and not params["address"]:
+                    raise ValueError(
+                        "Сначала укажите IP входного сервера на шаге «Сервер», затем выберите выход каскада"
+                    )
                 if job.get("cascade_pair") and action == "exits":
                     raise ValueError("Нода 2 уже задана в мастере каскада; откройте её настройки")
                 selected_ids = {route["exit_install_id"] for route in params.get("cascade_routes") or []}
@@ -2185,7 +2249,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                     and _params(item)["panel_ref"] == params["panel_ref"]
                     and (
                         not params["cascade_address"]
-                        or ipaddress.ip_address(params["cascade_address"]).version
+                        and params["role"] != "haproxy_entry"
+                        or ipaddress.ip_address(params["cascade_address"] or params["address"]).version
                         == ipaddress.ip_address(_params(item)["cascade_address"] or _params(item)["address"]).version
                     )
                     and (params["role"] != "haproxy_entry" or _params(item)["squad_uuid"])
@@ -2195,8 +2260,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                         or _params(item)["squad_uuid"] == squad_uuid
                     )
                     and (
-                        action != "routeadd"
-                        or params["role"] != "haproxy_entry"
+                        params["role"] != "haproxy_entry"
                         or any(
                             ipaddress.ip_address(params["cascade_address"] or params["address"])
                             in ipaddress.ip_network(source)
@@ -2244,14 +2308,14 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 + (
                     "Выберите установленный выход. Для него будут добавлены отдельный порт входа и хост в панели."
                     if options
-                    else "Свободных подходящих выходов нет. Установите выход в этой панели; для HAProxy нужен тот же клиентский сквад и разрешённый IP входа."
+                    else "Нет совместимых свободных выходов. Проверьте панель, версии IP входа и выхода и доступ с IP входа; для HAProxy нужен также тот же клиентский сквад."
                 )
                 if action == "routeadd"
                 else "<b>Выберите установленный выход HAProxy</b>\n"
                 + (
-                    "Подходят выходы этой панели на другом сервере с выбранным клиентским сквадом."
+                    "Показаны совместимые выходы этой панели: та же версия IP связи, разрешённый IP входа и выбранный клиентский сквад."
                     if options
-                    else "Готовых выходов этой панели нет. Установите новую ноду 2."
+                    else "Нет совместимых выходов. Проверьте панель, версии IP входа и выхода и доступ с IP входа в настройках выхода. Можно установить новую ноду 2."
                 )
                 if params["role"] == "haproxy_entry"
                 else "<b>Выберите установленную выходную ноду</b>"
@@ -2634,6 +2698,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             str(error),
             job_id,
             host_key_changed=getattr(error, "step", "") == "ssh_host_key",
+            checking_server=action == "probe",
             deleting=action in {"delask", "delconfirm", "delete", "bulkask", "bulkdelete"},
         )
     except Exception as error:
@@ -2643,6 +2708,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             state,
             "Не удалось выполнить действие. Обновите список установок и повторите попытку.",
             job_id,
+            checking_server=action == "probe",
             deleting=action in {"delask", "delconfirm", "delete", "bulkask", "bulkdelete"},
         )
 
