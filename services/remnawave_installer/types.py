@@ -56,6 +56,16 @@ class InstallError(ValueError):
         super().__init__(message)
 
 
+class AccessRecoveryError(InstallError):
+    def __init__(self, job_id: str) -> None:
+        self.job_id = job_id
+        super().__init__(
+            "access_recovery",
+            "Ключ сохранённого доступа потерян или заменён. Введите SSH-доступ заново для восстановления установки",
+            retryable=False,
+        )
+
+
 class InstallWaitingError(Exception):
     def __init__(self, message: str, *, records: list[dict] | None = None, retry_after: int = 60) -> None:
         self.message = message

@@ -28,6 +28,7 @@ from .types import (
     EXIT_ROLES,
     NODE_IMAGE,
     TCP_REALITY_TRANSPORTS,
+    AccessRecoveryError,
     InstallError,
     InstallSpec,
     InstallWaitingError,
@@ -93,12 +94,17 @@ def _view(row, *, include_credentials: bool = True) -> dict:
     pending = None
     artifacts = {}
     artifacts_known = not bool(row.encrypted_artifacts)
+    access_recovery_required = False
     credential_fields = []
-    with suppress(InstallError):
+    try:
         if row.encrypted_artifacts:
             artifacts = vault.open(row.id, row.encrypted_artifacts)
             artifacts_known = True
             pending = artifacts.get("edit", {}).get("after")
+    except AccessRecoveryError:
+        access_recovery_required = True
+    except InstallError:
+        pass
     chain = artifacts.get("chain_verification") or {}
     if chain.get("fingerprint") != row.fingerprint:
         chain = {}
@@ -107,9 +113,13 @@ def _view(row, *, include_credentials: bool = True) -> dict:
         and row.encrypted_secrets
         and (not row.secrets_expire_at or row.secrets_expire_at > datetime.utcnow())
     ):
-        with suppress(InstallError):
+        try:
             secrets = vault.open(row.id, row.encrypted_secrets)
             credential_fields = sorted(name for name in _SECRET_FIELDS if secrets.get(name))
+        except AccessRecoveryError:
+            access_recovery_required = True
+        except InstallError:
+            pass
     return {
         "id": row.id,
         "status": "pause_requested" if row.pause_requested else row.status,
@@ -208,6 +218,7 @@ def _view(row, *, include_credentials: bool = True) -> dict:
         ),
         "has_credentials": bool(credential_fields),
         "credential_fields": credential_fields,
+        "access_recovery_required": access_recovery_required,
     }
 
 
@@ -396,6 +407,8 @@ async def create_extra_exit_draft(entry_job_id: str, owner_id: int, chat_id: int
         entry = await _row(session, entry_job_id, owner_id, lock=True)
         _not_deleting(entry)
         _editable(entry)
+        vault.open(entry.id, entry.encrypted_artifacts)
+        vault.open(entry.id, entry.encrypted_secrets)
         spec = InstallSpec.from_dict(entry.params)
         if spec.role != "haproxy_entry":
             raise ValueError("Дополнительный выход HAProxy создаётся из карточки входа HAProxy")
@@ -412,7 +425,10 @@ async def create_extra_exit_draft(entry_job_id: str, owner_id: int, chat_id: int
         for draft in drafts:
             if draft.id == entry.id:
                 continue
-            saved = vault.open(draft.id, draft.encrypted_artifacts)
+            try:
+                saved = vault.open(draft.id, draft.encrypted_artifacts)
+            except AccessRecoveryError:
+                continue
             if saved.get("extra_exit_for") == entry.id:
                 candidate = InstallSpec.from_dict(draft.params, complete=False)
                 if (
@@ -812,6 +828,133 @@ async def probe_host(job_id: str, owner_id: int, *, params: dict | None = None) 
     return result
 
 
+async def _recovery_snapshot(job_id: str, owner_id: int) -> dict:
+    """Читает доступные сведения без замены потерянного ключа."""
+    async with async_session_maker() as session:
+        row = await _row(session, job_id, owner_id)
+        _editable(row)
+        artifacts, secrets = None, {}
+        try:
+            artifacts = vault.open(row.id, row.encrypted_artifacts)
+        except AccessRecoveryError:
+            pass
+        if artifacts is None and row.status not in {"succeeded", "warning"}:
+            raise InstallError(
+                "recovery",
+                "Для незавершённой установки сначала нужно проверить выполненные этапы; сервер не изменён",
+                retryable=False,
+            )
+        if not row.secrets_expire_at or row.secrets_expire_at > datetime.utcnow():
+            with suppress(AccessRecoveryError):
+                secrets = vault.open(row.id, row.encrypted_secrets)
+        return {
+            "id": row.id,
+            "owner_id": row.owner_id,
+            "status": row.status,
+            "params": copy.deepcopy(row.params),
+            "guard": _ssh_state(row),
+            "artifacts": artifacts,
+            "secrets": secrets,
+        }
+
+
+async def prepare_recovery_key(job_id: str, owner_id: int, *, private_key: str) -> str:
+    """Шифрует временный ключ без изменения установленной ноды."""
+    await _authorize(owner_id)
+    await _recovery_snapshot(job_id, owner_id)
+    values = _secrets({"ssh_private_key": private_key})
+    if not private_key.strip():
+        raise ValueError("Отправьте приватный SSH-ключ")
+    return vault.seal(job_id, {"recovery_credentials": values, "expires_at": time.time() + 900})
+
+
+async def recover_access(job_id: str, owner_id: int, *, secrets_patch: dict, credential_envelope: str = "") -> dict:
+    """Восстанавливает доступ и привязки после проверки работающей ноды."""
+    from .recovery import recover_artifacts
+    from .remote import RemoteServer
+
+    await _authorize(owner_id)
+    if not isinstance(secrets_patch, dict) or set(secrets_patch) - {
+        "ssh_password",
+        "ssh_private_key",
+        "ssh_key_passphrase",
+    }:
+        raise ValueError("Для восстановления введите только SSH-доступ")
+    snapshot = await _recovery_snapshot(job_id, owner_id)
+    spec = InstallSpec.from_dict(snapshot["params"], complete=snapshot["status"] != "draft")
+    if snapshot["guard"]["fingerprint"] and spec.fingerprint() != snapshot["guard"]["fingerprint"]:
+        raise InstallError("recovery", "Параметры установки изменились; сервер не изменён", retryable=False)
+    credentials = copy.deepcopy(snapshot["secrets"])
+    if credential_envelope:
+        temporary = vault.open(job_id, credential_envelope)
+        if temporary.get("expires_at", 0) < time.time():
+            raise ValueError("Время ввода пароля ключа истекло. Отправьте ключ повторно")
+        values = temporary.get("recovery_credentials")
+        if not isinstance(values, dict) or set(values) != {"ssh_private_key"}:
+            raise ValueError("Отправьте приватный SSH-ключ повторно")
+        credentials.update(_secrets(values))
+        credentials.pop("ssh_password", None)
+    patch = _secrets(secrets_patch)
+    if patch.get("ssh_password"):
+        credentials.pop("ssh_private_key", None)
+        credentials.pop("ssh_key_passphrase", None)
+    elif patch.get("ssh_private_key"):
+        credentials.pop("ssh_password", None)
+        credentials.pop("ssh_key_passphrase", None)
+    credentials.update(patch)
+    if not (credentials.get("ssh_password") or credentials.get("ssh_private_key")):
+        raise ValueError("Введите SSH-пароль или приватный ключ")
+    await _resolve_ssh_pin(spec, verify=True)
+    related = {}
+
+    async def lookup(identifier: str) -> dict:
+        """Проверяет принадлежность связанного выхода до чтения панели."""
+        value = await _recovery_snapshot(identifier, owner_id)
+        related[identifier] = value
+        return {key: value[key] for key in ("id", "owner_id", "status", "params", "artifacts")}
+
+    async with RemoteServer(spec, credentials) as remote:
+        restored = await recover_artifacts(job_id, spec, snapshot["artifacts"], remote, lookup)
+    await _authorize(owner_id)
+    async with async_session_maker() as session:
+        rows = {}
+        for identifier in sorted({job_id, *related}):
+            row = await _row(session, identifier, owner_id, lock=True)
+            _check_ssh_setup(row, snapshot if identifier == job_id else related[identifier])
+            rows[identifier] = row
+        row = rows[job_id]
+        if spec.host_fingerprint != row.params.get("host_fingerprint"):
+            if row.fingerprint:
+                raise InstallError("recovery", "SSH-ключ установленной ноды не был закреплён", retryable=False)
+            row.params = {**row.params, "host_fingerprint": spec.host_fingerprint}
+        row.encrypted_artifacts = vault.seal(row.id, restored)
+        row.encrypted_secrets = vault.seal(row.id, credentials)
+        row.secrets_expire_at = datetime.utcnow() + timedelta(days=30 if row.fingerprint else 1)
+        row.updated_at = datetime.utcnow()
+        await session.commit()
+        return _view(row)
+
+
+async def _require_cascade_access(session, row, spec: InstallSpec) -> None:
+    """Запрашивает доступы выходов до запуска изменений каскада."""
+    if spec.role not in ENTRY_ROLES or spec.transport not in TCP_REALITY_TRANSPORTS:
+        return
+    for route in spec.cascade_specs():
+        if not route.exit_install_id:
+            continue
+        target = await _row(session, route.exit_install_id, row.owner_id)
+        if target.status not in {"succeeded", "warning"}:
+            continue
+        vault.open(target.id, target.encrypted_artifacts)
+        secrets = vault.open(target.id, target.encrypted_secrets)
+        if (
+            not (secrets.get("ssh_password") or secrets.get("ssh_private_key"))
+            or target.secrets_expire_at
+            and target.secrets_expire_at <= datetime.utcnow()
+        ):
+            raise AccessRecoveryError(target.id)
+
+
 async def start_job(job_id: str, owner_id: int, message_id: int | None = None) -> dict:
     """Ставит подтверждённую установку в устойчивую очередь."""
     await _authorize(owner_id)
@@ -864,6 +1007,7 @@ async def start_job(job_id: str, owner_id: int, message_id: int | None = None) -
             snapshot, spec = prepared[row.id]
             _check_ssh_setup(row, snapshot)
             await _guard_exit_reference(session, row, spec)
+            await _require_cascade_access(session, row, spec)
             row.params, row.address, row.fingerprint = spec.to_dict(), spec.address, spec.fingerprint()
             row.status = "queued"
             row.stage = "waiting_exit" if len(rows) == 2 and row.id == rows[0].id else "preflight"
@@ -968,9 +1112,13 @@ async def retry_job(job_id: str, owner_id: int) -> dict:
         required = True
         if artifacts.get("edit"):
             edit = artifacts["edit"]
-            required = _require_change_credentials(InstallSpec.from_dict(edit["after"]), secrets, edit["operations"])
+            effective = InstallSpec.from_dict(edit["after"])
+            required = _require_change_credentials(effective, secrets, edit["operations"])
+            if "verify" in edit["operations"]:
+                await _require_cascade_access(session, row, effective)
         else:
             _require_credentials(spec, secrets)
+            await _require_cascade_access(session, row, spec)
         if required and row.secrets_expire_at and row.secrets_expire_at <= datetime.utcnow():
             raise ValueError("Срок хранения ключей истёк. Введите их повторно")
         artifacts.pop("dns_wait", None)
@@ -1089,6 +1237,8 @@ async def preview_changes(job_id: str, owner_id: int, *, params: dict) -> dict:
                 plan["steps"] = [STEP_LABELS[step] for step in plan["operations"]]
             plan["requires_replacement"] = plan["requires_replacement"] or previous_plan["requires_replacement"]
             plan["warnings"] = list(dict.fromkeys([*plan["warnings"], *previous_plan["warnings"]]))
+        if "verify" in plan["operations"]:
+            await _require_cascade_access(session, row, new)
         token = uuid.uuid4().hex
         artifacts["edit_preview"] = {
             "token": token,
@@ -1135,6 +1285,8 @@ async def apply_changes(job_id: str, owner_id: int, *, params: dict, token: str,
             await session.commit()
             return _view(row)
         plan = preview["plan"]
+        if "verify" in plan["operations"]:
+            await _require_cascade_access(session, row, spec)
         secrets = vault.open(row.id, row.encrypted_secrets)
         required = _require_change_credentials(spec, secrets, plan["operations"])
         if required and row.secrets_expire_at and row.secrets_expire_at <= datetime.utcnow():

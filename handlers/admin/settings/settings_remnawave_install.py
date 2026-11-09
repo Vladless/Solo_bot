@@ -28,6 +28,7 @@ from services.remnawave_installer.types import (
     DELETABLE_STATUSES,
     ROLES,
     TRANSPORTS,
+    AccessRecoveryError,
     InstallError,
     InstallSpec,
 )
@@ -338,6 +339,131 @@ async def _report_error(
     if prompt and await state.get_state():
         lines.extend(["", "Поле: " + escape(str(prompt[1])), "Отправьте исправленное значение ещё раз."])
     await _send(event, "\n".join(lines), builder, state=state)
+
+
+async def _access_recovery_prompt(event, state: FSMContext, job: dict, code: str = "pw", notice: str = "") -> None:
+    """Запрашивает новый доступ к конкретной сохранённой ноде."""
+    data = await state.get_data()
+    recovery = data.get("access_recovery") or {}
+    if recovery.get("job_id") != job["id"] or code not in {"pw", "pk", "pp"}:
+        raise ValueError("Запрос восстановления устарел. Откройте нужную ноду заново")
+    params = {**InstallSpec().to_dict(), **(job.get("params") or {})}
+    await state.set_state(RemnaInstallState.secret)
+    await state.update_data(job_id=job["id"], field=code)
+    title, hint = SECRET_FIELDS[code][1:]
+    lines = [
+        "<b>Восстановление доступа по SSH</b>",
+        "Нода: " + _copyable(params["name"] or params["address"]),
+        f"Сервер: {_copyable(params['address'])}, логин {_copyable(params['ssh_username'])}, порт {_copyable(params['ssh_port'])}.",
+    ]
+    if notice:
+        lines.extend(["", escape(notice[:1000])])
+    else:
+        lines.extend([
+            "",
+            "Сохранённый доступ недоступен. Введите его заново: бот проверит SSH и восстановит настройки из действующей установки.",
+        ])
+    lines.extend(["", "<b>" + escape(title) + "</b>", escape(hint)])
+    lines.append("Сообщение с доступом будет скрыто в журналах и удалено после обработки.")
+    builder = InlineKeyboardBuilder()
+    if code != "pw":
+        _button(builder, "Войти по паролю", "accessfield", job["id"], "pw")
+    if code != "pk":
+        _button(builder, "Войти приватным ключом", "accessfield", job["id"], "pk")
+    if code != "pp" and recovery.get("credential_kind") == "pk":
+        _button(builder, "Ввести пароль ключа", "accessfield", job["id"], "pp")
+    _button(builder, "Отмена", "accesscancel", job["id"])
+    await _send(event, "\n".join(lines), builder, state=state)
+
+
+async def _begin_access_recovery(
+    event, state: FSMContext, error, source_job_id: str, action: str, value: str = ""
+) -> None:
+    """Сохраняет исходный переход и запрашивает доступ к нужной ноде."""
+    identifier = getattr(error, "job_id", "")
+    if not re.fullmatch(r"[a-f0-9]{32}", identifier) or not re.fullmatch(r"[a-f0-9]{32}", source_job_id):
+        raise ValueError("Не удалось определить ноду для восстановления доступа")
+    job = await jobs.get_job(identifier, event.from_user.id)
+    await jobs.get_job(source_job_id, event.from_user.id)
+    if job["status"] not in SECRET_EDIT_STATUSES or job.get("deletion"):
+        return await _report_error(event, state, "Сначала дождитесь остановки операции с этой нодой", source_job_id)
+    data = await state.get_data()
+    recovery = data.get("access_recovery") or {}
+    if recovery.get("job_id") != identifier:
+        recovery = {
+            "job_id": identifier,
+            "source_job_id": source_job_id,
+            "action": action,
+            "value": value,
+            "restore_fields": recovery.get("restore_fields")
+            or {key: data[key] for key in ("job_id", "field", "step", "wizard_step", "server_field") if key in data},
+        }
+    await state.update_data(access_recovery=recovery)
+    await _access_recovery_prompt(event, state, job)
+
+
+async def _new_extra_exit(event, state: FSMContext, job: dict) -> None:
+    """Открывает новую выходную ноду с сохранением черновика входа."""
+    job_id, owner = job["id"], event.from_user.id
+    context = await state.get_data()
+    editing = context.get("edit_mode") and context.get("edit_job") == job_id
+    params = _params(job)
+    if params["role"] != "haproxy_entry" or job["status"] not in SETTINGS_EDIT_STATUSES or job["status"] == "draft":
+        raise ValueError("Откройте добавление выхода у установленного входного сервера HAProxy")
+    source = event.message if getattr(event, "message", None) is not None else event
+    target = await jobs.create_extra_exit_draft(job_id, owner, source.chat.id)
+    saved = context.get("extra_parent_context") or {}
+    stored_params = _params(await jobs.get_job(job_id, owner))
+    pending = (
+        saved.get("pending_params")
+        if not editing and saved.get("job_id") == job_id and saved.get("base_params") == stored_params
+        else params
+    )
+    await state.update_data(
+        extra_parent_context={"job_id": job_id, "base_params": stored_params, "pending_params": pending}
+    )
+    await _clear_input(state)
+    return await _step(event, state, target, "1")
+
+
+async def _finish_access_recovery(event, state: FSMContext, recovery: dict, *, canceled: bool = False) -> None:
+    """Возвращает к исходной настройке после проверки нового доступа."""
+    data = await state.get_data()
+    current = data.get("access_recovery") or {}
+    if current != recovery or data.get("job_id") != recovery.get("job_id"):
+        raise ValueError("Запрос восстановления устарел. Откройте нужную ноду заново")
+    for key in ("access_recovery", "job_id", "field", "server_field"):
+        data.pop(key, None)
+    data.update(recovery.get("restore_fields") or {})
+    await state.set_state(None)
+    await state.set_data(data)
+    source = await _effective_job(await jobs.get_job(recovery["source_job_id"], event.from_user.id), state)
+    if not canceled and recovery["action"] == "newrouteexit":
+        try:
+            return await _new_extra_exit(event, state, source)
+        except AccessRecoveryError as error:
+            return await _begin_access_recovery(
+                event, state, error, recovery["source_job_id"], recovery["action"], recovery.get("value", "")
+            )
+        except (ValueError, PermissionError, LookupError) as error:
+            notice = escape(str(error)[:1000])
+        except Exception as error:
+            _log_unexpected(error, "newrouteexit", recovery["source_job_id"])
+            notice = "Не удалось открыть создание выхода. Повторите действие."
+        builder = InlineKeyboardBuilder()
+        _button(builder, "Продолжить добавление выхода", "newrouteexit", recovery["source_job_id"])
+        _button(builder, "Карточка установки", "show", recovery["source_job_id"])
+        return await _send(event, "<b>Доступ восстановлен</b>\n" + notice, builder, state=state)
+    if canceled:
+        return await _step(event, state, source, (recovery.get("restore_fields") or {}).get("step", "1"))
+    if recovery["action"] == "input":
+        return await _step(event, state, source, (recovery.get("restore_fields") or {}).get("step", "1"))
+    builder = InlineKeyboardBuilder()
+    _button(builder, "Продолжить настройку", recovery["action"], recovery["source_job_id"], recovery.get("value", ""))
+    _button(builder, "Карточка установки", "show", recovery["source_job_id"])
+    await _send(
+        event, "<b>Доступ восстановлен</b>\nSSH проверен. Можно продолжить выбранную настройку.", builder, state=state
+    )
 
 
 def _log_unexpected(error: Exception, action: str, job_id: str = "") -> None:
@@ -2044,6 +2170,40 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 return await _step(callback, state, job, "1")
             return await _step(callback, state, job, "type")
         job = await jobs.get_job(job_id, owner)
+        if action in {"accessfield", "accesscancel"}:
+            recovery = (await state.get_data()).get("access_recovery") or {}
+            if recovery.get("job_id") != job_id:
+                raise ValueError("Запрос восстановления устарел. Откройте нужную ноду заново")
+            await jobs.get_job(recovery.get("source_job_id"), owner)
+            if action == "accesscancel":
+                return await _finish_access_recovery(callback, state, recovery, canceled=True)
+            if (
+                value not in {"pw", "pk", "pp"}
+                or value == "pp"
+                and (recovery.get("credential_kind") != "pk" or not recovery.get("credential_envelope"))
+            ):
+                raise ValueError("Выберите пароль SSH или приватный ключ")
+            return await _access_recovery_prompt(callback, state, job, value)
+        if job.get("access_recovery_required") and action in {
+            "manage",
+            "routes",
+            "routepage",
+            "route",
+            "routefield",
+            "routedel",
+            "routeadd",
+            "newrouteexit",
+            "routeparent",
+            "auth",
+            "preview",
+            "apply",
+            "reinst",
+            "rm",
+            "start",
+            "retry",
+            "probe",
+        }:
+            return await _begin_access_recovery(callback, state, AccessRecoveryError(job_id), job_id, action, value)
         stored_params = _params(job)
         deletion_params = {**InstallSpec().to_dict(), **(job.get("params") or {})}
         await state.set_state(None)
@@ -2068,24 +2228,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
         if action == "show":
             return await _job_screen(callback, state, job)
         if action == "newrouteexit":
-            if (
-                params["role"] != "haproxy_entry"
-                or job["status"] not in SETTINGS_EDIT_STATUSES
-                or job["status"] == "draft"
-            ):
-                raise ValueError("Откройте добавление выхода у установленного входного сервера HAProxy")
-            target = await jobs.create_extra_exit_draft(job_id, owner, callback.message.chat.id)
-            saved = context.get("extra_parent_context") or {}
-            pending = (
-                saved.get("pending_params")
-                if not editing and saved.get("job_id") == job_id and saved.get("base_params") == stored_params
-                else params
-            )
-            await state.update_data(
-                extra_parent_context={"job_id": job_id, "base_params": stored_params, "pending_params": pending}
-            )
-            await _clear_input(state)
-            return await _step(callback, state, target, "1")
+            return await _new_extra_exit(callback, state, job)
         if action == "routeparent":
             parent_id = job.get("extra_exit_for")
             if not parent_id:
@@ -3132,6 +3275,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             job = await _save(job, owner, {"addons": [name for name in params["addons"] if name != value]}, state)
             return await _changes_screen(callback, state, job, owner)
         raise ValueError("Действие устарело; откройте список установок")
+    except AccessRecoveryError as error:
+        await _begin_access_recovery(callback, state, error, job_id, action, value)
     except (ValueError, PermissionError, LookupError) as error:
         await _report_error(
             callback,
@@ -3183,7 +3328,12 @@ async def installer_input(message: Message, state: FSMContext, session=None):
             raise ValueError("Для этой записи уже выбрано удаление. Откройте карточку установки")
         if data.get("deletion_prep_job") and not deletion_prep_credentials:
             raise ValueError("Подготовка доступов устарела. Откройте карточку установки")
+        recovery = data.get("access_recovery") or {}
+        if recovery and (recovery.get("job_id") != job_id or not secret or code not in {"pw", "pk", "pp"}):
+            raise ValueError("Запрос восстановления устарел. Откройте нужную ноду заново")
         if message.text in {"/cancel", "/отмена"}:
+            if recovery:
+                return await _finish_access_recovery(message, state, recovery, canceled=True)
             await _clear_input(state)
             return await _job_screen(message, state, job)
         if secret:
@@ -3225,6 +3375,21 @@ async def installer_input(message: Message, state: FSMContext, session=None):
                 secrets.update(ssh_private_key="", ssh_key_passphrase="")
             elif code == "pk":
                 secrets["ssh_password"] = ""
+            if recovery:
+                if code == "pk":
+                    envelope = await jobs.prepare_recovery_key(job_id, message.from_user.id, private_key=text)
+                    recovery = {**recovery, "credential_kind": "pk", "credential_envelope": envelope}
+                    await state.update_data(access_recovery=recovery)
+                    return await _access_recovery_prompt(message, state, job, "pp")
+                if code == "pw":
+                    recovery = {key: value for key, value in recovery.items() if key != "credential_envelope"}
+                    recovery["credential_kind"] = "pw"
+                    await state.update_data(access_recovery=recovery)
+                if code == "pp" and not recovery.get("credential_envelope"):
+                    raise ValueError("Сначала отправьте приватный ключ для входа")
+                options = {"credential_envelope": recovery["credential_envelope"]} if code == "pp" else {}
+                await jobs.recover_access(job_id, message.from_user.id, secrets_patch=secrets, **options)
+                return await _finish_access_recovery(message, state, recovery)
             if deletion_credentials or deletion_prep_credentials:
                 job = await jobs.update_deletion_credentials(job_id, message.from_user.id, secrets_patch=secrets)
                 return await _job_screen(message, state, job)
@@ -3298,10 +3463,29 @@ async def installer_input(message: Message, state: FSMContext, session=None):
         if code in {"us", "sp"} and data.get("step") == "1" and _haproxy_draft(job, data):
             return await _server_input(message, state, job, "sp" if code == "us" else "pw")
         return await _step(message, state, job, data.get("step", "1"))
-    except (ValueError, PermissionError, LookupError) as error:
-        await _report_error(
-            message, state, str(error), job_id, host_key_changed=getattr(error, "step", "") == "ssh_host_key"
+    except AccessRecoveryError as error:
+        recovery = (await state.get_data()).get("access_recovery") or {}
+        await _begin_access_recovery(
+            message,
+            state,
+            error,
+            recovery.get("source_job_id", job_id),
+            recovery.get("action", "input"),
+            recovery.get("value", ""),
         )
+    except (ValueError, PermissionError, LookupError) as error:
+        recovery = (await state.get_data()).get("access_recovery") or {}
+        if recovery.get("job_id") == job_id:
+            notice = str(error)
+            if getattr(error, "step", "") == "ssh_host_key":
+                notice = "Ключ самого SSH-сервера не совпал с сохранённым. Проверьте сервер и его отпечаток в консоли VPS; автоматически заменять подтверждённый ключ нельзя."
+            await _access_recovery_prompt(
+                message, state, await jobs.get_job(job_id, message.from_user.id), code, notice
+            )
+        else:
+            await _report_error(
+                message, state, str(error), job_id, host_key_changed=getattr(error, "step", "") == "ssh_host_key"
+            )
     except Exception as error:
         _log_unexpected(error, "input", job_id)
         await _report_error(

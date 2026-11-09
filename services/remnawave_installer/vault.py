@@ -8,7 +8,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from .types import InstallError
+from .types import AccessRecoveryError, InstallError
 
 
 class SecretVault:
@@ -56,17 +56,15 @@ class SecretVault:
         if not value:
             return {}
         if not self.path.exists():
-            raise InstallError(
-                "secrets",
-                "Ключ установщика потерян. Восстановите data/remnawave-installer.key из резервной копии",
-                retryable=False,
-            )
+            raise AccessRecoveryError(job_id)
         try:
             payload = json.loads(self._cipher().decrypt(value.encode()))
             if payload.get("job_id") != job_id or not isinstance(payload.get("value"), dict):
                 raise ValueError
             return payload["value"]
-        except (InvalidToken, ValueError, TypeError, KeyError) as error:
+        except InvalidToken as error:
+            raise AccessRecoveryError(job_id) from error
+        except (ValueError, TypeError, KeyError) as error:
             raise InstallError("secrets", "Не удалось расшифровать снимок установки", retryable=False) from error
 
 
