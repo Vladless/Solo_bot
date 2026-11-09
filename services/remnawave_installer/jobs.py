@@ -27,6 +27,7 @@ from .types import (
     ENTRY_ROLES,
     EXIT_ROLES,
     NODE_IMAGE,
+    TCP_REALITY_TRANSPORTS,
     InstallError,
     InstallSpec,
     InstallWaitingError,
@@ -56,6 +57,7 @@ _STAGES = (
     "verify",
     "cdn",
     "panel_squad",
+    "chain_verify",
     "panel_host",
 )
 _LEASE_SECONDS = 120
@@ -97,6 +99,9 @@ def _view(row, *, include_credentials: bool = True) -> dict:
             artifacts = vault.open(row.id, row.encrypted_artifacts)
             artifacts_known = True
             pending = artifacts.get("edit", {}).get("after")
+    chain = artifacts.get("chain_verification") or {}
+    if chain.get("fingerprint") != row.fingerprint:
+        chain = {}
     if (
         include_credentials
         and row.encrypted_secrets
@@ -112,10 +117,24 @@ def _view(row, *, include_credentials: bool = True) -> dict:
         "params": copy.deepcopy(row.params or {}),
         "pending_params": copy.deepcopy(pending),
         "cascade_pair": copy.deepcopy(artifacts.get("cascade_pair") or {}),
+        "extra_exit_for": artifacts.get("extra_exit_for", ""),
         "haproxy": {
             key: artifacts["haproxy"][key]
             for key in ("exit_install_id", "name", "address", "port", "squad_uuid")
             if key in artifacts.get("haproxy", {})
+        },
+        "chain_verification": {
+            "status": chain.get("status"),
+            "checked_at": chain.get("checked_at"),
+            "routes": [
+                {
+                    key: route[key]
+                    for key in ("name", "client_port", "exit_address", "status", "observed_exit_ip")
+                    if key in route
+                }
+                for route in chain.get("routes", [])
+                if isinstance(route, dict)
+            ],
         },
         "deletion": _deleting(row, artifacts),
         "deletion_requires_credentials": _deletion_requires_credentials(artifacts),
@@ -322,7 +341,8 @@ async def create_draft(owner_id: int, chat_id: int, panel_ref: str = "", *, entr
                 {
                     "panel_ref": entry.params["panel_ref"],
                     "role": "haproxy_exit",
-                    "client_port": 8443,
+                    "transport": "vless_tcp_selfsteal",
+                    "client_port": 9443,
                     "haproxy_sources": [address],
                     "panel_sources": entry.params.get("panel_sources") or [],
                     "trusted_ssh_sources": entry.params.get("trusted_ssh_sources") or [],
@@ -367,6 +387,79 @@ async def create_draft(owner_id: int, chat_id: int, panel_ref: str = "", *, entr
         result = _view(row)
         await session.commit()
     return result
+
+
+async def create_extra_exit_draft(entry_job_id: str, owner_id: int, chat_id: int) -> dict:
+    """Создаёт отдельный выход без изменения работающего входа."""
+    await _authorize(owner_id)
+    async with async_session_maker() as session:
+        entry = await _row(session, entry_job_id, owner_id, lock=True)
+        _not_deleting(entry)
+        _editable(entry)
+        spec = InstallSpec.from_dict(entry.params)
+        if spec.role != "haproxy_entry":
+            raise ValueError("Дополнительный выход HAProxy создаётся из карточки входа HAProxy")
+        if not spec.squad_uuid:
+            raise ValueError("Сначала выберите основной выход с клиентским сквадом")
+        drafts = (
+            await session.execute(
+                select(RemnawaveInstall).where(
+                    RemnawaveInstall.owner_id == owner_id,
+                    RemnawaveInstall.status == "draft",
+                )
+            )
+        ).scalars()
+        for draft in drafts:
+            if draft.id == entry.id:
+                continue
+            saved = vault.open(draft.id, draft.encrypted_artifacts)
+            if saved.get("extra_exit_for") == entry.id:
+                candidate = InstallSpec.from_dict(draft.params, complete=False)
+                if (
+                    candidate.role == "haproxy_exit"
+                    and candidate.panel_ref == spec.panel_ref
+                    and candidate.squad_uuid == spec.squad_uuid
+                    and not saved.get("cascade_pair")
+                    and not _deleting(draft, saved)
+                    and any(
+                        ipaddress.ip_address(spec.transit_address()) in ipaddress.ip_network(source)
+                        for source in candidate.haproxy_sources
+                    )
+                    and (
+                        not candidate.cascade_address
+                        or ipaddress.ip_address(candidate.cascade_address).version
+                        == ipaddress.ip_address(spec.transit_address()).version
+                    )
+                ):
+                    return _view(draft)
+        params = InstallSpec.from_dict(
+            {
+                "panel_ref": spec.panel_ref,
+                "role": "haproxy_exit",
+                "transport": "vless_tcp_selfsteal",
+                "client_port": 9443,
+                "squad_uuid": spec.squad_uuid,
+                "haproxy_sources": [spec.transit_address()],
+                "panel_sources": spec.panel_sources,
+                "trusted_ssh_sources": spec.trusted_ssh_sources,
+            },
+            complete=False,
+        ).to_dict()
+        identifier = uuid.uuid4().hex
+        row = RemnawaveInstall(
+            id=identifier,
+            owner_id=owner_id,
+            chat_id=chat_id,
+            params=params,
+            logs=[],
+            dns_records=[],
+            encrypted_artifacts=vault.seal(identifier, {"extra_exit_for": entry.id}),
+        )
+        session.add(row)
+        await session.flush()
+        result = _view(row)
+        await session.commit()
+        return result
 
 
 async def update_draft(job_id: str, owner_id: int, *, params: dict | None = None, secrets: dict | None = None) -> dict:
@@ -2037,6 +2130,8 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
                     from .checks import check_hysteria
 
                     await check_hysteria(remote, new)
+                if new.role in ENTRY_ROLES:
+                    await _verify_cascade_chain(snapshot, new, artifacts, panel, checkpoint, log)
             elif step == "squad":
                 if new.role == "haproxy_entry":
                     await panel.add_to_squad(new, artifacts)
@@ -2244,7 +2339,7 @@ async def _prepare_haproxy_target(
         "node_uuid": _uuid(target_artifacts.get("node_uuid"), "нода выхода HAProxy"),
         "public_key": target_artifacts["public_key"],
         "short_id": target_artifacts["short_id"],
-        "reality_domain": target_spec.reality_domain,
+        "reality_domain": target_spec.reality_server_name(),
         "squad_uuid": target_spec.squad_uuid,
     }
     previous = artifacts.get("haproxy")
@@ -2269,6 +2364,16 @@ async def _check_cascade_routes(
         from .remote import check_cascade_connection
 
         await check_cascade_connection(remote, route, address, target.get("port"))
+
+
+async def _verify_cascade_chain(snapshot, spec, artifacts, panel, checkpoint, log) -> None:
+    """Подтверждает полный путь через все выходы каскада."""
+    if spec.role not in ENTRY_ROLES or spec.transport not in TCP_REALITY_TRANSPORTS:
+        return
+    from .chain import verify_cascade_chain
+
+    targets = await _check_cascade_targets(snapshot, spec, panel=panel)
+    await verify_cascade_chain(snapshot, spec, artifacts, panel, checkpoint, log, targets, _snapshot)
 
 
 async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
@@ -2328,8 +2433,13 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                 artifacts.pop("verify_started_at", None)
                 await checkpoint(artifacts)
             verified_now = False
+            chain_verified_now = False
             for stage in _STAGES:
                 if spec.role == "haproxy_entry" and stage in {"keys", "panel_profile", "panel_node", "cdn"}:
+                    continue
+                if stage == "chain_verify" and (
+                    spec.role not in ENTRY_ROLES or spec.transport not in TCP_REALITY_TRANSPORTS
+                ):
                     continue
                 if stage in artifacts["done"]:
                     continue
@@ -2370,6 +2480,9 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                     await configure_cdn(spec, secrets, artifacts, checkpoint)
                 elif stage == "panel_squad":
                     await panel.add_to_squad(spec, artifacts)
+                elif stage == "chain_verify":
+                    await _verify_cascade_chain(snapshot, spec, artifacts, panel, checkpoint, log)
+                    chain_verified_now = True
                 elif stage == "panel_host" and spec.publish_host:
                     if not verified_now and not await panel.check_online(spec, artifacts):
                         raise InstallError("verify", "Нода отключилась во время ожидания DNS; хост ещё не опубликован")
@@ -2380,6 +2493,9 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
 
                         await check_haproxy(remote, spec, artifacts)
                         await panel.add_to_squad(spec, artifacts)
+                    if spec.role in ENTRY_ROLES and not chain_verified_now:
+                        await _verify_cascade_chain(snapshot, spec, artifacts, panel, checkpoint, log)
+                        chain_verified_now = True
                     await panel.ensure_host(spec, artifacts)
                 elif stage == "verify":
                     if spec.role in ENTRY_ROLES:

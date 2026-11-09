@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from .types import DELETABLE_STATUSES, ENTRY_ROLES
+from .types import DELETABLE_STATUSES, ENTRY_ROLES, TCP_REALITY_TRANSPORTS
 
 
 _INSTALL_LABELS = {
@@ -12,6 +12,7 @@ _INSTALL_LABELS = {
     "verify": "Проверка подключения ноды",
     "cdn": "Настройка CDN и сертификата",
     "panel_squad": "Подключение к скваду",
+    "chain_verify": "Проверка всей цепочки каскада",
     "panel_host": "Публикация хоста",
 }
 _EDIT_LABELS = {
@@ -56,6 +57,8 @@ _EXTRA_LABELS = {
     "firewall": "Настройка сетевого доступа",
     "exit_ip": "Проверка выходного IP",
     "cascade_verify": "Проверка связи между нодами",
+    "cascade_chain": "Проверка всей цепочки каскада",
+    "chain_probe": "Подготовка тестового подключения каскада",
     "bbr": "Настройка BBR",
     "fail2ban": "Настройка fail2ban",
     "warp": "Настройка WARP",
@@ -98,6 +101,8 @@ def _installation_steps(stages: Sequence[str], params: dict | None) -> list[str]
         excluded.add("panel_squad")
     if not params.get("publish_host", True) or params.get("role") in {"exit", "haproxy_exit"}:
         excluded.add("panel_host")
+    if params.get("role") not in ENTRY_ROLES or params.get("transport") not in TCP_REALITY_TRANSPORTS:
+        excluded.add("chain_verify")
     if not params.get("addons") and not shaping.get("enabled", bool(shaping)):
         excluded.add("addons")
     return [stage for stage in result if stage not in excluded]
@@ -219,6 +224,12 @@ def job_status_text(view: dict) -> str:
         lines.append("Связанный сервер: нода 2 — выход" if entry else "Связанный сервер: нода 1 — вход")
     if params.get("cascade_routes"):
         lines.append("Направлений каскада: " + str(1 + len(params["cascade_routes"])))
+    chain = view.get("chain_verification") or {}
+    if status in {"succeeded", "warning"} and chain.get("status") == "passed":
+        routes = chain.get("routes") or []
+        passed = sum(route.get("status") == "passed" for route in routes if isinstance(route, dict))
+        if routes and passed == len(routes):
+            lines.append(f"Цепочка проверена: {passed}/{len(routes)} направлений")
     if progress:
         lines.append(
             "<code>" + escape(str(progress.get("bar", ""))) + "</code> " + escape(str(progress.get("label", "")))
@@ -286,6 +297,8 @@ def job_actions(view: dict) -> list[tuple[str, str, str]]:
         actions.append(("Ресурсы CDN", "res", ""))
     if status in {"succeeded", "warning"}:
         actions.append(("Переустановить эту ноду", "riask", "all"))
+        if view.get("extra_exit_for"):
+            actions.insert(0, ("Подключить к входной ноде", "routeparent", ""))
     if status in editable:
         actions.append(("Обновить учётные данные", "auth", ""))
     if status == "failed":

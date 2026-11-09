@@ -14,7 +14,7 @@ from .remote import (
     ensure_docker,
     owner_id,
 )
-from .types import InstallError, InstallSpec
+from .types import TCP_REALITY_TRANSPORTS, InstallError, InstallSpec
 
 
 HAPROXY_IMAGE = "haproxy:3.2.26-alpine"
@@ -39,8 +39,8 @@ def _target(artifacts: dict) -> tuple[str, int]:
 
 def _route_targets(spec: InstallSpec, artifacts: dict) -> list[tuple[InstallSpec, str, int]]:
     """Проверяет адреса и отдельные порты всех направлений."""
-    if spec.role != "haproxy_entry" or spec.transport != "vless_tcp_reality":
-        raise InstallError("haproxy", "HAProxy поддерживает только вход TCP Reality", retryable=False)
+    if spec.role != "haproxy_entry" or spec.transport not in TCP_REALITY_TRANSPORTS:
+        raise InstallError("haproxy", "HAProxy поддерживает вход TCP Reality или Selfsteal", retryable=False)
     result = []
     ports = set()
     children = artifacts.get("cascade_routes") or {}

@@ -33,7 +33,13 @@ async def check_origin_dns(spec: InstallSpec) -> None:
             except (httpx.HTTPError, ValueError, AttributeError, TypeError):
                 continue
     raise InstallWaitingError(
-        ("Домен Hysteria2" if spec.transport == "hysteria2" else "Origin")
+        (
+            "Домен Hysteria2"
+            if spec.transport == "hysteria2"
+            else "Домен сайта Selfsteal"
+            if spec.transport == "vless_tcp_selfsteal"
+            else "Origin"
+        )
         + " пока не указывает на выбранный сервер. Обновите DNS и нажмите «Проверить»",
         records=[{"type": family, "name": spec.domain, "value": spec.address}],
     )

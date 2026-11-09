@@ -35,6 +35,7 @@ ROLES = {
 ENTRY_ROLES = frozenset({"entry", "haproxy_entry"})
 EXIT_ROLES = frozenset({"exit", "haproxy_exit"})
 HAPROXY_ROLES = frozenset({"haproxy_entry", "haproxy_exit"})
+TCP_REALITY_TRANSPORTS = frozenset({"vless_tcp_reality", "vless_tcp_selfsteal"})
 ADDONS = {
     "bbr": "BBR",
     "fail2ban": "fail2ban",
@@ -93,11 +94,11 @@ class InstallSpec:
     ssh_username: str = "root"
     ssh_port: int = 22
     host_fingerprint: str = ""
-    transport: str = "vless_tcp_reality"
+    transport: str = "vless_tcp_selfsteal"
     role: str = "normal"
     client_port: int = 443
     node_port: int = 2222
-    reality_domain: str = "www.samsung.com"
+    reality_domain: str = ""
     domain: str = ""
     cdn_domain: str = ""
     email: str = ""
@@ -127,6 +128,8 @@ class InstallSpec:
         if unknown:
             raise ValueError("Неизвестные параметры установки: " + ", ".join(sorted(unknown)))
         spec = cls(**value)
+        if spec.role == "haproxy_exit" and spec.transport == "vless_tcp_selfsteal" and "client_port" not in value:
+            spec.client_port = 9443
         for item in fields(cls):
             current = getattr(spec, item.name)
             if isinstance(item.default, str) and not isinstance(current, str):
@@ -159,12 +162,20 @@ class InstallSpec:
             raise ValueError("Неизвестный шаблон сайта")
         if spec.role in EXIT_ROLES:
             spec.publish_host = False
-        if spec.role in HAPROXY_ROLES and spec.transport != "vless_tcp_reality":
-            raise ValueError("Для каскада HAProxy выберите VLESS TCP Reality")
+        if spec.role in HAPROXY_ROLES and spec.transport not in TCP_REALITY_TRANSPORTS:
+            raise ValueError("Для каскада HAProxy выберите Selfsteal или VLESS TCP Reality")
         for name in ("ssh_port", "client_port", "node_port"):
             port = getattr(spec, name)
             if type(port) is not int or not 1 <= port <= 65535:
                 raise ValueError("Порты должны быть целыми числами от 1 до 65535")
+        if (
+            spec.role == "haproxy_exit"
+            and spec.transport == "vless_tcp_selfsteal"
+            and spec.client_port in {80, 443, 8443}
+        ):
+            raise ValueError(
+                "Для выхода HAProxy Selfsteal используйте порт 9443 или другой свободный: 80, 443 и 8443 нужны сайту"
+            )
         if not isinstance(spec.cascade_routes, list):
             raise ValueError("Направления каскада передаются списком")
         if spec.cascade_routes and spec.role not in ENTRY_ROLES:
@@ -186,7 +197,7 @@ class InstallSpec:
             if type(port) is not int or not 1 <= port <= 65535:
                 raise ValueError("Порт направления каскада должен быть числом от 1 до 65535")
             management_ports = {spec.ssh_port, *({spec.node_port} if spec.role != "haproxy_entry" else set())}
-            if spec.transport == "vless_tcp_selfsteal":
+            if spec.transport == "vless_tcp_selfsteal" and spec.role != "haproxy_entry":
                 management_ports.add(8443)
             if port in client_ports or port in management_ports or needs_certificate(spec) and port == 80:
                 raise ValueError("Клиентские порты направлений, SSH и управления должны различаться")
@@ -288,7 +299,7 @@ class InstallSpec:
         spec.host_remark = spec.host_remark.strip() or spec.name
         if len(spec.host_remark) > 100:
             raise ValueError("Название хоста не должно превышать 100 символов")
-        if spec.transport != "hysteria2":
+        if spec.role != "haproxy_entry" and spec.transport in {"vless_tcp_reality", "vless_xhttp_reality"}:
             spec.reality_domain = _domain(spec.reality_domain)
         if needs_certificate(spec):
             spec.domain = _domain(spec.domain)
@@ -313,8 +324,8 @@ class InstallSpec:
                 UUID(spec.squad_uuid)
             except (ValueError, TypeError, AttributeError) as error:
                 raise ValueError("Некорректный UUID сквада") from error
-        if spec.role in EXIT_ROLES and spec.transport != "vless_tcp_reality":
-            raise ValueError("Для выхода каскада выберите VLESS TCP Reality")
+        if spec.role in EXIT_ROLES and spec.transport not in TCP_REALITY_TRANSPORTS:
+            raise ValueError("Для выхода каскада выберите Selfsteal или VLESS TCP Reality")
         if spec.exit_ip:
             try:
                 spec.exit_ip = str(ipaddress.ip_address(spec.exit_ip))
@@ -341,6 +352,10 @@ class InstallSpec:
     def transit_address(self) -> str:
         """Возвращает собственный IP связи между нодами."""
         return self.cascade_address or self.address
+
+    def reality_server_name(self) -> str:
+        """Возвращает домен TLS целевого сайта REALITY."""
+        return self.domain if self.transport == "vless_tcp_selfsteal" else self.reality_domain
 
     def cascade_specs(self) -> list["InstallSpec"]:
         """Возвращает параметры отдельных направлений входной ноды."""
@@ -378,7 +393,7 @@ def client_network(spec: InstallSpec) -> str:
 
 def needs_certificate(spec: InstallSpec) -> bool:
     """Определяет необходимость публичного TLS-сертификата."""
-    return spec.transport in CERTIFICATE_TRANSPORTS
+    return spec.role != "haproxy_entry" and spec.transport in CERTIFICATE_TRANSPORTS
 
 
 def certificate_paths(spec: InstallSpec) -> tuple[str, str]:

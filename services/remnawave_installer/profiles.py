@@ -199,10 +199,11 @@ def build_profile(spec: InstallSpec, artifacts: dict) -> dict:
         if not artifacts.get("private_key") or not artifacts.get("short_id"):
             raise InstallError("keys", "Ключи Reality не сохранены")
         selfsteal = spec.transport == "vless_tcp_selfsteal"
+        server_name = spec.reality_server_name()
         reality = {
             "show": False,
-            "dest": "127.0.0.1:8443" if selfsteal else spec.reality_domain + ":443",
-            "serverNames": [spec.domain if selfsteal else spec.reality_domain],
+            "dest": "127.0.0.1:8443" if selfsteal else server_name + ":443",
+            "serverNames": [server_name],
             "privateKey": artifacts["private_key"],
             "shortIds": [artifacts["short_id"]],
         }
@@ -213,7 +214,7 @@ def build_profile(spec: InstallSpec, artifacts: dict) -> dict:
             reality["target"] = reality.pop("dest")
             reality.update(xver=0, fingerprint="firefox")
             inbound["streamSettings"].update(
-                network="xhttp", xhttpSettings={"host": spec.reality_domain, "mode": "auto", "path": "/"}
+                network="xhttp", xhttpSettings={"host": server_name, "mode": "auto", "path": "/"}
             )
     if spec.role == "haproxy_exit":
         inbound["streamSettings"]["tcpSettings"] = {"acceptProxyProtocol": True}

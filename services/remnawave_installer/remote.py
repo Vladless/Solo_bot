@@ -506,11 +506,15 @@ async def preflight(remote: RemoteServer, spec: InstallSpec) -> dict:
 
 def transport_ports(spec: InstallSpec) -> list[int]:
     """Возвращает внешние порты транспорта."""
+    if spec.role == "haproxy_entry":
+        return spec.client_ports()
     if spec.transport == "cdn_vk":
         return [80, 443]
     if spec.transport == "cdn_yandex":
         return [80, 7443]
     ports = spec.client_ports()
+    if spec.transport == "vless_tcp_selfsteal" and spec.role == "haproxy_exit":
+        return [*ports, 80, 443]
     return [*ports, 80] if spec.transport in {"vless_tcp_selfsteal", "hysteria2"} else ports
 
 
@@ -651,7 +655,7 @@ async def _open_firewall(remote: RemoteServer, spec: InstallSpec) -> None:
     if "Status: active" not in status:
         return
     for port, protocol in transport_bindings(spec):
-        if spec.role == "haproxy_exit":
+        if spec.role == "haproxy_exit" and port in spec.client_ports():
             for source in spec.haproxy_sources:
                 await remote.run(
                     f"ufw allow from {shlex.quote(source)} to any port {port} proto {protocol} comment solobot-remnawave",
@@ -900,7 +904,9 @@ def _node_compose(spec: InstallSpec, artifacts: dict) -> dict:
 
 def _uses_tls(spec: InstallSpec) -> bool:
     """Определяет наличие собственного TLS-прокси."""
-    return spec.transport == "vless_tcp_selfsteal" or spec.transport.startswith("cdn_")
+    return spec.role != "haproxy_entry" and (
+        spec.transport == "vless_tcp_selfsteal" or spec.transport.startswith("cdn_")
+    )
 
 
 def _guard_cascade_alias(spec: InstallSpec, artifacts: dict) -> None:
@@ -1049,14 +1055,15 @@ async def _cleanup_exit_alias(remote: RemoteServer, spec: InstallSpec, artifacts
 
 def _ufw_rules(spec: InstallSpec) -> set[tuple[str, ...]]:
     """Собирает правила, относящиеся к параметрам установки."""
-    if spec.role == "haproxy_exit":
-        rules = {
-            ("allow", "from", source, "to", "any", "port", str(port), "proto", protocol)
-            for port, protocol in transport_bindings(spec)
-            for source in spec.haproxy_sources
-        }
-    else:
-        rules = {("allow", f"{port}/{protocol}") for port, protocol in transport_bindings(spec)}
+    rules = set()
+    for port, protocol in transport_bindings(spec):
+        if spec.role == "haproxy_exit" and port in spec.client_ports():
+            rules.update(
+                ("allow", "from", source, "to", "any", "port", str(port), "proto", protocol)
+                for source in spec.haproxy_sources
+            )
+        else:
+            rules.add(("allow", f"{port}/{protocol}"))
     if spec.role != "haproxy_entry" and not spec.panel_sources:
         rules.add(("allow", f"{spec.node_port}/tcp"))
     for source in spec.panel_sources if spec.role != "haproxy_entry" else []:
@@ -1420,6 +1427,10 @@ async def _stop_hysteria_tls(remote: RemoteServer, spec: InstallSpec) -> None:
 
 async def _deploy_tls(remote: RemoteServer, spec: InstallSpec, artifacts: dict, log) -> None:
     """Выпускает сертификат и запускает собственный nginx-контейнер."""
+    if not _uses_tls(spec):
+        raise InstallError(
+            "certificate", "Для этой роли и транспорта не используется собственный TLS-прокси", retryable=False
+        )
     await ensure_http_tools(remote)
     domain = spec.domain
     cert_dir = ROOT + "/certbot"
@@ -1567,6 +1578,13 @@ def _nginx_config(spec: InstallSpec, artifacts: dict) -> str:
         "ssl_protocols TLSv1.2 TLSv1.3;\nserver_tokens off;\n"
     )
     if spec.transport == "vless_tcp_selfsteal":
+        public_site = (
+            f"server {{ listen 443 ssl; listen [::]:443 ssl; http2 on; server_name {spec.domain};\n"
+            + tls
+            + "root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; }\n}\n"
+            if spec.role == "haproxy_exit"
+            else ""
+        )
         return (
             f"server {{ listen 80; listen [::]:80; server_name {spec.domain}; "
             "location / { return 301 https://$host$request_uri; } }\n"
@@ -1574,6 +1592,7 @@ def _nginx_config(spec: InstallSpec, artifacts: dict) -> str:
             + tls
             + "set_real_ip_from 127.0.0.1; real_ip_header proxy_protocol;\n"
             "root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; }\n}\n"
+            + public_site
         )
     path = artifacts.get("xhttp_path")
     if not isinstance(path, str) or not re.fullmatch(r"/[a-z0-9]+/[a-z0-9]+/[a-z0-9]+/", path):

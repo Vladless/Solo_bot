@@ -4,14 +4,14 @@ import ipaddress
 import re
 import uuid
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 from urllib.parse import quote
 
 from .defaults import get_install_defaults as get_install_defaults
 from .profiles import reality_public_key
-from .types import NODE_VERSION, PANEL_MIN_VERSION, InstallError, InstallSpec
+from .types import NODE_VERSION, PANEL_MIN_VERSION, TCP_REALITY_TRANSPORTS, InstallError, InstallSpec
 
 
 Checkpoint = Callable[[dict], Awaitable[None]]
@@ -232,6 +232,16 @@ class InstallerPanel:
         callback = checkpoint or self.checkpoint
         if callback:
             await callback(artifacts)
+
+    @asynccontextmanager
+    async def probe_access(
+        self, inbound_uuid: str, artifacts: dict, checkpoint: Checkpoint | None = None
+    ) -> AsyncIterator[dict[str, str]]:
+        """Ограничивает проверочный доступ одним инбаундом."""
+        from .probe_access import managed_probe_access
+
+        async with managed_probe_access(self, inbound_uuid, artifacts, checkpoint) as access:
+            yield access
 
     @asynccontextmanager
     async def _route_scope(self, artifacts: dict, child: dict):
@@ -680,7 +690,15 @@ class InstallerPanel:
                     "panel_host", "Не подтверждена выходная нода HAProxy на выбранной панели", retryable=False
                 )
         cdn = spec.transport.startswith("cdn_")
-        address = spec.cdn_domain if cdn else spec.domain if spec.transport == "vless_tcp_selfsteal" else spec.address
+        address = (
+            spec.address
+            if spec.role == "haproxy_entry"
+            else spec.cdn_domain
+            if cdn
+            else spec.domain
+            if spec.transport == "vless_tcp_selfsteal"
+            else spec.address
+        )
         body = {
             "remark": spec.host_remark,
             "address": address,
@@ -692,7 +710,7 @@ class InstallerPanel:
             },
         }
         if spec.role == "haproxy_entry":
-            body.update(sni=target.get("reality_domain") or spec.reality_domain, fingerprint="firefox")
+            body.update(sni=target.get("reality_domain") or spec.reality_server_name(), fingerprint="firefox")
         elif cdn:
             body.update(
                 path=artifacts.get("xhttp_path"),
@@ -972,7 +990,7 @@ class InstallerPanel:
         checkpoint: Checkpoint | None = None,
     ) -> dict:
         """Создаёт отдельный доступ только к выходу каскада."""
-        if exit_spec.role != "exit" or exit_spec.transport not in {"vless_tcp_reality", "vless_tcp_selfsteal"}:
+        if exit_spec.role != "exit" or exit_spec.transport not in TCP_REALITY_TRANSPORTS:
             raise InstallError("cascade", "Для выхода каскада нужна выходная нода TCP Reality", retryable=False)
         if not all(exit_artifacts.get(name) for name in ("inbound_uuid", "public_key", "short_id", "node_uuid")):
             raise InstallError("cascade", "Параметры выходной ноды неполны", retryable=False)
@@ -997,7 +1015,7 @@ class InstallerPanel:
 
     async def _check_cascade_exit(self, exit_spec: InstallSpec, exit_artifacts: dict) -> None:
         """Сверяет профиль и ноду выхода с параметрами установки."""
-        if exit_spec.role != "exit" or exit_spec.transport not in {"vless_tcp_reality", "vless_tcp_selfsteal"}:
+        if exit_spec.role != "exit" or exit_spec.transport not in TCP_REALITY_TRANSPORTS:
             raise InstallError("cascade", "Для выхода каскада нужна выходная нода TCP Reality", retryable=False)
         await self._ready()
         profile_uuid = _uuid(exit_artifacts.get("profile_uuid"), "профиль выхода")
@@ -1015,9 +1033,7 @@ class InstallerPanel:
                 "inbound_tag": exit_artifacts.get("inbound_tag") or saved_inbound["tag"],
                 "address": exit_spec.transit_address(),
                 "port": exit_spec.client_port,
-                "server_name": exit_spec.domain
-                if exit_spec.transport == "vless_tcp_selfsteal"
-                else exit_spec.reality_domain,
+                "server_name": exit_spec.reality_server_name(),
                 "public_key": exit_artifacts.get("public_key"),
                 "short_id": exit_artifacts.get("short_id"),
             },
@@ -1107,7 +1123,7 @@ class InstallerPanel:
             port=exit_spec.client_port,
             public_key=exit_artifacts["public_key"],
             short_id=exit_artifacts["short_id"],
-            server_name=exit_spec.domain if exit_spec.transport == "vless_tcp_selfsteal" else exit_spec.reality_domain,
+            server_name=exit_spec.reality_server_name(),
         )
         await self._save(artifacts, checkpoint)
         return cascade
