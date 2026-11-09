@@ -376,6 +376,31 @@ async def _access_recovery_prompt(event, state: FSMContext, job: dict, code: str
     await _send(event, "\n".join(lines), builder, state=state)
 
 
+async def _access_recovery_blocked(event, state: FSMContext, job: dict, notice: str) -> None:
+    """Отделяет успешный SSH от ошибки восстановления настроек."""
+    data = await state.get_data()
+    recovery = data.get("access_recovery") or {}
+    if recovery.get("job_id") != job["id"]:
+        raise ValueError("Запрос восстановления устарел. Откройте нужную ноду заново")
+    params = {**InstallSpec().to_dict(), **(job.get("params") or {})}
+    await state.set_state(None)
+    builder = InlineKeyboardBuilder()
+    field = "pp" if recovery.get("credential_kind") == "pk" and recovery.get("credential_envelope") else "pw"
+    _button(builder, "Повторить восстановление", "accessfield", job["id"], field)
+    _button(builder, "Карточка установки", "show", recovery["source_job_id"])
+    _button(builder, "Отмена", "accesscancel", job["id"])
+    lines = [
+        "<b>SSH-доступ подтверждён</b>",
+        f"Сервер: {_copyable(params['address'])}. Подключение и вход выполнены.",
+        "",
+        "Не удалось завершить восстановление настроек:",
+        escape(notice[:1000]),
+        "",
+        "Проверьте указанные настройки и повторите восстановление. Работающая конфигурация не изменена.",
+    ]
+    await _send(event, "\n".join(lines), builder, state=state)
+
+
 async def _begin_access_recovery(
     event, state: FSMContext, error, source_job_id: str, action: str, value: str = ""
 ) -> None:
@@ -3477,6 +3502,10 @@ async def installer_input(message: Message, state: FSMContext, session=None):
         recovery = (await state.get_data()).get("access_recovery") or {}
         if recovery.get("job_id") == job_id:
             notice = str(error)
+            if getattr(error, "ssh_authenticated", False):
+                return await _access_recovery_blocked(
+                    message, state, await jobs.get_job(job_id, message.from_user.id), notice
+                )
             if getattr(error, "step", "") == "ssh_host_key":
                 notice = "Ключ самого SSH-сервера не совпал с сохранённым. Проверьте сервер и его отпечаток в консоли VPS; автоматически заменять подтверждённый ключ нельзя."
             await _access_recovery_prompt(

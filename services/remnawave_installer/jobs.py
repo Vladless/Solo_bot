@@ -914,7 +914,11 @@ async def recover_access(job_id: str, owner_id: int, *, secrets_patch: dict, cre
         return {key: value[key] for key in ("id", "owner_id", "status", "params", "artifacts")}
 
     async with RemoteServer(spec, credentials) as remote:
-        restored = await recover_artifacts(job_id, spec, snapshot["artifacts"], remote, lookup)
+        try:
+            restored = await recover_artifacts(job_id, spec, snapshot["artifacts"], remote, lookup)
+        except InstallError as error:
+            error.ssh_authenticated = True
+            raise
     await _authorize(owner_id)
     async with async_session_maker() as session:
         rows = {}

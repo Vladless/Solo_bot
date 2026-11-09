@@ -45,6 +45,24 @@ def _uuid(value: Any, label: str) -> str:
         raise InstallError("panel", f"Панель вернула некорректный UUID: {label}") from error
 
 
+def _host_identity_matches(host: Any, expected: dict) -> bool:
+    """Сверяет адрес и привязку хоста независимо от оформления."""
+    if not isinstance(host, dict) or not isinstance(expected, dict):
+        return False
+    inbound, binding = host.get("inbound"), expected.get("inbound")
+    return bool(
+        isinstance(inbound, dict)
+        and isinstance(binding, dict)
+        and host.get("address") == expected.get("address")
+        and type(host.get("port")) is int
+        and host.get("port") == expected.get("port")
+        and all(
+            binding.get(key) and inbound.get(key) == binding[key]
+            for key in ("configProfileUuid", "configProfileInboundUuid")
+        )
+    )
+
+
 def _listens_on(inbound: dict, address: str) -> bool:
     """Проверяет доступность нужного IP в настройках инбаунда."""
     try:
@@ -614,7 +632,7 @@ class InstallerPanel:
         return {"node_uuid": artifacts["node_uuid"]}
 
     @staticmethod
-    def _validate_node(spec: InstallSpec, artifacts: dict, node: Any) -> None:
+    def _validate_node(spec: InstallSpec, artifacts: dict, node: Any, *, check_name: bool = True) -> None:
         """Проверяет принадлежность ноды текущей установке."""
         if not isinstance(node, dict):
             raise InstallError("panel_node", "Панель не вернула ноду")
@@ -623,7 +641,8 @@ class InstallerPanel:
         ids = [item.get("uuid") for item in inbounds if isinstance(item, dict)]
         if (
             node.get("uuid") != artifacts.get("node_uuid")
-            or node.get("name") != spec.name
+            or check_name
+            and node.get("name") != spec.name
             or node.get("address") != spec.address
             or node.get("port") != spec.node_port
             or profile.get("activeConfigProfileUuid") != artifacts.get("profile_uuid")
@@ -643,11 +662,19 @@ class InstallerPanel:
         await self._ready()
         if not spec.publish_host or spec.role in {"exit", "haproxy_exit"}:
             return {}
+        if not artifacts.get("host_uuid") and (artifacts.get("host_recovery") or {}).get("status") in {
+            "missing",
+            "ambiguous",
+            "changed",
+            "unavailable",
+        }:
+            return {}
         cdn = spec.transport.startswith("cdn_")
         if cdn and not artifacts.get("cloud", {}).get("ready"):
             raise InstallError("panel_host", "CDN ещё не готов к публикации")
         body = self._host_body(spec, artifacts)
         address = body["address"]
+        created = False
         if artifacts.get("host_uuid"):
             host = await self._call("GET", f"/hosts/{_uuid(artifacts['host_uuid'], 'хост')}")
         else:
@@ -655,7 +682,7 @@ class InstallerPanel:
             if not isinstance(hosts, list) or any(not isinstance(item, dict) for item in hosts):
                 raise InstallError("panel_host", "Панель вернула некорректный список хостов")
             collisions = [host for host in hosts if host.get("address") == address and host.get("port") == body["port"]]
-            owned = [host for host in collisions if all(host.get(key) == value for key, value in body.items())]
+            owned = [host for host in collisions if _host_identity_matches(host, body)]
             if len(owned) == 1:
                 host = owned[0]
             elif collisions:
@@ -663,12 +690,23 @@ class InstallerPanel:
             else:
                 await self._save(artifacts)
                 host = await self._call("POST", "/hosts", body)
+                created = True
             if not isinstance(host, dict):
                 raise InstallError("panel_host", "Панель не вернула созданный хост")
             artifacts["host_uuid"] = _uuid(host.get("uuid"), "хост")
             await self._save(artifacts)
-        if not isinstance(host, dict) or any(host.get(key) != value for key, value in body.items()):
+        if (
+            not isinstance(host, dict)
+            or host.get("uuid") != artifacts.get("host_uuid")
+            or not _host_identity_matches(host, body)
+            or created
+            and any(host.get(key) != value for key, value in body.items())
+        ):
             raise InstallError("panel_host", "Сохранённый хост не соответствует задаче", retryable=False)
+        artifacts["host_snapshot"] = copy.deepcopy(host)
+        if artifacts.get("host_recovery"):
+            artifacts["host_recovery"] = {"status": "bound", "expected": body}
+        await self._save(artifacts)
         return {"host_uuid": artifacts["host_uuid"]}
 
     @staticmethod
@@ -735,66 +773,89 @@ class InstallerPanel:
                     await self.update_host(before, route, scoped)
             return {"host_uuid": artifacts["host_uuid"]} if artifacts.get("host_uuid") else {}
         await self._ready()
+        previous = self._host_body(previous_spec, artifacts)
+        desired = self._host_body(spec, artifacts)
+        if not artifacts.get("host_uuid") and (artifacts.get("host_recovery") or {}).get("status") in {
+            "missing",
+            "ambiguous",
+            "changed",
+            "unavailable",
+        }:
+            if previous == desired:
+                return {}
+            raise InstallError(
+                "panel_host",
+                "Хост подписки не привязан к этому направлению. Проверьте его в панели перед изменением публикации",
+                retryable=False,
+            )
         if not artifacts.get("host_uuid"):
-            if not spec.publish_host:
-                previous = self._host_body(previous_spec, artifacts)
-                hosts = await self._call("GET", "/hosts")
-                if not isinstance(hosts, list) or any(not isinstance(item, dict) for item in hosts):
-                    raise InstallError("panel_host", "Панель вернула некорректный список хостов")
-                collisions = [
-                    item
-                    for item in hosts
-                    if item.get("address") == previous["address"] and item.get("port") == previous["port"]
-                ]
-                owned = [item for item in collisions if all(item.get(key) == value for key, value in previous.items())]
-                if not collisions:
-                    return {}
-                if len(owned) != 1 or len(collisions) != 1:
-                    raise InstallError("panel_host", "Адрес хоста занят изменённым или чужим хостом", retryable=False)
+            hosts = await self._call("GET", "/hosts")
+            if not isinstance(hosts, list) or any(not isinstance(item, dict) for item in hosts):
+                raise InstallError("panel_host", "Панель вернула некорректный список хостов")
+            collisions = [
+                item
+                for item in hosts
+                if any(
+                    item.get("address") == body["address"] and item.get("port") == body["port"]
+                    for body in (previous, desired)
+                )
+            ]
+            owned = [
+                item for item in collisions if any(_host_identity_matches(item, body) for body in (previous, desired))
+            ]
+            if len(owned) == 1:
                 artifacts["host_uuid"] = _uuid(owned[0].get("uuid"), "хост")
                 await self._save(artifacts)
+            elif collisions:
+                raise InstallError("panel_host", "Адрес хоста занят изменённым или чужим хостом", retryable=False)
+            elif not spec.publish_host:
+                return {}
             else:
                 return await self.ensure_host(spec, artifacts)
         host_uuid = _uuid(artifacts["host_uuid"], "хост")
         host = await self._call("GET", f"/hosts/{host_uuid}")
-        previous = self._host_body(previous_spec, artifacts)
-        desired = self._host_body(spec, artifacts)
-        previous.pop("xhttpExtraParams", None)
         approved = [self._host_body(item, artifacts) for item in _approved_specs(artifacts, previous_spec, spec)]
-        for body in approved:
-            body.pop("xhttpExtraParams", None)
         approved.extend(self._update_intents(artifacts, "host", host_uuid))
         if (
             not isinstance(host, dict)
             or host.get("uuid") != host_uuid
-            or (spec.role != "haproxy_entry" and host.get("inbound") != desired["inbound"])
-            or not any(
-                all(host.get(key) == value for key, value in body.items()) for body in (previous, desired, *approved)
-            )
+            or not any(_host_identity_matches(host, body) for body in (previous, desired, *approved))
         ):
             raise InstallError("panel_host", "Обновление чужого или изменённого хоста запрещено", retryable=False)
         if spec.publish_host and spec.transport.startswith("cdn_"):
             cloud = artifacts.get("cloud") or {}
             if not cloud.get("ready") or cloud.get("domain") != spec.cdn_domain:
                 raise InstallError("panel_host", "Новый CDN ещё не готов к публикации")
-        if previous_spec.transport != spec.transport and (
+        reset_transport = previous_spec.transport != spec.transport and (
             previous_spec.transport.startswith("cdn_") or previous_spec.transport == "hysteria2"
-        ):
+        )
+        reset_fields = {
+            "path": None,
+            "sni": None,
+            "host": None,
+            "alpn": None,
+            "fingerprint": None,
+            "securityLayer": "DEFAULT",
+            "xhttpExtraParams": None,
+        }
+        if reset_transport:
             desired = {
-                "path": None,
-                "sni": None,
-                "host": None,
-                "alpn": None,
-                "fingerprint": None,
-                "securityLayer": "DEFAULT",
-                "xhttpExtraParams": None,
+                **reset_fields,
                 **desired,
             }
+        desired = {
+            key: value if previous.get(key) != value or reset_transport and key in reset_fields else host[key]
+            for key, value in desired.items()
+            if previous.get(key) != value or reset_transport and key in reset_fields or key in host
+        }
         if any(host.get(key) != value for key, value in desired.items()):
             await self._record_update(artifacts, "host", host_uuid, {key: host.get(key) for key in desired}, desired)
             host = await self._call("PATCH", "/hosts", {"uuid": host_uuid, **desired})
         if not isinstance(host, dict) or any(host.get(key) != value for key, value in desired.items()):
             raise InstallError("panel_host", "Изменение хоста не подтверждено панелью")
+        artifacts["host_snapshot"] = copy.deepcopy(host)
+        if artifacts.get("host_recovery"):
+            artifacts["host_recovery"] = {"status": "bound", "expected": self._host_body(spec, artifacts)}
         await self._record_update(artifacts, "host", host_uuid, desired)
         return {"host_uuid": host_uuid}
 
@@ -979,7 +1040,7 @@ class InstallerPanel:
                 saved, {**target, "server_name": target.get("reality_domain")}, proxy_protocol=True, step="verify"
             )
         else:
-            self._validate_node(spec, artifacts, node)
+            self._validate_node(spec, artifacts, node, check_name=False)
         return _node_online(node)
 
     async def ensure_cascade(

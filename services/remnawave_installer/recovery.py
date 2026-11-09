@@ -5,7 +5,7 @@ import re
 import shlex
 
 from .haproxy import HAPROXY_CONTAINER, build_haproxy_config
-from .panel import InstallerPanel, _uuid
+from .panel import InstallerPanel, _host_identity_matches, _uuid
 from .profiles import build_profile, reality_public_key
 from .remote import ROOT, RemoteServer
 from .types import TCP_REALITY_TRANSPORTS, InstallError, InstallSpec
@@ -106,11 +106,7 @@ async def _recover_node(panel: InstallerPanel, job_id: str, spec: InstallSpec) -
     nodes = await panel._call("GET", "/nodes")
     if not isinstance(nodes, list) or any(not isinstance(item, dict) for item in nodes):
         _refuse("Панель не вернула список установленных нод")
-    matches = [
-        node
-        for node in nodes
-        if node.get("name") == spec.name and node.get("address") == spec.address and node.get("port") == spec.node_port
-    ]
+    matches = [node for node in nodes if node.get("address") == spec.address and node.get("port") == spec.node_port]
     if len(matches) != 1:
         _refuse("Не удалось однозначно найти существующую ноду в панели; сервер не изменён")
     node = matches[0]
@@ -125,7 +121,6 @@ async def _recover_node(panel: InstallerPanel, job_id: str, spec: InstallSpec) -
     if (
         not isinstance(profile, dict)
         or profile.get("uuid") != profile_uuid
-        or profile.get("name") != spec.profile_name
         or not isinstance(inbounds, list)
         or len(inbounds) != 1
         or not isinstance(inbounds[0], dict)
@@ -165,7 +160,7 @@ async def _recover_node(panel: InstallerPanel, job_id: str, spec: InstallSpec) -
         if build_profile(spec, copy.deepcopy(artifacts)) != config:
             raise ValueError
         panel._bind_inbounds(spec, artifacts, profile, config)
-        panel._validate_node(spec, artifacts, node)
+        panel._validate_node(spec, artifacts, node, check_name=False)
     except (ValueError, KeyError, TypeError):
         _refuse("Живая конфигурация Reality отличается от параметров установки")
     if (
@@ -189,23 +184,41 @@ async def _recover_node(panel: InstallerPanel, job_id: str, spec: InstallSpec) -
 
 
 async def _recover_hosts(panel: InstallerPanel, spec: InstallSpec, artifacts: dict) -> None:
-    """Находит только полностью совпадающие существующие хосты."""
+    """Отдельно восстанавливает доступные привязки хостов подписки."""
     if not spec.publish_host or spec.role in {"exit", "haproxy_exit"}:
         return
-    hosts = await panel._call("GET", "/hosts")
-    if not isinstance(hosts, list) or any(not isinstance(item, dict) for item in hosts):
-        _refuse("Панель не вернула опубликованные хосты")
+    try:
+        hosts = await panel._call("GET", "/hosts")
+    except InstallError:
+        hosts = None
+    available = isinstance(hosts, list) and all(isinstance(item, dict) for item in hosts)
     for index, route in enumerate(spec.cascade_specs()):
         state = artifacts if index == 0 else artifacts["cascade_routes"][route.exit_install_id]
         expected = panel._host_body(route, state)
+        resolution = {"status": "unavailable", "expected": expected}
+        state["host_recovery"] = resolution
+        if not available:
+            continue
         collisions = [
             host
             for host in hosts
             if host.get("address") == expected["address"] and host.get("port") == expected["port"]
         ]
-        if len(collisions) != 1 or any(collisions[0].get(key) != value for key, value in expected.items()):
-            _refuse("Опубликованный хост изменён или определяется неоднозначно; сервер не изменён")
-        state["host_uuid"] = _uuid(collisions[0].get("uuid"), "хост")
+        owned = [host for host in collisions if _host_identity_matches(host, expected)]
+        if len(owned) > 1:
+            resolution["status"] = "ambiguous"
+            continue
+        if not owned:
+            resolution["status"] = "changed" if collisions else "missing"
+            continue
+        try:
+            identifier = _uuid(owned[0].get("uuid"), "хост")
+        except InstallError:
+            resolution["status"] = "changed"
+            continue
+        state["host_uuid"] = identifier
+        state["host_snapshot"] = copy.deepcopy(owned[0])
+        resolution["status"] = "bound"
 
 
 async def recover_artifacts(
