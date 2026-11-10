@@ -149,6 +149,55 @@ def _node_online(node: dict) -> bool:
     )
 
 
+def _node_version(value: Any) -> str | None:
+    """Ограничивает диагностику безопасным номером версии."""
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    match = re.fullmatch(r"v?([0-9]+(?:\.[0-9]+){1,3})(?:[-+][A-Za-z0-9][A-Za-z0-9._+-]{0,32})?", value)
+    return match[1] if match else None
+
+
+def _node_failure(node: dict) -> str:
+    """Классифицирует ошибку панели без раскрытия её текста."""
+    if _node_online(node):
+        return "none"
+    if node.get("isDisabled") is True:
+        return "disabled"
+    if node.get("isConnecting") is True:
+        return "connecting"
+    status = node.get("lastStatusMessage")
+    status = status[:4096].lower() if isinstance(status, str) else ""
+    for failure, patterns in (
+        ("timeout", (r"timed?\s*out", r"timeout", r"etimedout")),
+        ("connection_refused", (r"econnrefused", r"connection refused")),
+        ("no_route", (r"no route", r"network.*unreachable", r"host.*unreachable", r"ehostunreach", r"enetunreach")),
+        ("tls", (r"certificate", r"\btls\b", r"\bssl\b", r"handshake")),
+        (
+            "authentication",
+            (
+                r"unauthori[sz]ed",
+                r"authentication",
+                r"forbidden",
+                r"invalid.*secret",
+                r"\b(?:http|status(?: code)?)\s*[:=]?\s*(?:401|403)\b",
+            ),
+        ),
+        (
+            "xray_configuration",
+            (r"xray.*(?:error|failed|invalid|config)", r"(?:failed|invalid).*config", r"failed.*xray", r"xray_core"),
+        ),
+    ):
+        if any(re.search(pattern, status) for pattern in patterns):
+            return failure
+    versions = node.get("versions")
+    if node.get("isConnected") is True and isinstance(versions, dict):
+        if versions.get("node") != NODE_VERSION:
+            return "node_version_mismatch"
+        if not versions.get("xray"):
+            return "xray_not_running"
+    return "not_connected"
+
+
 def _approved_specs(artifacts: dict, previous_spec: InstallSpec, spec: InstallSpec) -> list[InstallSpec]:
     """Читает подтверждённые варианты текущего изменения."""
     edit = artifacts.get("edit") or {}
@@ -1015,6 +1064,10 @@ class InstallerPanel:
                 async with self._route_scope(artifacts, child) as scoped:
                     results.append(await self.check_online(route, scoped))
             return all(results)
+        return _node_online(await self._read_node_state(spec, artifacts))
+
+    async def _read_node_state(self, spec: InstallSpec, artifacts: dict) -> dict:
+        """Читает состояние только подтверждённой ноды панели."""
         await self._ready()
         target = artifacts.get("haproxy") if spec.role == "haproxy_entry" else artifacts
         target = target or {}
@@ -1041,7 +1094,51 @@ class InstallerPanel:
             )
         else:
             self._validate_node(spec, artifacts, node, check_name=False)
-        return _node_online(node)
+        return node
+
+    async def node_diagnostics(self, spec: InstallSpec, artifacts: dict) -> list[dict]:
+        """Возвращает безопасные причины недоступности проверенных нод."""
+        routes = (
+            [
+                (
+                    route,
+                    artifacts if index == 0 else (artifacts.get("cascade_routes") or {}).get(route.exit_install_id, {}),
+                )
+                for index, route in enumerate(spec.cascade_specs())
+            ]
+            if spec.role == "haproxy_entry"
+            else [(spec, artifacts)]
+        )
+        result = []
+        for route, state in routes:
+            node = await self._read_node_state(route, state)
+            target = state.get("haproxy") or {} if route.role == "haproxy_entry" else {}
+            expected = target.get("node_port") if route.role == "haproxy_entry" else route.node_port
+            name = target.get("name") if route.role == "haproxy_entry" else route.name
+            if (
+                not isinstance(name, str)
+                or not name
+                or len(name) > 100
+                or any(ord(char) < 32 or ord(char) == 127 for char in name)
+            ):
+                name = route.host_remark or route.name
+            actual = node.get("port")
+            versions = node.get("versions") or {}
+            versions = versions if isinstance(versions, dict) else {}
+            result.append({
+                "role": "haproxy_exit" if route.role == "haproxy_entry" else route.role,
+                "name": name,
+                "expected_port": expected if type(expected) is int and 1 <= expected <= 65535 else None,
+                "actual_port": actual if type(actual) is int and 1 <= actual <= 65535 else None,
+                **{
+                    key: node.get(key) if type(node.get(key)) is bool else None
+                    for key in ("isConnected", "isDisabled", "isConnecting")
+                },
+                "node_version": _node_version(versions.get("node")),
+                "xray_version": _node_version(versions.get("xray")),
+                "failure": _node_failure(node),
+            })
+        return result
 
     async def ensure_cascade(
         self,

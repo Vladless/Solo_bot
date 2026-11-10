@@ -1,3 +1,8 @@
+import posixpath
+import re
+
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
+
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +24,22 @@ def build_login_response(identity) -> LoginResponse:
 
 
 def safe_return_path(return_to: str | None, default: str) -> str:
-    path = str(return_to or "").strip()
-    if not path.startswith("/") or path.startswith(("//", "/\\")):
+    raw = str(return_to or "")
+    if re.search(r"[\\\x00-\x1f\x7f]", raw):
+        return default
+    path = raw.strip()
+    if not path.startswith("/") or path.startswith("//"):
+        return default
+    try:
+        target = urlsplit(path)
+        if target.scheme or target.netloc or re.search(r"%(?![0-9a-fA-F]{2})", target.path):
+            return default
+        pathname = unquote(target.path, errors="strict")
+    except (ValueError, UnicodeError):
+        return default
+    if pathname.startswith("//") or re.search(r"[\\\x00-\x1f\x7f]", pathname):
+        return default
+    if re.match(r"^/(login|register|forgot-password|logout)(/|$)", posixpath.normpath(pathname), re.IGNORECASE):
         return default
     return path
 
@@ -30,10 +49,13 @@ LOGIN_MARKER_PARAM = "auth"
 
 def with_login_marker(path: str) -> str:
     """Помечает возврат после входа: клиент забирает личность из cookie-сессии."""
-    if f"{LOGIN_MARKER_PARAM}=1" in path:
+    target = urlsplit(path)
+    params = parse_qsl(target.query, keep_blank_values=True)
+    if [value for key, value in params if key == LOGIN_MARKER_PARAM] == ["1"]:
         return path
-    separator = "&" if "?" in path else "?"
-    return f"{path}{separator}{LOGIN_MARKER_PARAM}=1"
+    params = [(key, value) for key, value in params if key != LOGIN_MARKER_PARAM]
+    params.append((LOGIN_MARKER_PARAM, "1"))
+    return urlunsplit((target.scheme, target.netloc, target.path, urlencode(params), target.fragment))
 
 
 _TRUSTED_PROXY_CIDRS: list[str] = []

@@ -120,8 +120,12 @@ export function applyTheme(seed, spec) {
     applySlots(theme, spec, Boolean(slug));
     const lightTokens = theme.lightModeTokens;
     if (lightTokens && typeof lightTokens === "object") {
-      if (light) assign(lightTokens, light);
-      assign(lightTokens, spec.lightTokens ?? {});
+      theme.lightModeTokens = {
+        ...lightTokens,
+        ...(light ?? {}),
+        ...(spec.lightTokens ?? {}),
+        ...(slug ? spec.pageTokens?.[slug]?.lightModeTokens ?? {} : {}),
+      };
     }
   };
 

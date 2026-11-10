@@ -1,6 +1,7 @@
 import hashlib
 import ipaddress
 import json
+import re
 import shlex
 
 from .remote import (
@@ -22,6 +23,112 @@ HAPROXY_CONTAINER = "solobot-haproxy"
 _DIRECTORY = ROOT + "/haproxy"
 _CONFIG = _DIRECTORY + "/haproxy.cfg"
 _COMPOSE = _DIRECTORY + "/compose.json"
+_RELOAD_SCRIPT = """import hashlib,json,os,pathlib,re,signal,stat,subprocess,sys,tempfile,time
+root=pathlib.Path(sys.argv[1]); owner,image,expected,desired,target,ports=sys.argv[2:]
+ports=json.loads(ports); cfg=root/'haproxy/haproxy.cfg'; manifest=root/'.managed-files.json'
+mount='/usr/local/etc/haproxy/haproxy.cfg'; name='solobot-haproxy'
+def require(condition,code):
+ if not condition: raise SystemExit(code)
+def digest(value):
+ return hashlib.sha256(value).hexdigest()
+def run(arguments,**kwargs):
+ return subprocess.run(arguments,capture_output=True,check=True,timeout=20,**kwargs).stdout
+def read(path):
+ descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+ with os.fdopen(descriptor,'rb') as stream:
+  metadata=os.fstat(stream.fileno()); require(stat.S_ISREG(metadata.st_mode),31)
+  return stream.read(),metadata
+def inspect():
+ data=json.loads(run(['docker','inspect',name]))[0]
+ require((data.get('Config',{}).get('Labels') or {}).get('io.solobot.remnawave.owner')==owner,33)
+ require(data.get('State',{}).get('Running') is True and data.get('Config',{}).get('Image')==image,34)
+ require(data.get('HostConfig',{}).get('NetworkMode')=='host',35)
+ mounts=[item for item in data.get('Mounts',[]) if item.get('Destination')==mount]
+ require(len(mounts)==1 and mounts[0].get('Type')=='bind' and mounts[0].get('Source')==str(cfg) and mounts[0].get('RW') is False,36)
+ master=data['State']['Pid']; require(type(master) is int and master>1,37)
+ arguments=pathlib.Path('/proc/'+str(master)+'/cmdline').read_bytes().split(b'\\0')
+ require(pathlib.Path(os.fsdecode(arguments[0])).name=='haproxy' and b'-W' in arguments and b'-db' in arguments,38)
+ require(any(arguments[index]==b'-f' and arguments[index+1]==mount.encode() for index in range(len(arguments)-1)),38)
+ return master
+def workers(master):
+ result=set()
+ for child in pathlib.Path('/proc/'+str(master)+'/task/'+str(master)+'/children').read_text().split():
+  try:
+   if pathlib.Path('/proc/'+child+'/comm').read_text().strip()=='haproxy': result.add(int(child))
+  except FileNotFoundError: pass
+ return result
+def runtime_hash():
+ return digest(run(['docker','exec',name,'cat',mount]))
+def atomic_manifest(value,metadata):
+ descriptor,temporary=tempfile.mkstemp(prefix='.solo-reload-',dir=str(root))
+ try:
+  os.fchmod(descriptor,stat.S_IMODE(metadata.st_mode))
+  with os.fdopen(descriptor,'wb') as stream:
+   stream.write(value); stream.flush(); os.fsync(stream.fileno())
+  os.replace(temporary,manifest)
+ finally:
+  if os.path.exists(temporary): os.unlink(temporary)
+def write(value,inode,current):
+ descriptor=os.open(cfg,os.O_RDWR|os.O_NOFOLLOW)
+ with os.fdopen(descriptor,'r+b',buffering=0) as stream:
+  metadata=os.fstat(stream.fileno())
+  require((metadata.st_dev,metadata.st_ino)==inode and digest(stream.read())==current,39)
+  try:
+   stream.seek(0); offset=0
+   while offset<len(value):
+    count=stream.write(value[offset:]); require(count is not None and count>0,40); offset+=count
+   stream.truncate(len(value)); os.fsync(stream.fileno())
+  except BaseException:
+   stream.seek(0); state['partial']=digest(stream.read()); raise
+def reload(master,expected_ports,checksum):
+ require(inspect()==master and runtime_hash()==checksum,41)
+ previous=workers(master); require(bool(previous),42)
+ os.kill(master,signal.SIGUSR2); deadline=time.monotonic()+35
+ while time.monotonic()<deadline:
+  current=workers(master); listeners={}
+  for line in run(['ss','-tlnpH']).decode().splitlines():
+   fields=line.split()
+   if len(fields)<4 or not fields[3].rsplit(':',1)[-1].isdigit(): continue
+   address,port=fields[3].rsplit(':',1)
+   family='ipv4' if address=='0.0.0.0' else 'ipv6' if address in ('[::]','::') else None
+   listeners.setdefault((int(port),family),set()).update(int(pid) for pid in re.findall(r'pid=(\\d+)',line))
+  if current-previous and all(listeners.get((port,family),set()) & current for port in expected_ports for family in ('ipv4','ipv6')):
+   require(inspect()==master and runtime_hash()==checksum,43); return
+  time.sleep(1)
+ raise SystemExit(44)
+def main():
+ global state
+ state={}
+ old,metadata=read(cfg); before,manifest_metadata=read(manifest); managed=json.loads(before)
+ require(digest(old)==expected and managed.get(str(cfg))==expected,45)
+ candidate,candidate_metadata=read(pathlib.Path(target))
+ require(candidate_metadata.st_uid==metadata.st_uid and not candidate_metadata.st_mode & 0o022,46)
+ require(digest(candidate)==desired and managed.get(target)==desired,46)
+ master=inspect(); require(runtime_hash()==expected,47)
+ run(['docker','exec','-i',name,'haproxy','-c','-f','/dev/stdin'],input=candidate)
+ backup=root/'haproxy/backups'/str(time.time_ns()); backup.mkdir(mode=0o700,parents=True)
+ for filename,content in [('haproxy.cfg',old),('managed-files.json',before)]:
+  descriptor=os.open(backup/filename,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+  with os.fdopen(descriptor,'wb') as stream:
+   stream.write(content); stream.flush(); os.fsync(stream.fileno())
+ inode=(metadata.st_dev,metadata.st_ino); checksum=digest(candidate); updated=None
+ try:
+  write(candidate,inode,expected)
+  managed[str(cfg)]=checksum; updated=json.dumps(managed).encode(); atomic_manifest(updated,manifest_metadata)
+  reload(master,ports,checksum)
+ except BaseException:
+  current,_=read(cfg); require(digest(current) in {expected,checksum,state.get('partial')},48)
+  write(old,inode,digest(current)); current_manifest,_=read(manifest)
+  require(current_manifest in (before,updated),49); atomic_manifest(before,manifest_metadata)
+  old_ports=sorted({int(port) for port in re.findall(rb'(?m)^    bind (?:0\\.0\\.0\\.0|\\[::\\]):(\\d+)',old)})
+  reload(master,old_ports,expected)
+  raise
+ print('RELOADED')
+def interrupted(signum,frame):
+ raise SystemExit(50)
+signal.signal(signal.SIGTERM,interrupted)
+main()
+"""
 
 
 def _target(artifacts: dict) -> tuple[str, int]:
@@ -164,6 +271,42 @@ async def check_haproxy(remote: RemoteServer, spec: InstallSpec, artifacts: dict
     raise InstallError("haproxy_verify", "Собственный контейнер HAProxy не подтвердил все клиентские TCP-порты")
 
 
+async def _running_haproxy(remote: RemoteServer, spec: InstallSpec) -> bool:
+    """Определяет работающий собственный контейнер без его остановки."""
+    script = (
+        "import json,subprocess,sys\n"
+        f"result=subprocess.run(['docker','inspect',{HAPROXY_CONTAINER!r}],capture_output=True)\n"
+        "if result.returncode:\n"
+        " subprocess.run(['docker','info'],capture_output=True,check=True); raise SystemExit(0)\n"
+        "data=json.loads(result.stdout)[0]\n"
+        "if (data.get('Config',{}).get('Labels') or {}).get('io.solobot.remnawave.owner')!=sys.argv[1]: raise SystemExit(33)\n"
+        "if data.get('State',{}).get('Running') is True: print('RUNNING')\n"
+    )
+    return (await remote.run(f"python3 -c {shlex.quote(script)} {owner_id(spec)}", step="haproxy")).strip() == "RUNNING"
+
+
+async def _reload_haproxy(
+    remote: RemoteServer, spec: InstallSpec, previous: str, config: str, *, rollback: bool = False
+) -> None:
+    """Обновляет bind-mounted inode и плавно переключает рабочие процессы."""
+    candidate = _DIRECTORY + ("/rollback.cfg" if rollback else "/candidate.cfg")
+    if rollback:
+        await remote.write(candidate, config, mode=0o644)
+    expected = hashlib.sha256(previous.encode()).hexdigest()
+    desired = hashlib.sha256(config.encode()).hexdigest()
+    ports = sorted({int(port) for port in re.findall(r"(?m)^    bind (?:0\.0\.0\.0|\[::\]):(\d+)", config)})
+    if not ports:
+        raise InstallError("haproxy", "Конфигурация HAProxy не содержит клиентских портов", retryable=False)
+    result = await remote.run(
+        f"python3 -c {shlex.quote(_RELOAD_SCRIPT)} {ROOT} {owner_id(spec)} {HAPROXY_IMAGE} "
+        f"{expected} {desired} {candidate} {shlex.quote(json.dumps(ports))}",
+        step="haproxy_rollback" if rollback else "haproxy_reload",
+        timeout=180,
+    )
+    if result.strip() != "RELOADED":
+        raise InstallError("haproxy", "Плавная перезагрузка HAProxy не подтверждена")
+
+
 async def deploy_haproxy(remote: RemoteServer, spec: InstallSpec, artifacts: dict, log, checkpoint=None) -> None:
     """Проверяет новую конфигурацию и возвращает прежнюю при сбое."""
     config = build_haproxy_config(spec, artifacts)
@@ -189,28 +332,41 @@ async def deploy_haproxy(remote: RemoteServer, spec: InstallSpec, artifacts: dic
         raise InstallError("haproxy", "Не удалось проверить предыдущую конфигурацию HAProxy", retryable=False) from None
     if not isinstance(previous, dict) or set(previous) - {"haproxy.cfg", "compose.json"}:
         raise InstallError("haproxy", "Некорректный снимок предыдущей конфигурации HAProxy", retryable=False)
+    running = await _running_haproxy(remote, spec)
+    if running and not all(name in previous for name in ("haproxy.cfg", "compose.json")):
+        raise InstallError("haproxy", "У работающего HAProxy отсутствует собственная конфигурация", retryable=False)
     candidate = _DIRECTORY + "/candidate.cfg"
     await remote.write(candidate, config, mode=0o644)
     await log("Проверка конфигурации и запуск HAProxy с PROXY v2")
-    await remote.run(f"docker pull {HAPROXY_IMAGE}", step="haproxy", timeout=600)
-    await remote.run(
-        f"docker run --rm --network none --read-only -v {candidate}:/usr/local/etc/haproxy/haproxy.cfg:ro "
-        f"{HAPROXY_IMAGE} haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg",
-        step="haproxy",
-        timeout=60,
-    )
-    try:
-        await remote.write(_CONFIG, config, mode=0o644)
-        await remote.write(_COMPOSE, json.dumps(_compose(spec)))
+    if not running:
+        await remote.run(f"docker pull {HAPROXY_IMAGE}", step="haproxy", timeout=600)
         await remote.run(
-            f"cd {_DIRECTORY} && docker compose -f compose.json up -d --force-recreate --pull never",
+            f"docker run --rm --network none --read-only -v {candidate}:/usr/local/etc/haproxy/haproxy.cfg:ro "
+            f"{HAPROXY_IMAGE} haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg",
             step="haproxy",
-            timeout=180,
+            timeout=60,
         )
+    reloaded = False
+    try:
+        if running:
+            await _reload_haproxy(remote, spec, previous["haproxy.cfg"], config)
+            reloaded = True
+        else:
+            await remote.write(_CONFIG, config, mode=0o644)
+            await remote.write(_COMPOSE, json.dumps(_compose(spec)))
+            await remote.run(
+                f"cd {_DIRECTORY} && docker compose -f compose.json up -d --force-recreate --pull never",
+                step="haproxy",
+                timeout=180,
+            )
         await check_haproxy(remote, spec, artifacts)
     except InstallError:
         await _check_container_owner(remote, spec, HAPROXY_CONTAINER)
-        if all(name in previous for name in ("haproxy.cfg", "compose.json")):
+        if running:
+            if reloaded:
+                await _reload_haproxy(remote, spec, config, previous["haproxy.cfg"], rollback=True)
+                await log("Восстановлена предыдущая конфигурация HAProxy")
+        elif all(name in previous for name in ("haproxy.cfg", "compose.json")):
             await remote.write(_CONFIG, previous["haproxy.cfg"], mode=0o644)
             await remote.write(_COMPOSE, previous["compose.json"])
             await remote.run(

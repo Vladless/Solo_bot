@@ -91,6 +91,8 @@ async def _row(session, job_id: str, owner_id: int | None = None, *, lock: bool 
 
 def _view(row, *, include_credentials: bool = True) -> dict:
     """Отдаёт интерфейсу только несекретные поля."""
+    from .attachment import public_attachment
+
     pending = None
     artifacts = {}
     artifacts_known = not bool(row.encrypted_artifacts)
@@ -128,6 +130,7 @@ def _view(row, *, include_credentials: bool = True) -> dict:
         "pending_params": copy.deepcopy(pending),
         "cascade_pair": copy.deepcopy(artifacts.get("cascade_pair") or {}),
         "extra_exit_for": artifacts.get("extra_exit_for", ""),
+        "extra_exit_attachment": public_attachment(artifacts),
         "haproxy": {
             key: artifacts["haproxy"][key]
             for key in ("exit_install_id", "name", "address", "port", "squad_uuid")
@@ -478,6 +481,13 @@ async def create_extra_exit_draft(entry_job_id: str, owner_id: int, chat_id: int
         return result
 
 
+async def prepare_extra_exit_attachment(job_id: str, owner_id: int) -> dict:
+    """Готовит автоматическое подключение выхода для сводки установщика."""
+    from .attachment import prepare_attachment
+
+    return await prepare_attachment(job_id, owner_id, globals())
+
+
 async def update_draft(job_id: str, owner_id: int, *, params: dict | None = None, secrets: dict | None = None) -> dict:
     """Сохраняет параметры черновика и отдельно шифрует секреты."""
     await _authorize(owner_id)
@@ -488,6 +498,7 @@ async def update_draft(job_id: str, owner_id: int, *, params: dict | None = None
             if row.status != "draft":
                 raise ValueError("После запуска используйте «Изменить настройки» и предварительный просмотр")
             spec = InstallSpec.from_dict({**row.params, **params}, complete=False)
+            await _guard_extra_exit_configuration(session, row, spec)
             paired = await _pair_rows(session, row)
             if len(paired) == 2:
                 entry, exit_row = paired
@@ -528,9 +539,17 @@ async def update_draft(job_id: str, owner_id: int, *, params: dict | None = None
 
 async def get_job(job_id: str, owner_id: int) -> dict:
     """Возвращает безопасную карточку установки."""
+    from .attachment import enrich_attachment
+
     await _authorize(owner_id)
     async with async_session_maker() as session:
-        return _view(await _row(session, job_id, owner_id))
+        row = await _row(session, job_id, owner_id)
+        view = _view(row)
+        if view.get("extra_exit_attachment", {}).get("status") == "queued":
+            return await enrich_attachment(
+                session, view, vault.open(row.id, row.encrypted_artifacts), owner_id, globals()
+            )
+        return view
 
 
 async def bind_progress_message(
@@ -939,6 +958,32 @@ async def recover_access(job_id: str, owner_id: int, *, secrets_patch: dict, cre
         return _view(row)
 
 
+async def _guard_extra_exit_configuration(session, row, spec: InstallSpec) -> None:
+    """Сохраняет совместимость нового выхода с выбранным входом."""
+    artifacts = vault.open(row.id, row.encrypted_artifacts)
+    identifier = artifacts.get("extra_exit_for")
+    if not identifier:
+        return
+    parent = await _row(session, identifier, row.owner_id)
+    _not_deleting(parent)
+    entry = InstallSpec.from_dict(parent.params)
+    if (
+        entry.role != "haproxy_entry"
+        or spec.role != "haproxy_exit"
+        or spec.panel_ref != entry.panel_ref
+        or spec.squad_uuid != entry.squad_uuid
+    ):
+        raise ValueError("Новый выход должен сохранять панель и клиентский сквад входной ноды")
+    if spec.address and spec.address == entry.address:
+        raise ValueError("Новый выход нужно устанавливать на отдельный сервер")
+    if not any(
+        ipaddress.ip_address(entry.transit_address()) in ipaddress.ip_network(source) for source in spec.haproxy_sources
+    ):
+        raise ValueError("В доступе нового выхода должен оставаться IP входной ноды")
+    if spec.cascade_address:
+        _validate_cascade_addresses(entry, spec)
+
+
 async def _require_cascade_access(session, row, spec: InstallSpec) -> None:
     """Запрашивает доступы выходов до запуска изменений каскада."""
     if spec.role not in ENTRY_ROLES or spec.transport not in TCP_REALITY_TRANSPORTS:
@@ -959,9 +1004,22 @@ async def _require_cascade_access(session, row, spec: InstallSpec) -> None:
             raise AccessRecoveryError(target.id)
 
 
-async def start_job(job_id: str, owner_id: int, message_id: int | None = None) -> dict:
+async def start_job(
+    job_id: str, owner_id: int, message_id: int | None = None, *, attachment_token: str | None = None
+) -> dict:
     """Ставит подтверждённую установку в устойчивую очередь."""
+    from .attachment import (
+        preflight_attachment_start,
+        require_attachment_token,
+        start_prepared_attachment_retry,
+        validate_attachment_start,
+    )
+
     await _authorize(owner_id)
+    await require_attachment_token(job_id, owner_id, attachment_token, globals())
+    attachment_retry = await start_prepared_attachment_retry(job_id, owner_id, globals(), attachment_token)
+    if attachment_retry is not None:
+        return attachment_retry
     async with async_session_maker() as session:
         requested = await _row(session, job_id, owner_id)
         rows = await _pair_rows(session, requested)
@@ -983,6 +1041,8 @@ async def start_job(job_id: str, owner_id: int, message_id: int | None = None) -
             if exit_row and row.id == entry.id:
                 params.update(exit_install_id=exit_row.id, squad_uuid=exit_row.params.get("squad_uuid"))
             spec = InstallSpec.from_dict(params)
+            await _guard_extra_exit_configuration(session, row, spec)
+            await validate_attachment_start(session, row, spec, globals(), expected_token=attachment_token)
             spec.name = node_name_from_host(spec.host_remark, spec.name)
             _require_credentials(spec, snapshot["secrets"])
             if row.secrets_expire_at and row.secrets_expire_at <= datetime.utcnow():
@@ -999,6 +1059,8 @@ async def start_job(job_id: str, owner_id: int, message_id: int | None = None) -
                 raise ValueError("В доступе выхода каскада отсутствует IP входного сервера")
     for _, spec in prepared.values():
         await _resolve_ssh_pin(spec)
+    for identifier in prepared:
+        await preflight_attachment_start(identifier, owner_id, globals())
     await _authorize(owner_id)
     async with async_session_maker() as session:
         requested = await _assignment_row(session, job_id, owner_id, prepared[entry.id][1].to_dict())
@@ -1010,8 +1072,10 @@ async def start_job(job_id: str, owner_id: int, message_id: int | None = None) -
                 continue
             snapshot, spec = prepared[row.id]
             _check_ssh_setup(row, snapshot)
+            await _guard_extra_exit_configuration(session, row, spec)
             await _guard_exit_reference(session, row, spec)
             await _require_cascade_access(session, row, spec)
+            await validate_attachment_start(session, row, spec, globals(), bind=True, expected_token=attachment_token)
             row.params, row.address, row.fingerprint = spec.to_dict(), spec.address, spec.fingerprint()
             row.status = "queued"
             row.stage = "waiting_exit" if len(rows) == 2 and row.id == rows[0].id else "preflight"
@@ -1075,8 +1139,11 @@ async def retry_job(job_id: str, owner_id: int) -> dict:
     """Продолжает ту же установку с сохранёнными идентификаторами."""
     await _authorize(owner_id)
     async with async_session_maker() as session:
-        row = await _row(session, job_id, owner_id, lock=True)
+        row = await _row(session, job_id, owner_id)
         if _deleting(row):
+            row = await _row(session, job_id, owner_id, lock=True)
+            if not _deleting(row):
+                raise ValueError("Состояние удаления изменилось. Откройте карточку установки заново")
             if not _idle_deletable(row):
                 raise ValueError("Дождитесь остановки удаления и освобождения текущего этапа")
             await _guard_dependents(session, row)
@@ -1104,6 +1171,8 @@ async def retry_job(job_id: str, owner_id: int) -> dict:
                 await session.rollback()
                 raise ValueError("На этом сервере уже выполняется другая операция") from error
             return _view(row, include_credentials=False)
+        row = await _assignment_row(session, job_id, owner_id, None)
+        _not_deleting(row)
         if row.status not in {"failed", "waiting_dns", "warning", "paused"}:
             return _view(row)
         if not row.retryable and row.status not in {"failed", "paused"}:
@@ -1114,19 +1183,26 @@ async def retry_job(job_id: str, owner_id: int) -> dict:
         artifacts = vault.open(row.id, row.encrypted_artifacts)
         secrets = vault.open(row.id, row.encrypted_secrets)
         required = True
-        if artifacts.get("edit"):
+        from .attachment import validate_attachment_retry
+
+        attachment_retry = await validate_attachment_retry(session, row, artifacts, globals())
+        if attachment_retry:
+            required = False
+        elif artifacts.get("edit"):
             edit = artifacts["edit"]
             effective = InstallSpec.from_dict(edit["after"])
+            await _guard_extra_exit_configuration(session, row, effective)
             required = _require_change_credentials(effective, secrets, edit["operations"])
             if "verify" in edit["operations"]:
                 await _require_cascade_access(session, row, effective)
         else:
+            await _guard_extra_exit_configuration(session, row, spec)
             _require_credentials(spec, secrets)
             await _require_cascade_access(session, row, spec)
         if required and row.secrets_expire_at and row.secrets_expire_at <= datetime.utcnow():
             raise ValueError("Срок хранения ключей истёк. Введите их повторно")
         artifacts.pop("dns_wait", None)
-        if row.status == "warning":
+        if row.status == "warning" and not attachment_retry:
             artifacts["done"] = [stage for stage in artifacts.get("done", []) if stage != "verify"]
             artifacts.pop("warnings", None)
         if row.stage == "verify":
@@ -1486,6 +1562,10 @@ async def _assignment_row(session, job_id: str, owner_id: int, params: dict | No
 
     exit_ids = target(row)
     identifiers = {job_id, *exit_ids}
+    parent_id = vault.open(row.id, row.encrypted_artifacts).get("extra_exit_for")
+    if parent_id:
+        await _row(session, parent_id, owner_id)
+        identifiers.add(parent_id)
     paired_ids = {item.id for item in await _pair_rows(session, row)}
     identifiers.update(paired_ids)
     locked = await session.execute(
@@ -1497,7 +1577,11 @@ async def _assignment_row(session, job_id: str, owner_id: int, params: dict | No
     )
     locked.scalars().all()
     row = await _row(session, job_id, owner_id)
-    if target(row) != exit_ids or {item.id for item in await _pair_rows(session, row)} != paired_ids:
+    if (
+        target(row) != exit_ids
+        or {item.id for item in await _pair_rows(session, row)} != paired_ids
+        or vault.open(row.id, row.encrypted_artifacts).get("extra_exit_for") != parent_id
+    ):
         raise ValueError("Параметры выхода изменились. Повторите действие")
     return row
 
@@ -2127,20 +2211,44 @@ async def reinstall_job(
 
 async def _save(job_id: str, token: str, *, artifacts=None, log=None, **values: Any) -> bool:
     """Сохраняет этап только действующему владельцу аренды."""
+    from .attachment import attachment_child_id, synchronize_attachment
+
     async with async_session_maker() as session:
-        row = await _row(session, job_id, lock=True)
+        row = await _row(session, job_id)
+        current = artifacts
+        if current is None:
+            current = {}
+            with suppress(InstallError):
+                current = vault.open(row.id, row.encrypted_artifacts)
+        child_id = attachment_child_id(current)
+        if child_id:
+            locked = await session.execute(
+                select(RemnawaveInstall)
+                .where(RemnawaveInstall.id.in_({job_id, child_id}))
+                .order_by(RemnawaveInstall.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            locked.scalars().all()
+            row = await _row(session, job_id)
+        else:
+            row = await _row(session, job_id, lock=True)
         if row.lease_token != token or row.status == "cancel_requested" or row.pause_requested:
             raise asyncio.CancelledError
         if artifacts is not None:
             row.encrypted_artifacts = vault.seal(row.id, artifacts)
         if log:
-            row.logs = [*(row.logs or []), log][-30:]
+            previous_logs = row.logs or []
+            if not previous_logs or previous_logs[-1] != log:
+                row.logs = [*previous_logs, log][-30:]
         if values.get("status") == "failed" and _deleting(row):
             values.update(lease_token=None, lease_until=None)
         for name, value in values.items():
             if name == "error" and isinstance(value, str):
                 value = value[:512]
             setattr(row, name, value)
+        if child_id:
+            await synchronize_attachment(session, row, child_id, globals())
         row.updated_at = datetime.utcnow()
         await session.commit()
         return True
@@ -2180,6 +2288,12 @@ async def _notify(bot, job_id: str) -> None:
             if row.progress_message_id is None:
                 return
             view, chat_id = _view(row, include_credentials=not _deleting(row)), row.chat_id
+            if view.get("extra_exit_attachment", {}).get("status") == "queued":
+                from .attachment import enrich_attachment
+
+                view = await enrich_attachment(
+                    session, view, vault.open(row.id, row.encrypted_artifacts), row.owner_id, globals()
+                )
             from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
             keyboard = InlineKeyboardMarkup(
@@ -2277,7 +2391,10 @@ async def _execute_changes(snapshot: dict, checkpoint, log) -> dict:
                     await checkpoint(artifacts)
                     if time.time() - started < 180:
                         raise InstallWaitingError("Ожидание подключения ноды после изменения настроек", retry_after=30)
-                    raise InstallError("verify", "Изменения применены, но панель ещё не подтвердила подключение ноды")
+                    from .diagnostics import connection_failure
+
+                    message = await connection_failure(panel, remote, new, artifacts, checkpoint)
+                    raise InstallError("verify", "Изменения применены. " + message)
                 if new.role == "haproxy_entry":
                     from .haproxy import check_haproxy
 
@@ -2661,9 +2778,10 @@ async def _execute(snapshot: dict, checkpoint, log) -> dict | None:
                         await checkpoint(artifacts)
                         if time.time() - started < 180:
                             raise InstallWaitingError("Ожидание подтверждения подключения ноды панелью", retry_after=30)
+                        from .diagnostics import connection_failure
+
                         raise InstallError(
-                            "verify",
-                            "Панель ещё не подтвердила подключение ноды. Проверьте порт управления, адрес панели и журнал контейнера",
+                            "verify", await connection_failure(panel, remote, spec, artifacts, checkpoint)
                         )
                     if spec.role == "haproxy_entry":
                         from .haproxy import check_haproxy
@@ -3005,12 +3123,18 @@ async def process_job(job_id: str, bot=None) -> None:
                 warnings=list((artifacts.get("remote_cleanup") or {}).get("warnings", [])),
             )
             return
-        result = await _execute(snapshot, checkpoint, log)
+        attachment = artifacts.get("extra_exit_attachment") or {}
+        if attachment.get("status") in {"pending", "authorized"} and artifacts.get("installed"):
+            result = None
+        else:
+            result = await _execute(snapshot, checkpoint, log)
         warnings = snapshot["artifacts"].get("warnings", [])
         values = {}
         if result:
             edit = artifacts.pop("edit")
             artifacts["last_edit"] = {"fields": edit["changed"], "finished_at": time.time()}
+            if edit.get("extra_exit_child"):
+                artifacts["last_edit"]["extra_exit_child"] = edit["extra_exit_child"]
             if not result["resume_install"]:
                 artifacts["last_edit"]["progress"] = {
                     "operations": list(edit.get("operations", [])),
@@ -3021,6 +3145,15 @@ async def process_job(job_id: str, bot=None) -> None:
                 params=result["params"], fingerprint=result["fingerprint"], address=result["params"]["address"]
             )
         resume = bool(result and result["resume_install"])
+        if (
+            (artifacts.get("extra_exit_attachment") or {}).get("status") in {"authorized", "pending"}
+            and artifacts.get("installed")
+            and not resume
+        ):
+            from .attachment import finish_attachment
+
+            await finish_attachment(job_id, token, artifacts, values, globals())
+            return
         await _save(
             job_id,
             token,
@@ -3097,6 +3230,7 @@ async def process_job(job_id: str, bot=None) -> None:
             with suppress(asyncio.CancelledError):
                 await heartbeat
         if not removed:
+            attachment_child = None
             async with async_session_maker() as session:
                 row = (
                     await session.execute(
@@ -3104,6 +3238,10 @@ async def process_job(job_id: str, bot=None) -> None:
                     )
                 ).scalar_one_or_none()
                 if row is not None and row.lease_token == token:
+                    from .attachment import attachment_child_id
+
+                    with suppress(InstallError):
+                        attachment_child = attachment_child_id(vault.open(row.id, row.encrypted_artifacts))
                     if row.status == "cancel_requested":
                         row.status, row.stage = "canceled", "delete:stopped" if deletion else "stopped"
                     elif row.pause_requested:
@@ -3111,6 +3249,8 @@ async def process_job(job_id: str, bot=None) -> None:
                     row.lease_token, row.lease_until = None, None
                 await session.commit()
             await _notify(bot, job_id)
+            if attachment_child:
+                await _notify(bot, attachment_child)
 
 
 def _due_jobs_query(now: datetime):

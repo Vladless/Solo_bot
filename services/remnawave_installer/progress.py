@@ -202,6 +202,20 @@ def job_status_text(view: dict) -> str:
     status = view.get("status", "draft")
     progress = view.get("progress") or {}
     label = statuses.get(status, "Установка")
+    checking_connection = status == "waiting_dns" and view.get("stage") in {"verify", "edit:verify"}
+    if checking_connection:
+        label = "Ожидание подключения ноды"
+    attachment = view.get("extra_exit_attachment") or {}
+    attachment_status = attachment.get("status")
+    attaching = status in {"succeeded", "warning"} and attachment and attachment_status != "succeeded"
+    if attaching:
+        label = (
+            "Выход установлен · Подключение к каскаду не завершено"
+            if attachment_status in {"pending", "failed"}
+            else "Выход установлен · Подключение к каскаду"
+        )
+    elif status in {"succeeded", "warning"} and attachment_status == "succeeded":
+        label = "Выход подключён к каскаду"
     if view.get("deletion"):
         label = {
             "queued": "В очереди на удаление",
@@ -224,6 +238,24 @@ def job_status_text(view: dict) -> str:
         lines.append("Связанный сервер: нода 2 — выход" if entry else "Связанный сервер: нода 1 — вход")
     if params.get("cascade_routes"):
         lines.append("Направлений каскада: " + str(1 + len(params["cascade_routes"])))
+    if attachment:
+        address = str(attachment.get("entry_address") or "")
+        endpoint = f"[{address}]" if ":" in address else address
+        lines.append(
+            "Клиентский адрес: <code>" + escape(endpoint + ":" + str(attachment.get("client_port") or "")) + "</code>"
+        )
+        if attaching:
+            lines.append(
+                "Откройте карточку входа, чтобы увидеть причину и продолжить подключение."
+                if attachment_status == "failed"
+                else "Выход готов. Обновление HAProxy, проверка направлений и публикация хоста выполняются на входной ноде."
+                if attachment_status == "queued"
+                else "План подключения обновлён. Откройте сводку и подтвердите адрес нового направления."
+                if attachment_status == "planned"
+                else "Автоматическое подключение к входу ещё не завершено. Повторите подключение из этой карточки."
+            )
+        if attachment.get("error") and not view.get("error"):
+            lines.append("Подключение: " + escape(str(attachment["error"])[:512]))
     chain = view.get("chain_verification") or {}
     if status in {"succeeded", "warning"} and chain.get("status") == "passed":
         routes = chain.get("routes") or []
@@ -241,6 +273,8 @@ def job_status_text(view: dict) -> str:
         if status == "draft"
         else "Подготовка установки"
     )
+    if attaching:
+        current = "Подключение выхода к HAProxy и проверка каскада"
     lines.append("Этап: " + escape(str(current)[:180]))
     if view.get("error"):
         lines.append("Ошибка: " + escape(str(view["error"])[:512]))
@@ -264,6 +298,7 @@ def job_actions(view: dict) -> list[tuple[str, str, str]]:
     status = view.get("status", "draft")
     editable = {"draft", "failed", "waiting_dns", "paused", "succeeded", "warning"}
     actions = []
+    attachment = view.get("extra_exit_attachment") or {}
     pair = view.get("cascade_pair") or {}
     if pair:
         actions.append(("Нода 2 — выход" if view.get("id") == pair.get("entry_id") else "Нода 1 — вход", "partner", ""))
@@ -296,15 +331,41 @@ def job_actions(view: dict) -> list[tuple[str, str, str]]:
     if (view.get("resources") or {}).get("cdn") or view.get("retained_resources"):
         actions.append(("Ресурсы CDN", "res", ""))
     if status in {"succeeded", "warning"}:
-        actions.append(("Переустановить эту ноду", "riask", "all"))
+        if not attachment or attachment.get("status") == "succeeded":
+            actions.append(("Переустановить эту ноду", "riask", "all"))
         if view.get("extra_exit_for"):
-            actions.insert(0, ("Подключить к входной ноде", "routeparent", ""))
+            actions.insert(
+                0,
+                (
+                    "Ход подключения к каскаду"
+                    if attachment.get("status") == "queued"
+                    else "Карточка входной ноды"
+                    if attachment
+                    else "Подключить к входной ноде",
+                    "routeparent",
+                    "",
+                ),
+            )
+    elif status in editable and view.get("extra_exit_for"):
+        actions.insert(0, ("К входной ноде", "routeparent", ""))
+    if status in {"succeeded", "warning", "failed"} and attachment.get("status") == "pending":
+        actions.insert(0, ("Проверить план подключения", "refreshattachment", ""))
+    if status in {"succeeded", "warning", "failed"} and attachment.get("status") == "planned":
+        actions.insert(0, ("Подтвердить подключение выхода", "summary", ""))
     if status in editable:
         actions.append(("Обновить учётные данные", "auth", ""))
-    if status == "failed":
+    if status == "failed" and attachment.get("status") != "planned":
         actions.append(("Повторить установку", "retry", ""))
-    if status in {"waiting_dns", "warning"} and view.get("retryable", True):
-        actions.append(("Повторить / проверить DNS", "retry", ""))
+    if status in {"waiting_dns", "warning"} and view.get("retryable", True) and attachment.get("status") != "planned":
+        actions.append((
+            "Повторить проверку подключения"
+            if view.get("stage") in {"verify", "edit:verify"}
+            else "Повторить подключение к входу"
+            if attachment.get("status") == "pending"
+            else "Повторить / проверить DNS",
+            "retry",
+            "",
+        ))
     if status == "paused":
         actions.append(("Продолжить установку без изменений", "retry", ""))
     if status in {"queued", "running", "waiting_dns"}:

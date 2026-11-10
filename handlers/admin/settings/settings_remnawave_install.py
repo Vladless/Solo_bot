@@ -437,6 +437,7 @@ async def _new_extra_exit(event, state: FSMContext, job: dict) -> None:
         raise ValueError("Откройте добавление выхода у установленного входного сервера HAProxy")
     source = event.message if getattr(event, "message", None) is not None else event
     target = await jobs.create_extra_exit_draft(job_id, owner, source.chat.id)
+    target = await jobs.prepare_extra_exit_attachment(target["id"], owner)
     saved = context.get("extra_parent_context") or {}
     stored_params = _params(await jobs.get_job(job_id, owner))
     pending = (
@@ -706,6 +707,13 @@ def _cascade_address_title(params: dict) -> str:
     return "IP входа для каскада" if params["role"] in {"entry", "haproxy_entry"} else "IP выхода для каскада"
 
 
+def _client_port_title(params: dict) -> str:
+    """Различает клиентский порт входа и служебный порт выхода."""
+    if params["role"] == "haproxy_exit":
+        return "Порт связи с входом"
+    return "Порт клиентов на входе" if params["role"] == "haproxy_entry" else "Порт клиентов"
+
+
 def _new_cascade_route(params: dict, option: dict) -> dict:
     """Выбирает свободный порт для нового направления входа."""
     reserved = {params["ssh_port"], params["node_port"], params["client_port"], 80}
@@ -727,6 +735,8 @@ def _field_button(builder, lines: list[str], params: dict, job_id: str, code: st
         title = "Собственный домен Selfsteal"
     if code == "ca":
         title = _cascade_address_title(params)
+    elif code == "cp":
+        title = _client_port_title(params)
     value = params["cloud"].get(field) if code in {"fd", "vp"} else params[field]
     if code == "ca" and not value:
         value = params["address"]
@@ -865,14 +875,19 @@ async def _haproxy_step(event, state: FSMContext, job: dict, step: str) -> None:
             else "Выбран VLESS TCP Reality.",
             f"Клиентский сквад: {_copyable(job.get('squad_name') or params['squad_uuid'])}",
         ])
-        _button(builder, "Выбрать клиентский сквад", "squads", job["id"])
         if job.get("extra_exit_for"):
             lines.append(
-                "Клиентский сквад унаследован от входа. Для добавления этого выхода к входу сквад должен оставаться тем же."
+                "Клиентский сквад унаследован от входа и сохраняется для подключения нового выхода к этому каскаду."
             )
+        else:
+            _button(builder, "Выбрать клиентский сквад", "squads", job["id"])
         _button(
             builder,
-            "Проверить и установить выход" if job.get("extra_exit_for") else "Продолжить к проверке каскада →",
+            "Проверить и подключить новый выход"
+            if job.get("extra_exit_attachment")
+            else "Проверить и установить выход"
+            if job.get("extra_exit_for")
+            else "Продолжить к проверке каскада →",
             "entrysetup" if pair else "summary",
             job["id"],
         )
@@ -1407,7 +1422,7 @@ def _summary(job: dict) -> str:
     if params["exit_ip"]:
         lines.append("IP для подключения к сайтам: " + _copyable(params["exit_ip"]))
     if params["client_port"] != 443 and not params["transport"].startswith("cdn_"):
-        lines.append(f"Порт клиентов: {_copyable(params['client_port'])}")
+        lines.append(f"{_client_port_title(params)}: {_copyable(params['client_port'])}")
     if params["role"] != "haproxy_entry" and params["transport"] in CERTIFICATE_TRANSPORTS:
         lines.extend([
             f"Домен / origin: {_copyable(params['domain'])}",
@@ -1448,10 +1463,42 @@ def _summary(job: dict) -> str:
             else "Бот подключит ноду к настроенной панели и создаст профиль. Ход установки появится в этом сообщении."
         )
     if job.get("extra_exit_for"):
-        lines.append(
-            "Будет установлен только новый выход. Вход не изменится. После установки вернитесь ко входу, выберите готовый выход и подтвердите изменения."
-        )
+        attachment = job.get("extra_exit_attachment") or {}
+        if attachment:
+            address = attachment["entry_address"]
+            endpoint = f"[{address}]" if ":" in address else address
+            lines.extend([
+                f"Клиентский адрес нового направления: {_copyable(endpoint)}:{attachment['client_port']}",
+                "После установки выхода бот автоматически подключит его к входному HAProxy, проверит прежние и новое направления и опубликует хост в подписках. Прежние направления сохранятся.",
+            ])
+        else:
+            lines.append(
+                "Будет установлен только новый выход. После установки нажмите «Подключить к входной ноде»: бот подготовит маршрут этого выхода и покажет изменения для подтверждения."
+            )
     return "\n".join(lines)
+
+
+async def _attachment_summary(event, state: FSMContext, job: dict) -> None:
+    """Показывает обновлённый план для уже установленного выхода."""
+    attachment = job.get("extra_exit_attachment") or {}
+    address = attachment["entry_address"]
+    endpoint = f"[{address}]" if ":" in address else address
+    builder = InlineKeyboardBuilder()
+    _button(builder, "Подключить выход", "start", job["id"], attachment.get("token", ""))
+    _button(builder, "Карточка входной ноды", "routeparent", job["id"])
+    _button(builder, "Отмена", "show", job["id"])
+    await _clear_input(state)
+    await _send(
+        event,
+        "<b>Подключить установленный выход к каскаду</b>\n\n"
+        f"Выход: {_copyable(_params(job)['address'])}\n"
+        f"Клиентский адрес нового направления: {_copyable(endpoint)}:{attachment['client_port']}\n\n"
+        "Используется уже установленная выходная нода. Бот подключит её к актуальной конфигурации входа, "
+        "проверит прежние и новое направления и опубликует хост в подписках.\n"
+        "Проверьте адрес и подтвердите подключение.",
+        builder,
+        state=state,
+    )
 
 
 async def _job_screen(event, state: FSMContext, job: dict) -> None:
@@ -1848,6 +1895,22 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
     else:
         _, title, hint = (SECRET_FIELDS if secret else FIELDS)[code]
     params = _params(job)
+    if code == "cp":
+        title = _client_port_title(params)
+        if params["role"] == "haproxy_exit":
+            hint = (
+                "TCP-порт на выходном сервере, к которому подключается HAProxy входа. "
+                "Для Selfsteal по умолчанию 9443. Клиенты подключаются к отдельному порту входного сервера; "
+                "443 и 8443 на выходе используются собственным сайтом и должны оставаться свободными для него."
+                if params["transport"] == "vless_tcp_selfsteal"
+                else "TCP-порт на выходном сервере, к которому подключается HAProxy входа. "
+                "Клиенты подключаются к отдельному порту входного сервера."
+            )
+        elif params["role"] == "haproxy_entry":
+            hint = (
+                "Свободный TCP-порт входного сервера для подключения клиентов, обычно 443. "
+                "HAProxy передаст соединения на порт выбранного выхода. У дополнительных направлений свои порты."
+            )
     if code == "ca":
         title = _cascade_address_title(params)
         hint += (
@@ -1876,7 +1939,7 @@ async def _prompt(event, state: FSMContext, job: dict, code: str, *, secret: boo
             "Укажите IP ноды 2 — выходного сервера для подключения бота по SSH. "
             "Можно оставить IPv4: IPv6 для связи с входом задаётся отдельно в поле «IP выхода для каскада». "
             "IP ноды 1 уже добавлен в доверенные входы."
-            if job.get("cascade_pair")
+            if job.get("cascade_pair") or job.get("extra_exit_for")
             else "Укажите IP выходного сервера для подключения бота по SSH. Можно оставить IPv4: "
             "IPv6 для связи с входом задаётся отдельно в поле «IP выхода для каскада». IP входных серверов будут запрошены отдельно."
         )
@@ -2218,6 +2281,7 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             "routedel",
             "routeadd",
             "newrouteexit",
+            "refreshattachment",
             "routeparent",
             "auth",
             "preview",
@@ -2254,11 +2318,20 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             return await _job_screen(callback, state, job)
         if action == "newrouteexit":
             return await _new_extra_exit(callback, state, job)
+        if action == "refreshattachment":
+            job = await jobs.prepare_extra_exit_attachment(job_id, owner)
+            return await _attachment_summary(callback, state, job)
         if action == "routeparent":
             parent_id = job.get("extra_exit_for")
             if not parent_id:
                 raise ValueError("Этот выход не создавался для добавления к установленному входу")
             parent = await jobs.get_job(parent_id, owner)
+            attachment = job.get("extra_exit_attachment") or {}
+            if attachment and (
+                job["status"] in {"succeeded", "warning"}
+                or attachment.get("status") in {"pending", "queued", "succeeded", "failed"}
+            ):
+                return await _job_screen(callback, state, parent)
             if _params(parent)["role"] != "haproxy_entry" or parent["status"] not in SETTINGS_EDIT_STATUSES:
                 raise ValueError("Дождитесь остановки входа и откройте его список выходов")
             saved = context.get("extra_parent_context") or {}
@@ -2812,6 +2885,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
             if action == "squads":
                 if params["role"] == "haproxy_entry":
                     raise ValueError("Вход HAProxy наследует сквад выбранного выхода")
+                if job.get("extra_exit_for"):
+                    raise ValueError("Клиентский сквад этого выхода наследуется от входа каскада")
                 options = (await jobs.list_panel_options(params["panel_ref"])).get("squads") or []
                 options = [{"id": item["uuid"], "name": item.get("name") or item["uuid"]} for item in options]
             else:
@@ -2957,6 +3032,10 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 selected = options[int(value)]["id"]
             else:
                 raise ValueError("Выбор устарел")
+            if data["option_kind"] == "squads" and job.get("extra_exit_for"):
+                parent = await jobs.get_job(job["extra_exit_for"], owner)
+                if selected != _params(parent)["squad_uuid"]:
+                    raise ValueError("Клиентский сквад этого выхода должен совпадать со сквадом входа каскада")
             if data["option_kind"] == "routeadd":
                 if params["role"] not in {"entry", "haproxy_entry"} or (job["status"] != "draft" and not editing):
                     raise ValueError("Откройте настройки стран заново")
@@ -3063,6 +3142,8 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
         if action == "summary":
             if editing:
                 return await _changes_screen(callback, state, job, owner)
+            if job["status"] != "draft" and (job.get("extra_exit_attachment") or {}).get("status") == "planned":
+                return await _attachment_summary(callback, state, job)
             pair = job.get("cascade_pair") or {}
             if pair.get("exit_id") == job_id:
                 job = await _effective_job(await jobs.get_job(pair["entry_id"], owner), state)
@@ -3080,7 +3161,17 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
                 params = {**params, "exit_install_id": target["id"], "squad_uuid": _params(target)["squad_uuid"]}
             InstallSpec.from_dict(params)
             builder = InlineKeyboardBuilder()
-            _button(builder, "Установить каскад" if target else "Установить ноду", "start", job_id)
+            _button(
+                builder,
+                "Установить и подключить выход"
+                if job.get("extra_exit_attachment")
+                else "Установить каскад"
+                if target
+                else "Установить ноду",
+                "start",
+                job_id,
+                (job.get("extra_exit_attachment") or {}).get("token", ""),
+            )
             _button(builder, "← Изменить параметры", "step", job_id, "4")
             _button(builder, "Сквад и хост", "step", job_id, "3")
             if target:
@@ -3099,7 +3190,12 @@ async def installer_action(callback: CallbackQuery, callback_data: InstallCallba
         if action == "start":
             if editing:
                 raise ValueError("Для применения настроек сначала нажмите «Показать изменения»")
-            job = await jobs.start_job(job_id, owner, message_id=callback.message.message_id)
+            job = await jobs.start_job(
+                job_id,
+                owner,
+                message_id=callback.message.message_id,
+                **({"attachment_token": value} if job.get("extra_exit_attachment") else {}),
+            )
             return await _job_screen(callback, state, job)
         if action == "retry":
             if (
