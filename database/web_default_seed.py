@@ -142,7 +142,16 @@ def merge_theme_tokens(base: dict, overlay: dict) -> dict:
 def merge_design_theme_tokens(base: dict, overlay: dict) -> dict:
     """Меняет оформление, убирая обвязку прежнего набора."""
     cleaned = dict(base)
-    for key in ("chromePack", "cabinetNavTemplate"):
+    for key in (
+        "chromePack",
+        "cabinetNavTemplate",
+        "splashEnabled",
+        "splashVariant",
+        "splashLogoUrl",
+        "splashDurationMs",
+        "splashTemplate",
+        "splashCss",
+    ):
         cleaned.pop(key, None)
     for slot in ("header", "footer"):
         config = cleaned.get(slot)
