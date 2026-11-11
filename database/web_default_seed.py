@@ -144,6 +144,7 @@ def merge_design_theme_tokens(base: dict, overlay: dict) -> dict:
     cleaned = dict(base)
     for key in (
         "chromePack",
+        "pageChrome",
         "cabinetNavTemplate",
         "splashEnabled",
         "splashVariant",
