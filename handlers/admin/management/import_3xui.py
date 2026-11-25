@@ -91,19 +91,22 @@ async def handle_3xui_db_upload(message: Message, state: FSMContext, session: As
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "resync_after_import"), HasPermission(PERM_MANAGEMENT))
 async def handle_resync_after_import(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
-    imported_emails = (await state.get_data()).get("imported_3xui_emails") or []
+    imported_emails = list(dict.fromkeys((await state.get_data()).get("imported_3xui_emails") or []))
     if not imported_emails:
         await callback.answer("Нет импортированных подписок для перевыпуска.", show_alert=True)
         return
     await callback.answer("Начинаю перевыпуск импортированных подписок...")
 
-    result = await session.execute(
-        select(Key.user_id, Key.email)
-        .select_from(Key)
-        .join(User, Key.user_id == User.id)
-        .where(Key.email.in_(imported_emails), Key.key == "", Key.tariff_id.is_(None))
-    )
-    keys = result.all()
+    keys = []
+    batch_size = 10_000
+    for offset in range(0, len(imported_emails), batch_size):
+        result = await session.execute(
+            select(Key.user_id, Key.email)
+            .select_from(Key)
+            .join(User, Key.user_id == User.id)
+            .where(Key.email.in_(imported_emails[offset : offset + batch_size]), Key.key == "", Key.tariff_id.is_(None))
+        )
+        keys.extend(result.all())
 
     success = 0
     failed = 0

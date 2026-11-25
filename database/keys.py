@@ -419,7 +419,9 @@ async def get_key_count(session: AsyncSession, legacy_user_ref: int) -> int:
 
 async def get_key_by_user_and_email(session: AsyncSession, user_id: int, email: str) -> Key | None:
     """Возвращает ORM-объект Key по паре (users.id, email) или None."""
-    result = await session.execute(select(Key).where(Key.user_id == int(user_id), Key.email == email))
+    result = await session.execute(
+        select(Key).where(Key.user_id == int(user_id), Key.email == email).execution_options(populate_existing=True)
+    )
     return result.scalar_one_or_none()
 
 
@@ -605,6 +607,7 @@ async def mark_key_as_frozen(session: AsyncSession, legacy_user_ref: int, client
                 is_frozen = TRUE
             WHERE user_id = :user_id
               AND client_id = :client_id
+              AND is_frozen IS NOT TRUE
             """
         ),
         {"expiry": time_left, "user_id": u.id, "client_id": client_id},

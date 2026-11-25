@@ -330,6 +330,8 @@ async def freeze_checkout_intent(
             total_gb=int(quote.total_gb),
             selected_device_limit=quote.selected_device_limit,
             selected_traffic_limit=quote.selected_traffic_limit,
+            selected_traffic_limit_gb=quote.selected_traffic_limit,
+            selected_traffic_gb=quote.selected_traffic_limit,
             coupon_id=quote.coupon_id,
             renewal_is_switch=quote.is_switch,
             renewal_duration_days=legacy_duration if legacy_duration is not None else quote.duration_days,
@@ -567,6 +569,9 @@ async def apply_checkout_intent(
             coupon_id=_optional_int(data.get("coupon_id")),
             expected_expiry_time=normalize_expiry_ms(key.expiry_time),
             expected_key_snapshot=intent.get("key_snapshot") or checkout_key_snapshot(key),
+            renewal_duration_days=_optional_int(
+                data.get("renewal_duration_days") or data.get("selected_duration_days")
+            ),
         )
         client_id = result.client_id
     elif state == "waiting_for_addons_payment":

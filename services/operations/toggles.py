@@ -37,24 +37,37 @@ async def toggle_client_on_cluster(
         async def toggle_one(server):
             name = server.get("server_name", "unknown")
             try:
-                if not server.get("api_url"):
+                api_url = str(server.get("api_url") or "").strip().rstrip("/")
+                if not api_url:
                     raise ValueError("Не задан адрес панели")
                 panel_type = server.get("panel_type", "3x-ui").lower()
                 if panel_type == "3x-ui":
                     inbound_id = int(server.get("inbound_id") or 0)
                     if inbound_id <= 0:
                         raise ValueError("Не задан корректный inbound")
-                    xui = await get_xui_instance(server["api_url"])
+                    xui = await get_xui_instance(api_url)
                     unique_email = f"{email}_{name.lower()}" if SUPERNODE else email
                     confirmed = await toggle_client(xui, inbound_id, unique_email, client_id, enable)
                 elif panel_type == "remnawave":
-                    async with remnawave_api(server["api_url"]) as api:
+                    async with remnawave_api(api_url) as api:
                         if not REMNAWAVE_TOKEN_LOGIN_ENABLED and not await api.login(
                             REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
                         ):
                             raise ValueError("Авторизация не удалась")
                         method = api.enable_user if enable else api.disable_user
-                        confirmed = await method(client_id, username=email)
+                        try:
+                            await method(client_id, username=email)
+                        except Exception as exc:
+                            logger.warning(f"[Cluster Toggle] {name}: проверяем состояние после ошибки команды: {exc}")
+                        user = await api.get_user_by_uuid(client_id, username=email)
+                        user_uuid = (user.get("vlessUuid") or user.get("uuid")) if isinstance(user, dict) else None
+                        confirmed = (
+                            isinstance(user_uuid, str)
+                            and bool(user_uuid.strip())
+                            and isinstance(client_id, str)
+                            and user_uuid.strip().lower() == client_id.strip().lower()
+                            and user.get("status") == ("ACTIVE" if enable else "DISABLED")
+                        )
                 else:
                     raise ValueError(f"Неизвестный тип панели '{panel_type}'")
                 return name, confirmed is True
@@ -62,8 +75,19 @@ async def toggle_client_on_cluster(
                 logger.warning(f"[Cluster Toggle] {name}: изменение состояния не подтверждено: {exc}")
                 return name, False
 
-        confirmations = await asyncio.gather(*(toggle_one(server) for server in cluster))
-        results = dict(confirmations)
+        groups = {}
+        for index, server in enumerate(cluster):
+            panel_type = str(server.get("panel_type", "3x-ui")).lower()
+            api_url = str(server.get("api_url") or "").strip().rstrip("/")
+            target = ("remnawave", api_url) if panel_type == "remnawave" and api_url else ("server", index)
+            groups.setdefault(target, []).append(server)
+        targets = list(groups.values())
+        confirmations = await asyncio.gather(*(toggle_one(group[0]) for group in targets))
+        results = {
+            server.get("server_name", "unknown"): confirmed
+            for group, (_, confirmed) in zip(targets, confirmations, strict=True)
+            for server in group
+        }
         success = all(confirmed for _, confirmed in confirmations)
         logger.info(f"[Cluster Toggle] Клиент {email}, enable={enable}, подтверждено={success}: {results}")
         return {"status": "success" if success else "error", "results": results}

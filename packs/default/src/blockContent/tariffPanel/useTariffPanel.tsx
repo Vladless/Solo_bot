@@ -7,6 +7,8 @@ import { useViewportIsMobile } from "@/lib/responsive";
 import type { TypedBlockViewProps } from "@/components/constructor/blockContent/viewTypes";
 import { useScreenFlip } from "@/components/constructor/blockContent/pageFlip";
 import { buildAppImportUrl } from "@/lib/platform-detect";
+import { openSubscriptionImportLink } from "@/lib/telegram-webapp";
+import { useLocale } from "@/lib/i18n";
 import { useAppInfo } from "@/app/AppInfoProvider";
 import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor";
 import { useDefaultTheme, useIsMobile, parseBlockData, useBlockApi, useBlockApiMutate, apiFetch, apiFetchPublic, useAuthenticatedSWR } from "..";
@@ -26,6 +28,7 @@ import { useTariffConfigPrice } from "@/components/constructor/blockContent/cabi
 /** Данные, состояние и действия панели тарифа: вид только рисует то, что вернул хук. */
 export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"defaultTariffPanel">, "block" | "context">) {
   const navigate = useBlockNavigate();
+  const { locale } = useLocale();
   const { wrap, previewMode } = context;
   const d = block.data as Record<string, unknown>;
   const t = useDefaultTheme(d);
@@ -98,10 +101,9 @@ export function useTariffPanel({ block, context }: Pick<TypedBlockViewProps<"def
   const onConnect = () => {
     if (!connectLink || isPreview) return;
     const remna = activeKey?.remnawave_link?.trim() || "";
-    if (remna) {
-      window.open(remna, "_blank", "noopener,noreferrer");
-    } else {
-      navigate(buildAppImportUrl(connectLink, appInfo.connect));
+    const target = remna || buildAppImportUrl(connectLink, appInfo.connect);
+    if (!openSubscriptionImportLink(target, remna ? "_blank" : "_self")) {
+      window.alert(locale === "en" ? "Could not open the app. Copy your subscription link and add it to your VPN client." : "Не удалось открыть приложение. Скопируйте ссылку на подписку и добавьте её в VPN-клиент.");
     }
   };
   const onCopy = () => {

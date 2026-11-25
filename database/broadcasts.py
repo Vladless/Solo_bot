@@ -64,12 +64,17 @@ def _reachability_filters(tg_col, identity_col, *, channel: str | None, telegram
 async def get_recipient_emails(session: AsyncSession, tg_ids: list[int]) -> dict[int, str]:
     if not tg_ids:
         return {}
-    result = await session.execute(
-        select(User.tg_id, Identity.email)
-        .join(Identity, User.identity_id == Identity.id)
-        .where(User.tg_id.in_(tg_ids), Identity.email.isnot(None))
-    )
-    return {row[0]: row[1] for row in result.all() if row[1]}
+    emails: dict[int, str] = {}
+    batch_size = 10_000
+    for offset in range(0, len(tg_ids), batch_size):
+        batch = tg_ids[offset : offset + batch_size]
+        result = await session.execute(
+            select(User.tg_id, Identity.email)
+            .join(Identity, User.identity_id == Identity.id)
+            .where(User.tg_id.in_(batch), Identity.email.isnot(None))
+        )
+        emails.update({row[0]: row[1] for row in result.all() if row[1]})
+    return emails
 
 
 async def get_recipients(
@@ -201,9 +206,14 @@ async def get_broadcast_addresses(session: AsyncSession, user_ids: list[int]) ->
     """Возвращает реальные Telegram-адреса и email выбранных клиентов."""
     if not user_ids:
         return {}
-    result = await session.execute(
-        select(User.id, User.tg_id, Identity.email)
-        .outerjoin(Identity, User.identity_id == Identity.id)
-        .where(User.id.in_(user_ids))
-    )
-    return {int(row.id): {"tg_id": public_tg_id(row.tg_id), "email": row.email} for row in result.all()}
+    addresses: dict[int, dict] = {}
+    batch_size = 10_000
+    for offset in range(0, len(user_ids), batch_size):
+        batch = user_ids[offset : offset + batch_size]
+        result = await session.execute(
+            select(User.id, User.tg_id, Identity.email)
+            .outerjoin(Identity, User.identity_id == Identity.id)
+            .where(User.id.in_(batch))
+        )
+        addresses.update({int(row.id): {"tg_id": public_tg_id(row.tg_id), "email": row.email} for row in result.all()})
+    return addresses

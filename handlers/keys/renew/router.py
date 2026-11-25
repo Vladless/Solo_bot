@@ -34,7 +34,7 @@ from hooks.processors import (
 from logger import logger
 from services.errors import ValidationError
 from services.payments.currency_rates import format_for_user
-from services.renewal_access import resolve_key_renewal_scope, resolve_key_server_scope
+from services.renewal_access import resolve_key_renewal_scope, resolve_key_renewal_tariff, resolve_key_server_scope
 from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS, resolve_renewal_tariff_group
 from settings.buttons import BACK, MAIN_MENU, PAYMENT
 from settings.config import DISCOUNT_ACTIVE_HOURS, USE_NEW_PAYMENT_FLOW
@@ -70,7 +70,7 @@ moscow_tz = pytz.timezone("Europe/Moscow")
 
 async def _renewal_tariff_group(session: AsyncSession, record, tg_id: TelegramId) -> str:
     """Определяет обычную группу продления текущей подписки."""
-    current_tariff = await get_tariff_by_id(session, record["tariff_id"]) if record.get("tariff_id") else None
+    current_tariff = await resolve_key_renewal_tariff(session, record)
     forbidden = set(DEFAULT_RENEWAL_FORBIDDEN_GROUPS)
     forbidden.update(await process_renewal_forbidden_groups(chat_id=tg_id, admin=False, session=session))
     key_group = str(current_tariff.get("group_code") or "").strip() if current_tariff else ""
@@ -509,6 +509,9 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             new_selected_device=None,
             new_selected_traffic=None,
             new_duration_days=duration_days,
+            current_tariff=await resolve_key_renewal_tariff(session, record),
+            current_device_limit=record.get("current_device_limit"),
+            current_traffic_limit=record.get("current_traffic_limit"),
         )
 
         if tariff.get("configurable"):
@@ -665,6 +668,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             selected_device_limit=pricing.selected_device_limit,
             selected_traffic_limit=pricing.selected_traffic_limit,
             selected_price_rub=int(pricing.final_price_rub),
+            renewal_duration_days=duration_days,
             state=state,
             expected_key_snapshot=renewal_key_snapshot(record),
         )
@@ -721,6 +725,9 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
             new_selected_device=int(selected_devices) if selected_devices is not None else None,
             new_selected_traffic=int(selected_traffic_gb) if selected_traffic_gb is not None else None,
             new_duration_days=duration_days,
+            current_tariff=await resolve_key_renewal_tariff(session, record),
+            current_device_limit=record.get("current_device_limit"),
+            current_traffic_limit=record.get("current_traffic_limit"),
         )
 
         final_price = calculate_config_price(
@@ -820,6 +827,7 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
             selected_device_limit=int(selected_devices) if selected_devices is not None else None,
             selected_traffic_limit=int(selected_traffic_gb) if selected_traffic_gb is not None else None,
             selected_price_rub=int(final_price),
+            renewal_duration_days=duration_days,
             state=state,
             expected_key_snapshot=renewal_key_snapshot(record),
         )

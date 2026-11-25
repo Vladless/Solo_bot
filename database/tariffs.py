@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_cache import cache_delete, cache_delete_pattern, cache_get, cache_key, cache_set
 from database.cache_purge import defer_purge, defer_purge_patterns, is_purge_pending
-from database.models import Server, Tariff, TariffSubgroupSetting
+from database.models import Key, Server, SubscriptionEvent, Tariff, TariffSubgroupSetting
 from logger import logger
 from settings.cache_config import TARIFFS_FOR_CLUSTER_CACHE_TTL_SEC, TARIFF_BY_ID_CACHE_TTL_SEC
 
@@ -221,8 +221,61 @@ async def create_tariff(session: AsyncSession, data: dict):
 
 
 async def delete_tariff(session: AsyncSession, tariff_id: int):
+    """Сохраняет условия подписок перед удалением тарифа."""
+    from database.access.resolution import UserId
+    from database.keys import invalidate_keys_list
+
+    tariff = await session.scalar(
+        select(Tariff)
+        .where(Tariff.id == tariff_id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    if tariff is None:
+        return False
+    keys = (
+        await session.scalars(
+            select(Key)
+            .where(Key.tariff_id == tariff_id)
+            .order_by(Key.user_id, Key.client_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    snapshot = _row_to_cache_dict({
+        column.key: getattr(tariff, column.key)
+        for column in Tariff.__table__.columns
+        if column.key not in {"created_at", "updated_at"}
+    })
+    for key in keys:
+        session.add(
+            SubscriptionEvent(
+                event_type="tariff_deleted",
+                user_id=key.user_id,
+                tg_id=key.tg_id,
+                client_id=key.client_id,
+                tariff_id=tariff_id,
+                server_id=key.server_id,
+                price_rub=key.selected_price_rub,
+                duration_days=tariff.duration_days,
+                expiry_time=key.expiry_time,
+                source="admin",
+                metadata_={"tariff_snapshot": snapshot},
+            )
+        )
+        pending_keys = (
+            cache_key("key_details", key.email),
+            cache_key("key_email", key.client_id),
+            cache_key("key_actions", key.client_id),
+        )
+        if not defer_purge(session, *pending_keys):
+            for pending_key in pending_keys:
+                await cache_delete(pending_key)
+    await session.flush()
     await session.execute(delete(Tariff).where(Tariff.id == tariff_id))
-    await _invalidate_tariff_cache(tariff_id)
+    await invalidate_tariff_cache(session, tariff_id)
+    for user_id in sorted({key.user_id for key in keys}):
+        await invalidate_keys_list(session, UserId(user_id))
     return True
 
 

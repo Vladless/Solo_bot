@@ -31,8 +31,8 @@ from database.keys import (
 from database.servers import cluster_name_exists, get_cluster_name_for_server_name
 from database.users import get_locked_balance, get_trial
 from logger import logger
-from services.renewal_access import resolve_key_renewal_scope
-from settings.texts import RENEWAL_FROZEN_UNAVAILABLE
+from services.renewal_access import resolve_key_renewal_scope, resolve_key_renewal_tariff
+from settings.texts import RENEWAL_CURRENT_TARIFF_UNAVAILABLE, RENEWAL_FROZEN_UNAVAILABLE
 
 from .errors import InsufficientFundsError, NotFoundError, ServiceError, ValidationError
 
@@ -61,6 +61,8 @@ class RenewalPricing:
     carried_device_limit: int | None = None
     carried_traffic_limit: int | None = None
     last_tariff_change_at: datetime | None = None
+    current_tariff: dict[str, Any] | None = None
+    current_key_snapshot: dict[str, Any] | None = None
 
 
 @dataclass
@@ -186,8 +188,10 @@ async def calculate_renewal_pricing(
         raise NotFoundError("Подписка не найдена")
 
     is_configurable = bool(tariff.get("configurable"))
-    current_tariff_id = key_details.get("tariff_id")
+    key_details = {**key_details, **renewal_key_snapshot(current_key)}
+    current_tariff_id = current_key.tariff_id
     same_tariff = current_tariff_id is not None and int(current_tariff_id) == int(tariff_id)
+    current_tariff = tariff if same_tariff else await resolve_key_renewal_tariff(session, current_key)
 
     if is_configurable and (selected_device_limit is not None or selected_traffic_limit is not None):
         device_options_raw = tariff.get("device_options") or []
@@ -219,7 +223,35 @@ async def calculate_renewal_pricing(
         sel_dev_int = None
         sel_trf_int = None
 
-    from services.tariffs import calculate_config_price as calc_price_buy
+    from services.tariffs import (
+        calculate_config_price as calc_price_buy,
+        resolve_config_base_limits,
+    )
+    from services.tariffs.renewal_groups import is_same_renewal_family
+
+    if is_configurable:
+        base_device, base_traffic = (
+            _resolve_effective_limits(tariff, None, None)
+            if same_tariff or is_same_renewal_family(current_tariff, tariff)
+            else resolve_config_base_limits(tariff)
+        )
+        if sel_dev_int is None:
+            sel_dev_int = base_device
+        if sel_trf_int is None:
+            sel_trf_int = base_traffic
+        if current_tariff is None:
+            if selected_device_limit is None:
+                saved = current_key.current_device_limit
+                if saved is None:
+                    saved = current_key.selected_device_limit
+                if saved is not None and int(saved) in (tariff.get("device_options") or []):
+                    sel_dev_int = int(saved)
+            if selected_traffic_limit is None:
+                saved = current_key.current_traffic_limit
+                if saved is None:
+                    saved = current_key.selected_traffic_limit
+                if saved is not None and int(saved) in (tariff.get("traffic_options_gb") or []):
+                    sel_trf_int = int(saved)
 
     total_price_rub = int(
         calc_price_buy(
@@ -233,10 +265,9 @@ async def calculate_renewal_pricing(
 
     from services.addons import resolve_carried_addons
 
-    current_tariff = tariff
-    if not same_tariff:
-        current_tariff = await get_tariff_by_id(session, int(current_tariff_id)) if current_tariff_id else None
-    carried = resolve_carried_addons(tariff, key_details, sel_dev_int, sel_trf_int, current_tariff=current_tariff)
+    carried = resolve_carried_addons(
+        tariff, key_details, sel_dev_int, sel_trf_int, current_tariff=current_tariff or tariff
+    )
     total_price_rub += carried.price_rub
 
     final_price_rub, discount_rub, coupon_id, applied_code = await resolve_percent_coupon(
@@ -279,6 +310,8 @@ async def calculate_renewal_pricing(
         carried_device_limit=carried.device_limit,
         carried_traffic_limit=carried.traffic_gb,
         last_tariff_change_at=getattr(current_key, "last_tariff_change_at", None),
+        current_tariff=current_tariff,
+        current_key_snapshot=renewal_key_snapshot(current_key),
     )
 
 
@@ -295,14 +328,15 @@ async def compute_remaining_credit(
     current_selected_traffic: int | None,
     current_device_limit: int | None = None,
     current_traffic_limit: int | None = None,
+    current_tariff: dict | None = None,
 ) -> float:
     """Стоимость остатка текущей конфигурации в рублях."""
-    if current_tariff_id is None:
+    if current_tariff_id is None and current_tariff is None:
         return 0.0
     remaining_ms = max(0, int(current_expiry_ms) - int(now_ms))
     if remaining_ms <= 0:
         return 0.0
-    old_tariff = await get_tariff_by_id(session, int(current_tariff_id))
+    old_tariff = current_tariff or await get_tariff_by_id(session, int(current_tariff_id))
     if not old_tariff:
         return 0.0
     old_duration = int(old_tariff.get("duration_days") or 0)
@@ -358,37 +392,68 @@ async def _is_same_config(
     new_tariff_id: int,
     new_selected_device: int | None,
     new_selected_traffic: int | None,
+    current_tariff: dict | None = None,
+    current_device_limit: int | None = None,
+    current_traffic_limit: int | None = None,
+    carry_addons: bool = True,
 ) -> bool:
     """Сравнивает группу, подгруппу и базовые лимиты тарифа."""
-    if current_tariff_id is None:
-        return False
-
-    old_tariff = await get_tariff_by_id(session, int(current_tariff_id))
+    old_tariff = current_tariff
+    if old_tariff is None and current_tariff_id is not None:
+        old_tariff = await get_tariff_by_id(session, int(current_tariff_id))
     new_tariff = (
         old_tariff
-        if int(current_tariff_id) == int(new_tariff_id)
+        if old_tariff is not None and int(old_tariff.get("id") or 0) == int(new_tariff_id)
         else await get_tariff_by_id(session, int(new_tariff_id))
     )
     from services.tariffs.renewal_groups import is_same_renewal_family
 
-    if not is_same_renewal_family(old_tariff, new_tariff):
+    if not new_tariff:
+        return False
+    if old_tariff is not None and not is_same_renewal_family(old_tariff, new_tariff):
         return False
 
     from services.tariffs.tariff_display import get_effective_limits_for_key
 
-    old_dev, old_trf = await get_effective_limits_for_key(
-        session,
-        tariff_id=int(current_tariff_id),
-        selected_device_limit=current_selected_device,
-        selected_traffic_gb=current_selected_traffic,
-        tariff=old_tariff,
-    )
     new_dev, new_trf = await get_effective_limits_for_key(
         session,
         tariff_id=int(new_tariff_id),
         selected_device_limit=new_selected_device,
         selected_traffic_gb=new_selected_traffic,
         tariff=new_tariff,
+    )
+    if old_tariff is None:
+        old_dev = current_device_limit if current_device_limit is not None else current_selected_device
+        old_trf_gb = current_traffic_limit if current_traffic_limit is not None else current_selected_traffic
+        if old_dev is None or old_trf_gb is None:
+            return False
+        if carry_addons:
+            from services.addons import resolve_carried_addons
+
+            carried = resolve_carried_addons(
+                new_tariff,
+                {
+                    "tariff_id": current_tariff_id,
+                    "selected_device_limit": current_selected_device,
+                    "selected_traffic_limit": current_selected_traffic,
+                    "current_device_limit": current_device_limit,
+                    "current_traffic_limit": current_traffic_limit,
+                },
+                new_selected_device,
+                new_selected_traffic,
+                current_tariff=new_tariff,
+            )
+            if carried.device_limit is not None:
+                new_dev = carried.device_limit
+            if carried.traffic_gb is not None:
+                new_trf = carried.traffic_gb * 1024**3
+        return int(old_dev) == new_dev and int(old_trf_gb) * 1024**3 == new_trf
+    old_dev, old_trf = await get_effective_limits_for_key(
+        session,
+        tariff_id=current_tariff_id,
+        selected_device_limit=current_selected_device,
+        selected_traffic_gb=current_selected_traffic,
+        tariff=old_tariff,
     )
     return old_dev == new_dev and old_trf == new_trf
 
@@ -405,6 +470,10 @@ async def compute_renewal_expiry(
     new_selected_device: int | None,
     new_selected_traffic: int | None,
     new_duration_days: int | None = None,
+    current_tariff: dict | None = None,
+    current_device_limit: int | None = None,
+    current_traffic_limit: int | None = None,
+    carry_addons: bool = True,
 ) -> int:
     """Рассчитывает новый срок с учётом остатка и конфигурации."""
     now_ms = int(now_ms)
@@ -419,6 +488,10 @@ async def compute_renewal_expiry(
     if remaining_ms <= 0:
         return now_ms + new_dur_ms
 
+    old_tariff = current_tariff
+    if old_tariff is None and current_tariff_id is not None:
+        old_tariff = await get_tariff_by_id(session, int(current_tariff_id))
+
     same_config = await _is_same_config(
         session,
         current_tariff_id=current_tariff_id,
@@ -427,9 +500,15 @@ async def compute_renewal_expiry(
         new_tariff_id=new_tariff_id,
         new_selected_device=new_selected_device,
         new_selected_traffic=new_selected_traffic,
+        current_tariff=old_tariff,
+        current_device_limit=current_device_limit,
+        current_traffic_limit=current_traffic_limit,
+        carry_addons=carry_addons,
     )
     if same_config:
         return current_expiry_ms + new_dur_ms
+    if old_tariff is None:
+        raise ValidationError(RENEWAL_CURRENT_TARIFF_UNAVAILABLE)
 
     return now_ms + new_dur_ms
 
@@ -465,6 +544,15 @@ async def compute_renewal_quote(
     duration_days = pricing.duration_days
     eff_dev = pricing.selected_device_limit
     eff_trf = pricing.selected_traffic_limit
+    old_tariff = getattr(pricing, "current_tariff", None)
+    current_snapshot = getattr(pricing, "current_key_snapshot", None)
+    if current_snapshot:
+        current_tariff_id = current_snapshot["tariff_id"]
+        current_selected_device = current_snapshot["selected_device_limit"]
+        current_selected_traffic = current_snapshot["selected_traffic_limit"]
+        current_device_limit = current_snapshot["current_device_limit"]
+        current_traffic_limit = current_snapshot["current_traffic_limit"]
+        current_expiry_ms = normalize_expiry_ms(current_snapshot["expiry_time"])
 
     is_switch = not await _is_same_config(
         session,
@@ -474,6 +562,9 @@ async def compute_renewal_quote(
         new_tariff_id=new_tariff_id,
         new_selected_device=eff_dev,
         new_selected_traffic=eff_trf,
+        current_tariff=old_tariff,
+        current_device_limit=current_device_limit,
+        current_traffic_limit=current_traffic_limit,
     )
     if is_switch:
         from services.tariffs.cooldown import ensure_tariff_switch_available
@@ -491,6 +582,9 @@ async def compute_renewal_quote(
         new_selected_device=eff_dev,
         new_selected_traffic=eff_trf,
         new_duration_days=duration_days,
+        current_tariff=old_tariff,
+        current_device_limit=current_device_limit,
+        current_traffic_limit=current_traffic_limit,
     )
 
     full_price = int(pricing.final_price_rub)
@@ -525,13 +619,16 @@ async def compute_renewal_quote(
                 current_selected_traffic=current_selected_traffic,
                 current_device_limit=current_device_limit,
                 current_traffic_limit=current_traffic_limit,
+                current_tariff=old_tariff,
             )
         )
     )
     from core.bootstrap import MODES_CONFIG
 
     keep_period = bool(MODES_CONFIG.get("RENEWAL_SWITCH_KEEP_PERIOD", False))
-    if keep_period and await _is_trial_tariff(session, current_tariff_id):
+    if keep_period and (
+        (old_tariff or {}).get("group_code") == "trial" or await _is_trial_tariff(session, current_tariff_id)
+    ):
         keep_period = False
     remaining_ms = max(0, int(current_expiry_ms) - int(now_ms))
     if keep_period and remaining_ms > 0 and duration_days > 0:
@@ -633,6 +730,7 @@ async def execute_renewal(
     expected_expiry_time: int | None = None,
     expected_key_snapshot: dict | None = None,
     carry_addons: bool = True,
+    renewal_duration_days: int | None = None,
 ) -> RenewalResult:
     """Продлевает ключ на кластере и обновляет базу."""
     owner_ref = billing_user_id if isinstance(billing_user_id, TelegramId) else UserId(billing_user_id)
@@ -673,6 +771,8 @@ async def execute_renewal(
         selected_device_limit,
         selected_traffic_limit,
     )
+    key_info = {**key_info, **renewal_key_snapshot(current_key)}
+    current_tariff = await resolve_key_renewal_tariff(session, current_key)
     is_switch = not await _is_same_config(
         session,
         current_tariff_id=current_key.tariff_id,
@@ -681,7 +781,19 @@ async def execute_renewal(
         new_tariff_id=tariff_id,
         new_selected_device=final_device,
         new_selected_traffic=final_traffic,
+        current_tariff=current_tariff,
+        current_device_limit=current_key.current_device_limit,
+        current_traffic_limit=current_key.current_traffic_limit,
+        carry_addons=carry_addons,
     )
+    current_expiry_ms = normalize_expiry_ms(current_key.expiry_time)
+    if current_tariff is None and current_expiry_ms > int(datetime.now(UTC).timestamp() * 1000):
+        if is_switch:
+            raise ValidationError(RENEWAL_CURRENT_TARIFF_UNAVAILABLE)
+        duration = int(renewal_duration_days if renewal_duration_days is not None else tariff.get("duration_days") or 0)
+        if duration <= 0:
+            raise ValidationError("Некорректная длительность продления")
+        new_expiry_time = max(int(new_expiry_time), current_expiry_ms + duration * _DAY_MS)
     if is_switch:
         from services.tariffs.cooldown import ensure_tariff_switch_available
 
@@ -691,18 +803,8 @@ async def execute_renewal(
     from services.operations import renew_key_in_cluster
     from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 
-    current_tariff = None
-    try:
-        cur_tariff_id = key_info.get("tariff_id")
-        if cur_tariff_id:
-            current_tariff = (
-                tariff if int(cur_tariff_id) == int(tariff_id) else await get_tariff_by_id(session, int(cur_tariff_id))
-            )
-    except Exception as e:
-        logger.warning("[Keys] Ошибка получения subgroup текущего тарифа: {}", e)
-
     carried = (
-        resolve_carried_addons(tariff, key_info, final_device, final_traffic, current_tariff=current_tariff)
+        resolve_carried_addons(tariff, key_info, final_device, final_traffic, current_tariff=current_tariff or tariff)
         if carry_addons
         else CarriedAddons()
     )

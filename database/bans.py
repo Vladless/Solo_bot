@@ -39,14 +39,22 @@ async def apply_telegram_chat_observations(
     expected_owners = sorted({uid for uid, _, blocked, _ in normalized if blocked and uid is not None})
     owners = []
     if blocked_chats:
-        owners = (
-            await session.execute(
-                select(User.id, User.tg_id)
-                .where(or_(User.id.in_(expected_owners), User.tg_id.in_(blocked_chats)))
-                .order_by(User.id)
-                .with_for_update()
+        owner_ids = set(expected_owners)
+        batch_size = 10_000
+        for offset in range(0, len(blocked_chats), batch_size):
+            batch = blocked_chats[offset : offset + batch_size]
+            result = await session.execute(select(User.id).where(User.tg_id.in_(batch)))
+            owner_ids.update(result.scalars().all())
+        ordered_owners = sorted(owner_ids)
+        for offset in range(0, len(ordered_owners), batch_size):
+            batch = ordered_owners[offset : offset + batch_size]
+            owners.extend(
+                (
+                    await session.execute(
+                        select(User.id, User.tg_id).where(User.id.in_(batch)).order_by(User.id).with_for_update()
+                    )
+                ).all()
             )
-        ).all()
     chat_by_owner = {int(uid): tg for uid, tg in owners}
     owner_by_chat = {int(tg): int(uid) for uid, tg in owners if tg is not None and tg > 0}
     latest: dict[int, tuple[bool, datetime]] = {}

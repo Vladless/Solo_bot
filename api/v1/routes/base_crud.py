@@ -15,7 +15,7 @@ from api.depends import get_session, verify_admin_token
 from database.access.identity_cache import invalidate_identity_cache
 from database.access.resolution import TelegramId, resolve_user_optional
 from database.models import Admin
-from database.tariffs import invalidate_tariff_cache
+from database.tariffs import delete_tariff, invalidate_tariff_cache
 from services.formatting import get_site_gift_link, get_telegram_gift_link
 
 
@@ -244,7 +244,10 @@ def generate_crud_router(
 
             if model.__name__ == "ManualBan":
                 await invalidate_identity_cache(session, user_ids=(obj.user_id,))
-            await session.delete(obj)
+            if model.__name__ == "Tariff":
+                await delete_tariff(session, obj.id)
+            else:
+                await session.delete(obj)
             return {"detail": f"{model.__name__} deleted"}
 
     return router

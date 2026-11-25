@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import type { TypedBlockViewProps } from "@/components/constructor/blockContent/viewTypes";
 import { ELEMENT_FILL_CLASS } from "@/components/constructor/blockContent/blockLayout";
 import { usePanelDecor } from "@/components/constructor/blockContent/panelDecor";
@@ -40,6 +40,8 @@ import {
 import { useAppInstallFlow } from "@/components/constructor/blockContent/useAppInstallFlow";
 import { useAppInfo } from "@/app/AppInfoProvider";
 import { useToast } from "@/components/ui/Toast";
+import { useLocale } from "@/lib/i18n";
+import { openSubscriptionImportLink } from "@/lib/telegram-webapp";
 import { slugToPath } from "@/lib/web-page-registry";
 
 const CONNECT_CTA_SCHEMA = {
@@ -104,6 +106,7 @@ export function DefaultConnectCtaBlockView({ block, context }: TypedBlockViewPro
   const mut = useAccountMutations();
   const appInfo = useAppInfo();
   const toast = useToast();
+  const { locale } = useLocale();
 
   const activeKey = api.activeKey;
   const remnawaveLink = activeKey?.remnawave_link?.trim() || "";
@@ -162,6 +165,13 @@ export function DefaultConnectCtaBlockView({ block, context }: TypedBlockViewPro
         : resolveImportUrl(link, flow.selected, flow.platform, appInfo.connect)
       : "";
   const connectExternal = /^https?:/i.test(connectHref);
+  const onConnect = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (isPreview || !connectHref) return;
+    if (!openSubscriptionImportLink(connectHref, connectExternal ? "_blank" : "_self")) {
+      toast.error(locale === "en" ? "Could not open the app. Copy your subscription link and add it to your VPN client." : "Не удалось открыть приложение. Скопируйте ссылку на подписку и добавьте её в VPN-клиент.");
+    }
+  };
 
 
 
@@ -279,7 +289,7 @@ export function DefaultConnectCtaBlockView({ block, context }: TypedBlockViewPro
                 <a
                   href={connectHref || undefined}
                   {...(connectExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                  onClick={(e) => { if (!connectHref) e.preventDefault(); }}
+                  onClick={onConnect}
                   aria-disabled={!link}
                   style={{
                     ...btnSolid(t),
@@ -495,7 +505,7 @@ export function DefaultConnectCtaBlockView({ block, context }: TypedBlockViewPro
 
           <div style={{ display: "flex", gap: t.space.smPlus, flexWrap: "nowrap" }}>
             {cfg.showConnect && cfg.connectLabel ? (
-              <a href={connectHref || undefined} {...(connectExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})} onClick={(e) => { if (!connectHref) e.preventDefault(); }} aria-disabled={!link} style={{ ...heroBtn(onAccent, t.accent), flex: "1 1 0", minWidth: 0, padding: "0 12px", whiteSpace: "nowrap", textDecoration: "none", opacity: link ? 1 : 0.5, cursor: link ? "pointer" : "default" }}>
+              <a href={connectHref || undefined} {...(connectExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})} onClick={onConnect} aria-disabled={!link} style={{ ...heroBtn(onAccent, t.accent), flex: "1 1 0", minWidth: 0, padding: "0 12px", whiteSpace: "nowrap", textDecoration: "none", opacity: link ? 1 : 0.5, cursor: link ? "pointer" : "default" }}>
                 {cfg.connectLabel}
               </a>
             ) : null}

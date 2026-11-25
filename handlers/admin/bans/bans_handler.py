@@ -144,12 +144,15 @@ async def handle_bans_delete_banned(callback_query: CallbackQuery, session: Asyn
             )
             return
 
-        await session.execute(
-            select(TelegramChatStatus.tg_id)
-            .where(TelegramChatStatus.tg_id.in_([tg for _, tg in blocked_users]))
-            .order_by(TelegramChatStatus.tg_id)
-            .with_for_update()
-        )
+        tg_ids = sorted({tg for _, tg in blocked_users})
+        batch_size = 10_000
+        for offset in range(0, len(tg_ids), batch_size):
+            await session.execute(
+                select(TelegramChatStatus.tg_id)
+                .where(TelegramChatStatus.tg_id.in_(tg_ids[offset : offset + batch_size]))
+                .order_by(TelegramChatStatus.tg_id)
+                .with_for_update()
+            )
         deleted = 0
         for user_id, _tg_id in blocked_users:
             eligible = await session.scalar(

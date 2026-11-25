@@ -7,7 +7,11 @@ from api.shared.http import resolve_default_web_payment_provider, resolve_public
 from services.errors import ValidationError
 from services.keys import normalize_expiry_ms, renewal_key_snapshot
 from services.payments.checkout_intent import autopay_terms_for_tariff
-from services.renewal_access import resolve_key_renewal_scope, resolve_key_server_scope
+from services.renewal_access import (
+    resolve_key_renewal_scope,
+    resolve_key_renewal_tariff,
+    resolve_key_server_scope,
+)
 from services.tariffs import ConfigOptionRejected, ensure_allowed_config
 from services.tariffs.renewal_groups import DEFAULT_RENEWAL_FORBIDDEN_GROUPS, resolve_renewal_tariff_group
 from settings.texts import RENEWAL_AVAILABLE_FROM, RENEWAL_FROZEN_UNAVAILABLE, RENEWAL_TARIFF_UNAVAILABLE
@@ -55,13 +59,11 @@ async def user_key_renew(
         raise HTTPException(status_code=400, detail=RENEWAL_FROZEN_UNAVAILABLE)
     tariff_id = getattr(db_key, "tariff_id", None)
     key_expiry_ms = _svc_normalize_expiry(getattr(db_key, "expiry_time", None))
-    if not tariff_id:
-        raise HTTPException(status_code=400, detail="Для подписки не назначен тариф")
     key_email = str(getattr(db_key, "email", "") or "")
     key_server_id = str(getattr(db_key, "server_id", "") or "").strip()
     quoted_key_snapshot = renewal_key_snapshot(db_key)
 
-    key_tariff = await get_tariff_by_id(session, int(tariff_id))
+    key_tariff = await resolve_key_renewal_tariff(session, db_key)
     key_tariff_group = (key_tariff.get("group_code") or "").strip() if key_tariff else ""
     server_tariff_group = ""
     if not key_tariff_group or key_tariff_group in DEFAULT_RENEWAL_FORBIDDEN_GROUPS:
@@ -93,7 +95,7 @@ async def user_key_renew(
             raise HTTPException(status_code=400, detail=RENEWAL_TARIFF_UNAVAILABLE)
         effective_tariff_id = int(body.tariff_id)
     else:
-        if not key_tariff_group or key_tariff_group in DEFAULT_RENEWAL_FORBIDDEN_GROUPS:
+        if not tariff_id or not key_tariff_group or key_tariff_group in DEFAULT_RENEWAL_FORBIDDEN_GROUPS:
             return AccountKeyRenewResponse(
                 ok=True,
                 message="Для продления выберите тариф",
@@ -323,6 +325,7 @@ async def user_key_renew(
             selected_device_limit=quote.selected_device_limit,
             selected_traffic_limit=quote.selected_traffic_limit,
             selected_price_rub=quote.new_full_price_rub,
+            renewal_duration_days=quote.duration_days,
             coupon_id=quote.coupon_id,
             expected_expiry_time=key_expiry_ms,
             expected_key_snapshot=quoted_key_snapshot,

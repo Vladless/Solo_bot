@@ -32,6 +32,7 @@ from settings import (
     texts,
 )
 from settings.config import (
+    API_TOKEN,
     BALANCE_BUTTON,
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -114,9 +115,11 @@ async def version():
 
 @router.get("/api/telegram-widget-bot", include_in_schema=True)
 async def telegram_widget_bot():
-    """Имя бота и имя проекта для веб-клиента."""
+    """Публичные параметры Telegram и имя проекта для веб-клиента."""
     bot_username = str(USERNAME_BOT or "").replace("@", "").strip()
     project_name = (PROJECT_NAME or "Solo").strip() if isinstance(PROJECT_NAME, str) else "Solo"
+    bot_id, separator, bot_secret = str(API_TOKEN or "").partition(":")
+    telegram_bot_id = bot_id if separator and bot_secret.strip() and re.fullmatch(r"[1-9][0-9]*", bot_id) else ""
     telegram_client_id = ""
     try:
         from settings.config import TELEGRAM_CLIENT_ID
@@ -128,6 +131,7 @@ async def telegram_widget_bot():
         "bot_username": bot_username,
         "project_name": project_name,
         "telegram_client_id": telegram_client_id,
+        "telegram_bot_id": telegram_bot_id,
     }
 
 

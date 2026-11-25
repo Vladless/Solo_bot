@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_balance, set_user_balance, update_balance
 from database.access.resolution import UserId, resolve_user_optional
 from database.payments import add_payment, count_balance_activity, get_balance_activity
+from database.users import get_locked_balance
 from filters.admin import IsAdminFilter
+from middlewares.session import operation_session
 from utils.csv_export import export_user_all_payments_csv
 
 from ..panel.headers import card, menu_text, quote, section
@@ -143,28 +145,24 @@ async def handle_balance_add(
 
     if amount is not None:
         amount = int(amount)
-        old_balance = await get_balance(session, user_id)
-
-        if amount >= 0:
-            await update_balance(session, user_id, amount)
-            new_balance = old_balance + amount
-            if amount != 0:
+        async with operation_session(session) as balance_session:
+            owner = await resolve_user_optional(balance_session, user_id)
+            if owner is None:
+                raise ValueError("Пользователь для изменения баланса не найден")
+            owner_id = UserId(owner.id)
+            old_balance = await get_locked_balance(balance_session, owner_id)
+            if old_balance is None:
+                raise ValueError("Пользователь для изменения баланса не найден")
+            delta = amount if amount >= 0 else -min(-amount, max(0, old_balance))
+            new_balance = old_balance
+            if delta != 0:
+                new_balance = await update_balance(balance_session, owner_id, delta)
+                if new_balance is None:
+                    raise ValueError("Не удалось изменить баланс клиента")
                 await add_payment(
-                    session=session,
-                    legacy_user_ref=user_id,
-                    amount=amount,
-                    payment_system="admin",
-                    status="success",
-                )
-        else:
-            new_balance = max(0, old_balance + amount)
-            await set_user_balance(session, user_id, new_balance)
-            deducted = old_balance - new_balance
-            if deducted > 0:
-                await add_payment(
-                    session=session,
-                    legacy_user_ref=user_id,
-                    amount=-deducted,
+                    session=balance_session,
+                    legacy_user_ref=owner_id,
+                    amount=delta,
                     payment_system="admin",
                     status="success",
                 )
@@ -237,39 +235,27 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Asy
 
     amount = int(message.text)
 
-    if op_type == "add":
-        text = menu_text("Баланс", f"✅ Баланс пополнен на <b>{amount}Р</b>")
-        await update_balance(session, user_id, amount)
-        if amount != 0:
-            await add_payment(
-                session=session,
-                legacy_user_ref=user_id,
-                amount=amount,
-                payment_system="admin",
-                status="success",
-            )
-    elif op_type == "take":
-        current_balance = await get_balance(session, user_id)
-        new_balance = max(0, current_balance - amount)
-        deducted = current_balance if amount > current_balance else amount
-        text = menu_text("Баланс", f"✅ С баланса списано <b>{deducted}Р</b>")
-        await set_user_balance(session, user_id, new_balance)
-        if deducted > 0:
-            await add_payment(
-                session=session,
-                legacy_user_ref=user_id,
-                amount=-deducted,
-                payment_system="admin",
-                status="success",
-            )
-    else:
-        current_balance = await get_balance(session, user_id)
-        text = menu_text("Баланс", f"✅ Баланс теперь <b>{amount}Р</b>")
-        await set_user_balance(session, user_id, amount)
-        delta = amount - current_balance
+    async with operation_session(session) as balance_session:
+        current_balance = await get_locked_balance(balance_session, user_id)
+        if current_balance is None:
+            raise ValueError("Пользователь для изменения баланса не найден")
+        if op_type == "add":
+            delta = amount
+            text = menu_text("Баланс", f"✅ Баланс пополнен на <b>{amount}Р</b>")
+        elif op_type == "take":
+            deducted = min(amount, max(0, current_balance))
+            delta = -deducted
+            text = menu_text("Баланс", f"✅ С баланса списано <b>{deducted}Р</b>")
+        else:
+            delta = amount - current_balance
+            text = menu_text("Баланс", f"✅ Баланс теперь <b>{amount}Р</b>")
+            await set_user_balance(balance_session, user_id, amount)
+        if op_type in {"add", "take"} and delta != 0:
+            if await update_balance(balance_session, user_id, delta) is None:
+                raise ValueError("Не удалось изменить баланс клиента")
         if delta != 0:
             await add_payment(
-                session=session,
+                session=balance_session,
                 legacy_user_ref=user_id,
                 amount=delta,
                 payment_system="admin",

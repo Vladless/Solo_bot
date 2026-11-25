@@ -120,9 +120,9 @@ def resolve_carried_addons(
         return CarriedAddons()
 
     current_tariff_id = key_details.get("tariff_id")
-    if current_tariff_id is None:
+    if current_tariff_id is None and current_tariff is None:
         return CarriedAddons()
-    same_tariff = int(current_tariff_id) == int(tariff.get("id") or 0)
+    same_tariff = current_tariff_id is not None and int(current_tariff_id) == int(tariff.get("id") or 0)
     if not same_tariff and not is_same_renewal_family(current_tariff, tariff):
         return CarriedAddons()
 

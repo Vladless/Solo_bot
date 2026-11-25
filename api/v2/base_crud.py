@@ -16,7 +16,7 @@ from api.v1.routes.base_crud import (
 )
 from database.access.identity_cache import invalidate_identity_cache
 from database.access.resolution import TelegramId, resolve_user_optional
-from database.tariffs import invalidate_tariff_cache
+from database.tariffs import delete_tariff, invalidate_tariff_cache
 
 
 def generate_crud_router(
@@ -210,7 +210,10 @@ def generate_crud_router(
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
             if model.__name__ == "ManualBan":
                 await invalidate_identity_cache(session, user_ids=(obj.user_id,))
-            await session.delete(obj)
+            if model.__name__ == "Tariff":
+                await delete_tariff(session, obj.id)
+            else:
+                await session.delete(obj)
             await session.commit()
             return {"detail": f"{model.__name__} deleted"}
 

@@ -395,9 +395,9 @@ def _cleanup_s3_backups(s3, prefix: str) -> None:
 
 
 async def create_backup_and_send_to_admins(client) -> None:
-    if client.client.token is None:
-        await client.login()
-    await client.database.export()
+    from panels._3xui import _panel_request
+
+    await _panel_request(client, "panel/api/backuptotgbot", method="POST", data={}, expect_json=False)
 
 
 MAX_DUMP_PARTS = 12

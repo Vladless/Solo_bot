@@ -16,7 +16,7 @@ from database.models import Key, Server, Tariff, User
 from filters.admin import IsAdminFilter
 from logger import logger
 from panels import remnawave as remnawave_panel
-from panels._3xui import get_inbound_node, get_xui_instance
+from panels._3xui import _get_inbound_cached, _panel_request, get_inbound_node, get_xui_instance
 from services.cluster_access import is_server_configured, resolve_tariff_servers
 from services.operations import create_client_on_server
 from services.operations.aggregated_links import make_aggregated_link
@@ -222,8 +222,8 @@ async def handle_cluster_availability(
             if panel_type == "3x-ui":
                 xui = await get_xui_instance(server["api_url"])
                 inbound_id = int(server["inbound_id"])
-                online_clients = await xui.client.online()
-                inbound = await xui.inbound.get_by_id(inbound_id)
+                online_clients = await _panel_request(xui, "panel/api/clients/onlines", method="POST", data={}) or []
+                inbound = await _get_inbound_cached(xui, inbound_id, refresh=True)
                 inbound_emails = {client.email for client in inbound.settings.clients}
                 online_inbound_users = len(set(online_clients) & inbound_emails)
 

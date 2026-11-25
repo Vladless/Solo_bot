@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import json
 import time
@@ -32,6 +33,7 @@ class ClientConfig:
 
 
 _xui_instance_cache: dict[tuple[str, str, str | None], tuple[AsyncApi, float]] = {}
+_xui_auth_locks: dict[tuple[str, str, str | None], asyncio.Lock] = {}
 SESSION_TTL = 1800
 
 
@@ -81,15 +83,39 @@ def _telegram_id(value: int | str | None) -> int:
     return tg_id if 0 < tg_id <= 2**63 - 1 else 0
 
 
-async def _panel_request(xui: AsyncApi, endpoint: str, *, method: str = "GET", data: dict | None = None) -> Any:
+async def _panel_request(
+    xui: AsyncApi,
+    endpoint: str,
+    *,
+    method: str = "GET",
+    data: dict | None = None,
+    expect_json: bool = True,
+) -> Any:
     """Выполняет запрос к API панели с настроенной авторизацией."""
     api = xui.client
     kwargs: dict[str, Any] = {"timeout": 10.0}
     if data is not None:
         kwargs["json"] = data
-    response = await api._request_with_retry(
-        method, api._url(endpoint), {"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"}, **kwargs
-    )
+    if not expect_json:
+        kwargs["skip_check"] = True
+    for attempt in range(2):
+        auth = (getattr(api, "session", None), getattr(api, "csrf_token", None))
+        try:
+            response = await api._request_with_retry(
+                method,
+                api._url(endpoint),
+                {"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                **kwargs,
+            )
+            break
+        except httpx.HTTPStatusError as error:
+            if attempt or error.response.status_code not in {401, 403} or api.token is not None:
+                raise
+            logger.info("[XUI] Обновление авторизации после HTTP {}", error.response.status_code)
+            xui = await get_xui_instance(api.host, failed_auth=auth)
+            api = xui.client
+    if not expect_json:
+        return None
     payload = response.json()
     if not isinstance(payload, dict) or payload.get("success") is not True:
         raise ValueError(f"3x-ui: {payload.get('msg') if isinstance(payload, dict) else 'invalid response'}")
@@ -198,7 +224,7 @@ async def reset_client_traffic(xui: AsyncApi, inbound_id: int, email: str, clien
     except httpx.HTTPStatusError as error:
         if error.response.status_code != 404:
             raise
-        inbound = await xui.inbound.get_by_id(int(inbound_id))
+        inbound = await _get_inbound_cached(xui, int(inbound_id), refresh=True)
         clients = getattr(getattr(inbound, "settings", None), "clients", None)
         matches = [client for client in clients or [] if getattr(client, "email", None) == email]
         if len(matches) != 1 or _client_identity(matches[0]) != client_id:
@@ -220,14 +246,14 @@ async def reset_client_traffic(xui: AsyncApi, inbound_id: int, email: str, clien
     return True
 
 
-async def _get_inbound_cached(xui: AsyncApi, inbound_id: int) -> Inbound:
+async def _get_inbound_cached(xui: AsyncApi, inbound_id: int, *, refresh: bool = False) -> Inbound:
     """Возвращает inbound из кэша или запрашивает его в панели."""
     key = f"{id(xui)}|{inbound_id}"
     now = time.time()
     cached = _inbound_cache.get(key)
-    if cached and (now - cached[1] < INBOUND_CACHE_TTL):
+    if not refresh and cached and (now - cached[1] < INBOUND_CACHE_TTL):
         return cached[0]
-    inbound = await xui.inbound.get_by_id(int(inbound_id))
+    inbound = Inbound.model_validate(await _panel_request(xui, f"panel/api/inbounds/get/{int(inbound_id)}"))
     _inbound_cache[key] = (inbound, now)
     return inbound
 
@@ -323,35 +349,43 @@ async def resolve_inbound_host(xui: AsyncApi, api_url: str, inbound_id: int, fal
     return fallback_host
 
 
-async def get_xui_instance(api_url: str) -> AsyncApi:
+async def get_xui_instance(api_url: str, *, failed_auth: tuple[str | None, str | None] | None = None) -> AsyncApi:
+    """Возвращает клиент с согласованной авторизацией панели."""
+    api_url = api_url.rstrip("/")
     token = XUI_TOKEN if USE_XUI_TOKEN else None
     if USE_XUI_TOKEN and not token:
         raise ValueError("USE_XUI_TOKEN включён, но XUI_TOKEN не задан")
     key = (api_url, ADMIN_USERNAME, token)
-    current_time = time.time()
+    async with _xui_auth_locks.setdefault(key, asyncio.Lock()):
+        xui_entry = _xui_instance_cache.get(key)
+        if xui_entry:
+            xui, last_login = xui_entry
+            if token is not None:
+                return xui
+            if failed_auth is not None:
+                if failed_auth != (xui.session, xui.csrf_token):
+                    return xui
+            elif time.time() - last_login < SESSION_TTL:
+                return xui
+            logger.info("[XUI Cache] Обновление сессии панели")
 
-    xui_entry = _xui_instance_cache.get(key)
-    if xui_entry:
-        xui, last_login = xui_entry
-        if token is not None or current_time - last_login < SESSION_TTL:
-            return xui
+        authenticated = AsyncApi(
+            api_url,
+            ADMIN_USERNAME,
+            ADMIN_PASSWORD,
+            token=token,
+            logger=logger,
+        )
+        if token is None:
+            await authenticated.login()
+        if xui_entry:
+            xui.session = authenticated.session
+            xui.csrf_token = authenticated.csrf_token
+            xui.cookie_name = authenticated.cookie_name
         else:
-            logger.info("[XUI Cache] Сессия устарела (>30 минут), переподключение...")
-            await xui.login()
-            _xui_instance_cache[key] = (xui, current_time)
-            return xui
-
-    xui = AsyncApi(
-        api_url,
-        ADMIN_USERNAME,
-        ADMIN_PASSWORD,
-        token=token,
-        logger=logger,
-    )
-    if token is None:
-        await xui.login()
-    _xui_instance_cache[key] = (xui, current_time)
-    return xui
+            xui = authenticated
+        _xui_instance_cache[key] = (xui, time.time())
+        return xui
 
 
 async def check_xui_connection(api_url: str) -> None:

@@ -137,6 +137,7 @@ async def _finalize_renewal(
         credited_to_balance_rub=max(0, int(round(-cost))),
         state=state,
         expected_key_snapshot=expected_key_snapshot,
+        renewal_duration_days=duration_days,
     )
 
 
@@ -169,6 +170,7 @@ async def complete_key_renewal(
     state: FSMContext | None = None,
     expected_key_snapshot: dict | None = None,
     carry_addons: bool = True,
+    renewal_duration_days: int | None = None,
 ):
     """Продлевает подписку через сервис и отправляет Telegram-уведомление."""
     from services.errors import ServiceError
@@ -212,7 +214,7 @@ async def complete_key_renewal(
         )
 
         try:
-            await execute_renewal(
+            renewal_result = await execute_renewal(
                 session=session,
                 billing_user_id=billing_user_id,
                 client_id=client_id,
@@ -227,7 +229,9 @@ async def complete_key_renewal(
                 selected_price_rub=selected_price_rub,
                 expected_key_snapshot=quoted_key_snapshot,
                 carry_addons=carry_addons,
+                renewal_duration_days=renewal_duration_days,
             )
+            new_expiry_time = renewal_result.new_expiry_time
             renewal_applied = True
         except ServiceError as e:
             logger.error(f"[Error] Сервис продления: {e.message}")

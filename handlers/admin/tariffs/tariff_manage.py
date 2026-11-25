@@ -10,12 +10,15 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from sqlalchemy import delete, distinct, select, update
+from sqlalchemy import distinct, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import create_tariff
-from database.models import Gift, Key, Server, Tariff
-from database.tariffs import invalidate_tariff_cache
+from database.models import Gift, Server, Tariff
+from database.tariffs import (
+    delete_tariff as delete_tariff_record,
+    invalidate_tariff_cache,
+)
 from filters.admin import IsAdminFilter
 from settings.buttons import BACK
 
@@ -446,8 +449,6 @@ async def delete_tariff_with_gift_replacement(callback: CallbackQuery, session: 
     replacement_id = int(replacement_id_str)
 
     await session.execute(update(Gift).where(Gift.tariff_id == tariff_id).values(tariff_id=replacement_id))
-    await session.execute(update(Key).where(Key.tariff_id == tariff_id).values(tariff_id=None))
-
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
 
@@ -457,7 +458,7 @@ async def delete_tariff_with_gift_replacement(callback: CallbackQuery, session: 
 
     group_code = tariff.group_code
 
-    await session.execute(delete(Tariff).where(Tariff.id == tariff_id))
+    await delete_tariff_record(session, tariff_id)
 
     result = await session.execute(select(Tariff).where(Tariff.group_code == group_code))
     remaining_tariffs = result.scalars().all()
@@ -483,8 +484,7 @@ async def delete_tariff(callback: CallbackQuery, session: AsyncSession):
 
     group_code = tariff.group_code
 
-    await session.execute(update(Key).where(Key.tariff_id == tariff_id).values(tariff_id=None))
-    await session.execute(delete(Tariff).where(Tariff.id == tariff_id))
+    await delete_tariff_record(session, tariff_id)
 
     result = await session.execute(select(Tariff).where(Tariff.group_code == group_code))
     remaining_tariffs = result.scalars().all()

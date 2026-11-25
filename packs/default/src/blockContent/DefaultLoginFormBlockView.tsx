@@ -11,7 +11,6 @@ import { useFlowPage } from "@/lib/flow-page-provider";
 import { useAppInfo } from "@/app/AppInfoProvider";
 import type { IdentityMe } from "@/components/constructor";
 import { slugToPath } from "@/lib/web-page-registry";
-import { useTelegramLoginWidget } from "@/components/constructor/blockContent/useTelegramLoginWidget";
 import { GOOGLE_AUTHORIZE_PATH, YANDEX_AUTHORIZE_PATH, oauthButtonVisible, startOAuthLogin, useOAuthLoginAvailability } from "@/components/constructor/blockContent/oauthLogin";
 import { useDefaultTheme, panelShadow, btnSolid } from "./defaultTheme";
 import { createPortal } from "react-dom";
@@ -111,7 +110,7 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const telegramClientId = auth.telegram_client_id ?? "";
-  const hasTelegramOIDC = Boolean(telegramClientId);
+  const telegramBotId = auth.telegram_bot_id ?? "";
   const telegramLoginEnabled = !previewMode && showTelegramLogin && auth.telegramLoginEnabled && !!botUsername;
   const showTelegramButton = showTelegramLogin && (telegramLoginEnabled || editMode);
 
@@ -225,14 +224,6 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
     ? d.successRedirect
     : null;
   const redirectPath = requestedRedirect || adminRedirect || slugToPath("dashboard");
-  const { widgetRef, telegramWidgetReady } = useTelegramLoginWidget({
-    botUsername,
-    redirectPath,
-    previewMode,
-    editMode,
-    telegramLoginEnabled,
-    hasTelegramOIDC,
-  });
 
   const setFormError = (err: unknown, fallback: string) => {
     if (isApiError(err)) {
@@ -319,12 +310,17 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
     startOAuthLogin(href);
   };
 
-  const handleTelegramClick = () => {
-    if (editMode) return;
-    if (hasTelegramOIDC) {
-      void import("@/lib/telegram-oidc").then(({ startTelegramOIDCLogin }) => {
-        startTelegramOIDCLogin(telegramClientId, redirectPath !== slugToPath("dashboard") ? redirectPath : undefined);
-      });
+  const handleTelegramClick = async () => {
+    if (editMode || previewMode || loading || !telegramLoginEnabled) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const { startTelegramOIDCLogin } = await import("@/lib/telegram-oidc");
+      await startTelegramOIDCLogin(telegramClientId, redirectPath, telegramBotId);
+    } catch (err) {
+      setFormError(err, "Не удалось начать вход через Telegram.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -449,30 +445,21 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
 
   const oauthBtns: React.ReactNode[] = [];
   if (showTelegramButton) {
-    if (telegramLoginEnabled && !hasTelegramOIDC && !editMode) {
-      oauthBtns.push(
-        <div key="tg-widget" style={{ ...altButtonStyle, padding: "12px", justifyContent: "center" }}>
-          <div ref={widgetRef} style={{ minHeight: 24 }} />
-          {!telegramWidgetReady ? <span style={{ fontSize: "12px" }}>{telegramLabel}…</span> : null}
-        </div>
-      );
-    } else {
-      oauthBtns.push(
-        <button
-          key="tg-btn"
-          className="dlf-oauth"
-          type="button"
-          disabled={editMode}
-          onClick={handleTelegramClick}
-          style={altButtonStyle}
-          onMouseEnter={(e) => { if (!editMode) e.currentTarget.style.color = inkColor; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = inkDim; }}
-        >
-          {iconTelegram}
-          {telegramLabel}
-        </button>
-      );
-    }
+    oauthBtns.push(
+      <button
+        key="tg-btn"
+        className="dlf-oauth"
+        type="button"
+        disabled={editMode || loading}
+        onClick={handleTelegramClick}
+        style={altButtonStyle}
+        onMouseEnter={(e) => { if (!editMode) e.currentTarget.style.color = inkColor; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = inkDim; }}
+      >
+        {iconTelegram}
+        {telegramLabel}
+      </button>
+    );
   }
   if (showGoogleLogin) {
     oauthBtns.push(
@@ -807,6 +794,7 @@ export function DefaultLoginFormBlockView({ block, context, editMode }: TypedBlo
         ) : null}
 
         {hasEmailForm ? renderEmailForm() : null}
+        {!hasEmailForm && error ? <div role="alert" style={{ color: t.error }}>{error}</div> : null}
 
         {hasOAuth && oauthBtns.length > 0 ? (
           <>

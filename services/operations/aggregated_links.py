@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MODES_CONFIG
 from database import filter_cluster_by_subgroup, get_key_details, get_tariff_by_id
 from logger import logger
-from panels._3xui import get_vless_link_for_client, get_xui_instance, resolve_inbound_host
+from panels._3xui import _get_inbound_cached, get_vless_link_for_client, get_xui_instance, resolve_inbound_host
 from panels.remnawave_runtime import with_remnawave_api
 from services.subscription_links import preserve_saved_public_link
 from settings.config import HAPP_CRYPTOLINK, LEGACY_LINKS, PUBLIC_LINK, SUPERNODE
@@ -80,7 +80,7 @@ async def _try_build_3xui_vless(servers: list, email: str, client_id: str) -> st
             logger.warning(f"[{name}] 3x-ui недоступен для VLESS: {e}")
             return None
         try:
-            inbound = await xui.inbound.get_by_id(int(inbound_id))
+            inbound = await _get_inbound_cached(xui, int(inbound_id), refresh=True)
             if not inbound:
                 return None
             port = getattr(inbound, "port", None)
