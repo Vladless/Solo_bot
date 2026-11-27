@@ -1,9 +1,11 @@
 import asyncio
 
+from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from secrets import token_hex
 from weakref import WeakValueDictionary
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -96,6 +98,28 @@ def _news_text(title: str, content: str) -> str:
     return f"<b>{escape(title, quote=False)}</b>\n\n{escape(content, quote=False)}"
 
 
+def _news_date(value: datetime) -> datetime:
+    """Восстанавливает часовой пояс сохранённой даты."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _news_status(item) -> tuple[str, str]:
+    """Отличает видимую новость от будущей и завершённой."""
+    if not item.is_active:
+        return "⚪", "Скрыто"
+    now = datetime.now(UTC)
+    if item.ends_at is not None and _news_date(item.ends_at) <= now:
+        return "⏹", "Период завершён"
+    if item.starts_at is not None and _news_date(item.starts_at) > now:
+        return "🕒", "Запланировано"
+    return "🟢", "Опубликовано"
+
+
+def _news_period_date(value: datetime) -> str:
+    """Показывает время публикации по Москве."""
+    return _news_date(value).astimezone(ZoneInfo("Europe/Moscow")).strftime("%d.%m.%Y %H:%M МСК")
+
+
 async def _show_list(
     message: Message, state: FSMContext, session: AsyncSession, page: int = 1, *, edit: bool = True
 ) -> None:
@@ -108,7 +132,7 @@ async def _show_list(
     builder = InlineKeyboardBuilder()
     _button(builder, "✏️ Написать новость", "create", page=page)
     for item in items:
-        status = "🟢" if item.is_active else "⚪"
+        status, _ = _news_status(item)
         _button(builder, f"{status} {item.title[:48]}", "view", item.id, page)
     builder.adjust(1)
     navigation = InlineKeyboardBuilder()
@@ -123,7 +147,7 @@ async def _show_list(
     text = (
         "📰 <b>Новости</b>\n\n"
         "Короткие объявления для новостного баннера сайта и мобильной версии.\n"
-        "🟢 Опубликовано · ⚪ Скрыто\n\n"
+        "🟢 Опубликовано · 🕒 Запланировано · ⏹ Период завершён · ⚪ Скрыто\n\n"
     )
     text += f"Страница {page} из {pages}. Всего: {total}." if items else "Пока нет новостей."
     await _render(message, text, builder.as_markup(), edit=edit)
@@ -141,7 +165,7 @@ async def _show_item(
     _button(builder, "↗ Куда ведёт новость", "target", item.id, page)
     _button(
         builder,
-        "Скрыть с сайта" if item.is_active else "Опубликовать",
+        "Отключить показ" if item.is_active else "Включить показ",
         "hide" if item.is_active else "publish",
         item.id,
         page,
@@ -149,10 +173,14 @@ async def _show_item(
     _button(builder, "🗑 Удалить", "delete", item.id, page)
     _button(builder, "← К новостям", "list", page=page)
     builder.adjust(1)
-    status = "Опубликовано" if item.is_active else "Скрыто"
+    _, status = _news_status(item)
     text = f"📰 <b>Новость · {status}</b>\n\n{_news_text(item.title, item.content)}"
     if item.image_url:
-        text += "\n\n🖼 С изображением"
+        text += "\n\n🖼 Фон под текстом" if item.image_mode == "background" else "\n\n🖼 Изображение сбоку"
+    if item.starts_at is not None or item.ends_at is not None:
+        start = _news_period_date(item.starts_at) if item.starts_at is not None else "Сразу"
+        end = _news_period_date(item.ends_at) if item.ends_at is not None else "Бессрочно"
+        text += f"\n\n🗓 <b>Период показа</b>\nНачало: {start}\nОкончание: {end}"
     if item.link_url:
         text += f"\n\n↗ {escape(item.link_text or 'Подробнее', quote=False)}: <code>{escape(item.link_url, quote=False)}</code>"
     await _render(message, text, builder.as_markup(), edit=edit)

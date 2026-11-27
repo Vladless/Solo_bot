@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from pydantic import (
     AfterValidator,
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -30,6 +31,8 @@ NewsContent = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 NewsImageUrl = Annotated[str | None, AfterValidator(news_db.validate_news_image_url)]
 NewsLinkUrl = Annotated[str | None, AfterValidator(news_db.validate_news_link_url)]
 NewsLinkText = Annotated[str | None, AfterValidator(news_db.validate_news_link_text)]
+NewsImageMode = Literal["icon", "background"]
+NewsDateTime = Annotated[AwareDatetime | None, AfterValidator(news_db.validate_news_datetime)]
 
 
 class NewsCreate(BaseModel):
@@ -39,8 +42,17 @@ class NewsCreate(BaseModel):
     content: NewsContent
     is_active: bool = Field(True, strict=True)
     image_url: NewsImageUrl = None
+    image_mode: NewsImageMode = "icon"
     link_url: NewsLinkUrl = None
     link_text: NewsLinkText = None
+    starts_at: NewsDateTime = None
+    ends_at: NewsDateTime = None
+
+    @model_validator(mode="after")
+    def valid_period(self) -> "NewsCreate":
+        """Проверяет полный период новой публикации."""
+        news_db.validate_news_period(self.starts_at, self.ends_at)
+        return self
 
 
 class NewsUpdate(BaseModel):
@@ -50,10 +62,13 @@ class NewsUpdate(BaseModel):
     content: NewsContent | None = None
     is_active: bool | None = Field(None, strict=True)
     image_url: NewsImageUrl = None
+    image_mode: NewsImageMode | None = None
     link_url: NewsLinkUrl = None
     link_text: NewsLinkText = None
+    starts_at: NewsDateTime = None
+    ends_at: NewsDateTime = None
 
-    @field_validator("title", "content", "is_active")
+    @field_validator("title", "content", "is_active", "image_mode")
     @classmethod
     def reject_null(cls, value: object) -> object:
         """Запрещает сбрасывать обязательные поля."""
@@ -66,6 +81,7 @@ class NewsUpdate(BaseModel):
         """Требует хотя бы одно изменяемое поле."""
         if not self.model_fields_set:
             raise ValueError("Укажите поля для изменения")
+        news_db.validate_news_period(self.starts_at, self.ends_at)
         return self
 
 
@@ -77,14 +93,19 @@ class NewsItem(BaseModel):
     content: str
     is_active: bool
     image_url: str | None
+    image_mode: NewsImageMode
     link_url: str | None
     link_text: str | None
+    starts_at: datetime | None
+    ends_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
-    @field_serializer("created_at", "updated_at")
-    def utc_timestamp(self, value: datetime) -> str:
+    @field_serializer("created_at", "updated_at", "starts_at", "ends_at")
+    def utc_timestamp(self, value: datetime | None) -> str | None:
         """Передаёт время новости с явным часовым поясом."""
+        if value is None:
+            return None
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
         return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
@@ -129,10 +150,12 @@ async def cabinet_targets(response: Response, session: DbSession, _identity: Adm
 
 @router.get("", response_model=PublicNewsResponse)
 async def public_news(
+    response: Response,
     session: DbSession,
     limit: int = Query(10, ge=1, le=20),
 ):
     """Возвращает опубликованные новости для баннера."""
+    response.headers["Cache-Control"] = "no-store"
     return {"items": await news_db.list_news(session, active_only=True, limit=limit)}
 
 
@@ -168,7 +191,10 @@ async def update_news(
     _identity: AdminIdentity,
 ):
     """Меняет содержимое или статус публикации."""
-    item = await news_db.update_news(session, news_id, **body.model_dump(exclude_unset=True))
+    try:
+        item = await news_db.update_news(session, news_id, **body.model_dump(exclude_unset=True))
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     if item is None:
         raise HTTPException(status_code=404, detail="Новость не найдена")
     return item
