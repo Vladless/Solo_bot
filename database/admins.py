@@ -13,6 +13,21 @@ from filters.permissions import (
 from .models import Admin
 
 
+def is_configured_web_admin(principal) -> bool:
+    """Проверяет независимое назначение веб-администратора в конфигурации."""
+    from settings import config
+
+    login = getattr(config, "WEB_ADMIN_LOGIN", None)
+    email = getattr(principal, "email", None)
+    return bool(
+        getattr(principal, "is_admin", False)
+        and isinstance(login, str)
+        and login.strip()
+        and isinstance(email, str)
+        and email.strip().lower() == login.strip().lower()
+    )
+
+
 async def get_admin_by_tg_id(session: AsyncSession, tg_id: int) -> Admin | None:
     """Читает актуальные права администратора по Telegram ID."""
     statement = select(Admin).where(Admin.tg_id == tg_id).execution_options(populate_existing=True)

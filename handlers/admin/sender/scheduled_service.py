@@ -19,12 +19,15 @@ from database.scheduled_broadcasts import (
     SCHEDULED_BROADCAST_STATUS_SCHEDULED,
     SCHEDULED_BROADCAST_STATUS_SENT,
     claim_due_scheduled_broadcasts,
+    get_scheduled_broadcast,
+    mark_scheduled_broadcast_cancelled,
     mark_scheduled_broadcast_failed,
     mark_scheduled_broadcast_sent,
 )
 from handlers.admin.sender.sender_service import BroadcastService
 from handlers.admin.sender.sender_utils import get_recipients, parse_message_buttons
 from logger import logger
+from services.broadcast_control import BroadcastRun, finish_broadcast_run, start_broadcast_run, wait_broadcast_delay
 from settings.config import API_TOKEN
 from utils.telegram_delivery import blocked_observation_times
 
@@ -132,7 +135,7 @@ def scheduled_broadcast_to_dict(broadcast: ScheduledBroadcast) -> dict:
     }
 
 
-async def execute_broadcast_payload(payload: dict, bot: Bot | None = None) -> dict:
+async def execute_broadcast_payload(payload: dict, bot: Bot | None = None, *, run: BroadcastRun | None = None) -> dict:
     own_bot = bot is None
     if own_bot:
         bot = Bot(
@@ -173,6 +176,7 @@ async def execute_broadcast_payload(payload: dict, bot: Bot | None = None) -> di
             bot=bot,
             session=None,
             messages_per_second=clamp_broadcast_rate(payload.get("messages_per_second")),
+            run=run,
         )
         stats = await broadcast_service.broadcast(
             messages,
@@ -199,8 +203,9 @@ async def execute_broadcast_payload(payload: dict, bot: Bot | None = None) -> di
                 except Exception as e:
                     logger.warning("[Broadcast] Ошибка сохранения blocked_ids: {}", e)
         return {
-            "success": True,
-            "message": "Broadcast completed",
+            "success": not stats.get("stopped", False),
+            "stopped": stats.get("stopped", False),
+            "message": "Broadcast stopped" if stats.get("stopped") else "Broadcast completed",
             "recipients": total_users,
             "stats": stats,
         }
@@ -209,7 +214,23 @@ async def execute_broadcast_payload(payload: dict, bot: Bot | None = None) -> di
             await bot.session.close()
 
 
-async def execute_scheduled_broadcast(broadcast: ScheduledBroadcast, bot: Bot | None = None) -> dict:
+async def _watch_scheduled_cancellation(broadcast_id: str, run: BroadcastRun) -> None:
+    """Передаёт отмену из базы рабочему процессу рассылки."""
+    while not run.stop_event.is_set():
+        try:
+            async with async_session_maker() as session:
+                item = await get_scheduled_broadcast(session, broadcast_id)
+                if item is None or item.status != SCHEDULED_BROADCAST_STATUS_RUNNING:
+                    run.stop_event.set()
+                    return
+        except Exception as exc:
+            logger.warning("[ScheduledBroadcasts] Не удалось проверить отмену {}: {}", broadcast_id, exc)
+        await wait_broadcast_delay(run, 0.25)
+
+
+async def execute_scheduled_broadcast(
+    broadcast: ScheduledBroadcast, bot: Bot | None = None, *, run: BroadcastRun | None = None
+) -> dict:
     payload = {
         "send_to": broadcast.send_to,
         "channel": broadcast.channel,
@@ -220,7 +241,29 @@ async def execute_scheduled_broadcast(broadcast: ScheduledBroadcast, bot: Bot | 
         "messages_per_second": broadcast.messages_per_second,
         "keyboard_json": broadcast.keyboard_json,
     }
-    return await execute_broadcast_payload(payload, bot=bot)
+    own_run = run is None
+    if run is None:
+        run = start_broadcast_run(broadcast.created_by_tg_id or 0, "scheduled", run_id=broadcast.id)
+    monitor = None
+    try:
+        async with async_session_maker() as session:
+            current = await get_scheduled_broadcast(session, broadcast.id)
+            if current is None or current.status != SCHEDULED_BROADCAST_STATUS_RUNNING:
+                run.stop_event.set()
+        monitor = asyncio.create_task(_watch_scheduled_cancellation(broadcast.id, run))
+        result = await execute_broadcast_payload(payload, bot=bot, run=run)
+        if run.stop_event.is_set():
+            result["stopped"] = True
+            result["success"] = False
+            result["message"] = "Broadcast stopped"
+            result.setdefault("stats", {})["stopped"] = True
+        return result
+    finally:
+        if monitor is not None:
+            monitor.cancel()
+            await asyncio.gather(monitor, return_exceptions=True)
+        if own_run:
+            finish_broadcast_run(run.run_id)
 
 
 async def process_due_scheduled_broadcasts_once(bot: Bot, limit: int = 3) -> int:
@@ -233,7 +276,9 @@ async def process_due_scheduled_broadcasts_once(bot: Bot, limit: int = 3) -> int
         try:
             result = await execute_scheduled_broadcast(broadcast, bot=bot)
             async with async_session_maker() as session:
-                if result.get("success"):
+                if result.get("stopped"):
+                    await mark_scheduled_broadcast_cancelled(session, broadcast.id, result)
+                elif result.get("success"):
                     await mark_scheduled_broadcast_sent(session, broadcast.id, result)
                 else:
                     await mark_scheduled_broadcast_failed(

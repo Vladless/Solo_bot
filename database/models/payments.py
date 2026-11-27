@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import BigInteger, Column, DateTime, Float, ForeignKey, Index, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -24,3 +24,19 @@ class Payment(DictLikeMixin, Base):
     currency = Column(String(10), nullable=False, server_default="RUB")
     payment_id = Column(String(128), nullable=True, index=True)
     metadata_ = Column("metadata", JSONB, nullable=True)
+
+
+class PaymentOperationReceipt(DictLikeMixin, Base):
+    __tablename__ = "payment_operation_receipts"
+
+    provider = Column(String(32), primary_key=True)
+    operation_id = Column(String(128), primary_key=True)
+    invoice_payment_id = Column(Integer, ForeignKey("payments.id", ondelete="CASCADE"), nullable=False, index=True)
+    payment_record_id = Column(Integer, ForeignKey("payments.id", ondelete="SET NULL"), nullable=True, index=True)
+    invoice_label = Column(String(128), nullable=False)
+    amount_received = Column(Numeric(18, 2), nullable=False)
+    amount_withdrawn = Column(Numeric(18, 2), nullable=False)
+    credited_amount = Column(Numeric(18, 2), nullable=False)
+    currency = Column(String(10), nullable=False)
+    operation_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))

@@ -20,7 +20,7 @@ from database.access.resolution import (
 )
 from database.cache_purge import defer_purge
 from database.db import async_session_maker
-from database.models import Gift, Payment, SubscriptionEvent, TemporaryData, User
+from database.models import Gift, Payment, PaymentOperationReceipt, SubscriptionEvent, TemporaryData, User
 from database.temporary_data import get_temporary_data
 from logger import logger
 
@@ -28,6 +28,24 @@ from logger import logger
 MOSCOW_TZ = timezone("Europe/Moscow")
 PAYMENT_CHECKOUT_SNAPSHOT = "payment_checkout_snapshot"
 PAYMENT_CHECKOUT_OPERATION = "payment_checkout_operation"
+YOOMONEY_OPERATIONS_SINCE = "yoomoney_operations_since"
+
+
+async def lock_payment_operation(
+    session: AsyncSession, provider: str, operation_id: str
+) -> PaymentOperationReceipt | None:
+    """Сериализует отдельный перевод провайдера до изменения счёта."""
+    provider = canonical_payment_provider(provider)
+    await _lock_payment_id(session, f"operation:{provider}:{operation_id}")
+    return await session.scalar(
+        select(PaymentOperationReceipt)
+        .where(
+            PaymentOperationReceipt.provider == provider,
+            PaymentOperationReceipt.operation_id == operation_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
 
 
 def canonical_payment_provider(provider: str) -> str:

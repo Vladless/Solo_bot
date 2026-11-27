@@ -1,15 +1,136 @@
 import csv
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from aiogram.types import BufferedInputFile
+from aiogram.types import BufferedInputFile, FSInputFile
 from sqlalchemy import exists, func, join, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.access.resolution import TelegramId, UserId, public_tg_id, resolve_user_optional, user_id_from_legacy_ref
-from database.models import Key, Payment, Referral, Tariff, User
+from database.models import Key, Payment, Poll, PollVote, Referral, Tariff, User
+
+
+POLL_CSV_MAX_FILE_BYTES = 45 * 1024 * 1024
+POLL_CSV_MEMORY_LIMIT_BYTES = 1024 * 1024
+POLL_CSV_BATCH_SIZE = 500
+
+
+def _poll_csv_cell(value: object) -> str:
+    """Экранирует формулы в текстовых полях CSV."""
+    text = "" if value is None else str(value)
+    if text.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + text
+    return text
+
+
+def _poll_csv_bytes(values: list) -> bytes:
+    """Кодирует одну строку CSV без потери текста."""
+    buffer = StringIO()
+    writer = csv.writer(buffer, delimiter=";")
+    writer.writerow(values)
+    return buffer.getvalue().encode("utf-8")
+
+
+def _poll_vote_csv_values(voter, options: list) -> list:
+    """Подготавливает поля голоса и полные выбранные ответы."""
+    selected = [
+        option_id
+        for option_id in voter.get("option_ids") or []
+        if isinstance(option_id, int) and 0 <= option_id < len(options)
+    ]
+    voted_at = voter.get("voted_at")
+    if voted_at is not None:
+        voted_at = voted_at.replace(tzinfo=UTC) if voted_at.tzinfo is None else voted_at.astimezone(UTC)
+    return [
+        voter["tg_id"],
+        _poll_csv_cell(voter.get("username")),
+        _poll_csv_cell(voter.get("first_name")),
+        _poll_csv_cell(voter.get("last_name")),
+        ", ".join(str(option_id + 1) for option_id in selected),
+        _poll_csv_cell(" | ".join(str(options[option_id]) for option_id in selected)),
+        voted_at.strftime("%Y-%m-%d %H:%M:%S") if voted_at is not None else "",
+    ]
+
+
+def _poll_csv_document(path: Path, filename: str) -> BufferedInputFile | FSInputFile:
+    """Оставляет большие части на диске до завершения отправки."""
+    if path.stat().st_size <= POLL_CSV_MEMORY_LIMIT_BYTES:
+        data = path.read_bytes()
+        path.unlink()
+        return BufferedInputFile(file=data, filename=filename)
+    return FSInputFile(path, filename=filename)
+
+
+async def iter_poll_votes_csv(
+    session: AsyncSession,
+    poll: Poll,
+    *,
+    max_bytes: int = POLL_CSV_MAX_FILE_BYTES,
+) -> AsyncIterator[BufferedInputFile | FSInputFile]:
+    """Выгружает голоса частями с ограниченной памятью."""
+    if poll.is_anonymous:
+        raise ValueError("Анонимные опросы не раскрывают голоса клиентов")
+    header = b"\xef\xbb\xbf" + _poll_csv_bytes([
+        "Telegram ID",
+        "Username",
+        "Имя",
+        "Фамилия",
+        "Варианты (номера)",
+        "Ответы",
+        "Время голоса (UTC)",
+    ])
+    if max_bytes < len(header):
+        raise ValueError("Лимит CSV меньше размера заголовка")
+    query = (
+        select(PollVote.tg_id, PollVote.option_ids, PollVote.voted_at, User.username, User.first_name, User.last_name)
+        .join(Poll, Poll.id == PollVote.poll_id)
+        .outerjoin(User, User.tg_id == PollVote.tg_id)
+        .where(PollVote.poll_id == poll.id, Poll.is_anonymous.is_(False))
+        .order_by(PollVote.voted_at, PollVote.tg_id)
+        .execution_options(yield_per=POLL_CSV_BATCH_SIZE)
+    )
+    from middlewares.session import operation_session
+
+    async with operation_session(session, keep_transaction=True) as reader:
+        result = await reader.stream(query)
+        try:
+            with TemporaryDirectory(prefix="solobot-poll-csv-") as directory:
+                path = Path(directory) / "votes.csv"
+                output = path.open("wb")
+                part = 1
+                size = len(header)
+                output.write(header)
+                try:
+                    async for voters in result.mappings().partitions(POLL_CSV_BATCH_SIZE):
+                        for voter in voters:
+                            row = _poll_csv_bytes(_poll_vote_csv_values(voter, poll.options or []))
+                            if len(header) + len(row) > max_bytes:
+                                raise ValueError("Одна строка превышает лимит CSV")
+                            if size + len(row) > max_bytes:
+                                output.close()
+                                output = None
+                                yield _poll_csv_document(path, f"poll_{poll.id}_votes_part_{part:03d}.csv")
+                                path.unlink(missing_ok=True)
+                                part += 1
+                                output = path.open("wb")
+                                output.write(header)
+                                size = len(header)
+                            output.write(row)
+                            size += len(row)
+                    output.close()
+                    output = None
+                    filename = f"poll_{poll.id}_votes.csv" if part == 1 else f"poll_{poll.id}_votes_part_{part:03d}.csv"
+                    yield _poll_csv_document(path, filename)
+                finally:
+                    if output is not None:
+                        output.close()
+        finally:
+            await result.close()
 
 
 async def export_users_csv(session: AsyncSession) -> BufferedInputFile:

@@ -67,6 +67,13 @@ async def get_coupon_by_code_ci(session: AsyncSession, code: str) -> Coupon | No
     return result.scalar_one_or_none()
 
 
+async def lock_coupon_for_usage(session: AsyncSession, coupon_id: int) -> Coupon | None:
+    """Блокирует купон до фиксации скидки и счётчика."""
+    return await session.scalar(
+        select(Coupon).where(Coupon.id == int(coupon_id)).with_for_update().execution_options(populate_existing=True)
+    )
+
+
 async def get_all_coupons(session: AsyncSession, page: int = 1, per_page: int = 10) -> dict:
     offset = (page - 1) * per_page
 
@@ -149,12 +156,12 @@ async def claim_coupon_slot(session: AsyncSession, coupon_id: int) -> bool:
         update(Coupon)
         .where(
             Coupon.id == coupon_id,
-            or_(Coupon.usage_limit.is_(None), used < Coupon.usage_limit),
+            or_(Coupon.usage_limit.is_(None), Coupon.usage_limit <= 0, used < Coupon.usage_limit),
         )
         .values(
             usage_count=used + 1,
             is_used=case(
-                (and_(Coupon.usage_limit.isnot(None), used + 1 >= Coupon.usage_limit), True),
+                (and_(Coupon.usage_limit > 0, used + 1 >= Coupon.usage_limit), True),
                 else_=False,
             ),
         )
@@ -167,6 +174,39 @@ async def claim_coupon_slot(session: AsyncSession, coupon_id: int) -> bool:
     return claimed
 
 
+async def reserve_coupon_usage(
+    session: AsyncSession, coupon_id: int, user_ref: int, *, honor_paid_quote: bool = False
+) -> bool:
+    """Однократно резервирует скидку в текущей транзакции."""
+    user = await resolve_user_optional(session, user_ref)
+    if user is None:
+        return False
+    coupon = await lock_coupon_for_usage(session, coupon_id)
+    if coupon is None or await check_coupon_usage(session, coupon_id, UserId(user.id)):
+        return False
+    async with session.begin_nested():
+        if honor_paid_quote:
+            used = func.coalesce(Coupon.usage_count, 0)
+            await session.execute(
+                update(Coupon)
+                .where(Coupon.id == coupon_id)
+                .values(
+                    usage_count=used + 1,
+                    is_used=case(
+                        (and_(Coupon.usage_limit > 0, used + 1 >= Coupon.usage_limit), True),
+                        else_=False,
+                    ),
+                )
+            )
+        elif not await claim_coupon_slot(session, coupon_id):
+            return False
+        if not await create_coupon_usage(session, coupon_id, UserId(user.id)):
+            await release_coupon_slot(session, coupon_id)
+            return False
+        await clear_coupon_hold(session, UserId(user.id), coupon_id)
+    return True
+
+
 async def release_coupon_slot(session: AsyncSession, coupon_id: int) -> None:
     """Возвращает занятый слот, если активация дальше не состоялась."""
     used = func.coalesce(Coupon.usage_count, 0)
@@ -176,7 +216,7 @@ async def release_coupon_slot(session: AsyncSession, coupon_id: int) -> None:
         .values(
             usage_count=used - 1,
             is_used=case(
-                (and_(Coupon.usage_limit.isnot(None), used - 1 >= Coupon.usage_limit), True),
+                (and_(Coupon.usage_limit > 0, used - 1 >= Coupon.usage_limit), True),
                 else_=False,
             ),
         )
@@ -229,35 +269,7 @@ async def clear_coupon_hold(session: AsyncSession, legacy_user_ref: int, coupon_
 
 
 async def mark_coupon_used(session: AsyncSession, coupon_id: int, legacy_user_ref: int):
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
-        return
-    uid = u.id
-    match = await _coupon_usage_billing_match(session, UserId(uid))
-    existing = await session.execute(
-        select(CouponUsage)
-        .where(
-            CouponUsage.coupon_id == int(coupon_id),
-            match,
-        )
-        .limit(1)
-    )
-    if existing.scalar_one_or_none() is not None:
-        return
-    await session.execute(
-        insert(CouponUsage).values(
-            coupon_id=coupon_id,
-            user_id=uid,
-            tg_id=u.tg_id,
-            used_at=datetime.utcnow(),
-        )
-    )
-    if not await claim_coupon_slot(session, int(coupon_id)):
-        logger.warning(
-            f"⚠️ Купон {coupon_id} исчерпан между оформлением и оплатой (клиент {legacy_user_ref}): "
-            "скидка уже применена, счётчик не увеличен"
-        )
-    await clear_coupon_hold(session, UserId(uid), coupon_id)
+    await reserve_coupon_usage(session, coupon_id, legacy_user_ref, honor_paid_quote=True)
 
 
 def apply_percent_coupon(price_rub: int, coupon: Coupon) -> tuple[int, int]:

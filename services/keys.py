@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from math import ceil
 from typing import TYPE_CHECKING, Any
@@ -20,7 +20,6 @@ from database import (
     update_trial,
 )
 from database.access.resolution import TelegramId, UserId, resolve_user_optional
-from database.coupons import mark_coupon_used
 from database.keys import (
     get_key_by_user_and_email,
     lock_owned_key_for_operation,
@@ -731,6 +730,7 @@ async def execute_renewal(
     expected_key_snapshot: dict | None = None,
     carry_addons: bool = True,
     renewal_duration_days: int | None = None,
+    coupon_paid_quote: bool = False,
 ) -> RenewalResult:
     """Продлевает ключ на кластере и обновляет базу."""
     owner_ref = billing_user_id if isinstance(billing_user_id, TelegramId) else UserId(billing_user_id)
@@ -837,118 +837,121 @@ async def execute_renewal(
         if locked_balance is None or not locked_balance >= cost:
             raise InsufficientFundsError("Недостаточно средств для продления. Средства не списаны.")
 
-    renewed_ok = await renew_key_in_cluster(
-        cluster_id=cluster_id,
-        email=key_email,
-        client_id=client_id,
-        new_expiry_time=new_expiry_time,
-        total_gb=total_gb,
-        session=session,
-        hwid_device_limit=device_eff,
-        reset_traffic=True,
-        target_subgroup=target_subgroup,
-        old_subgroup=current_subgroup,
-        plan=tariff_id,
-    )
-    if not renewed_ok:
-        raise ServiceError("Не удалось продлить подписку на сервере. Средства не списаны.")
+    async with session.begin_nested():
+        if coupon_id is not None:
+            from services.coupons import reserve_percent_coupon
 
-    key_row = await get_key_details(session, key_email)
-    effective_client_id = key_row["client_id"] if key_row else client_id
+            await reserve_percent_coupon(session, coupon_id, billing_user_id, paid_quote=coupon_paid_quote)
 
-    billing_user_id = await resolve_key_operation_owner(session, billing_user_id, effective_client_id, key_email)
-    if billing_user_id is None:
-        raise NotFoundError("Владелец подписки изменился. Откройте её заново.")
-    await update_key_expiry(
-        session,
-        effective_client_id,
-        new_expiry_time,
-        price_rub=float(cost),
-        user_id=billing_user_id,
-        tariff_id=tariff_id,
-    )
-    from database.keys import invalidate_keys_list
-
-    await invalidate_keys_list(session, billing_user_id)
-
-    new_dev = tariff.get("device_limit")
-    new_trf = tariff.get("traffic_limit")
-    last_tariff_change_at = datetime.now(UTC).replace(tzinfo=None) if is_switch else None
-
-    if tariff.get("configurable"):
-        await update_key_renewal_snapshot(
-            session,
-            key_email,
-            tariff_id=tariff_id,
-            apply_limits=False,
-            last_tariff_change_at=last_tariff_change_at,
-        )
-    else:
-        await update_key_renewal_snapshot(
-            session,
-            key_email,
-            tariff_id=tariff_id,
-            selected_device_limit=None if new_dev is None else new_dev,
-            current_device_limit=None if new_dev is None else carried_device,
-            selected_traffic_limit=None if new_trf is None else new_trf,
-            current_traffic_limit=None if new_trf is None else carried_traffic,
-            apply_limits=True,
-            last_tariff_change_at=last_tariff_change_at,
-        )
-    if cost:
-        debited = await update_balance(session, billing_user_id, -cost)
-        if cost > 0 and debited is None:
-            raise InsufficientFundsError("Недостаточно средств для продления. Средства не списаны.")
-
-    if tariff.get("configurable"):
-        cfg = normalize_tariff_config(tariff)
-        raw_device_opts = cfg.get("device_options") or tariff.get("device_options") or []
-        raw_traffic_opts = cfg.get("traffic_options_gb") or tariff.get("traffic_options_gb") or []
-        has_device = len([v for v in raw_device_opts if _try_int(v) is not None]) > 1
-        has_traffic = len([v for v in raw_traffic_opts if _try_int(v) is not None]) > 1
-
-        await save_key_config_with_mode(
-            session=session,
+        renewed_ok = await renew_key_in_cluster(
+            cluster_id=cluster_id,
             email=key_email,
-            selected_devices=final_device,
-            selected_traffic_gb=final_traffic,
-            total_price=int(selected_price_rub or cost),
-            has_device_choice=has_device,
-            has_traffic_choice=has_traffic,
-            config_mode="renewal",
-            user_id=billing_user_id,
+            client_id=client_id,
+            new_expiry_time=new_expiry_time,
+            total_gb=total_gb,
+            session=session,
+            hwid_device_limit=device_eff,
+            reset_traffic=True,
+            target_subgroup=target_subgroup,
+            old_subgroup=current_subgroup,
+            plan=tariff_id,
         )
-        if carried.has_any:
+        if not renewed_ok:
+            raise ServiceError("Не удалось продлить подписку на сервере. Средства не списаны.")
+
+        key_row = await get_key_details(session, key_email)
+        effective_client_id = key_row["client_id"] if key_row else client_id
+
+        billing_user_id = await resolve_key_operation_owner(session, billing_user_id, effective_client_id, key_email)
+        if billing_user_id is None:
+            raise NotFoundError("Владелец подписки изменился. Откройте её заново.")
+        await update_key_expiry(
+            session,
+            effective_client_id,
+            new_expiry_time,
+            price_rub=float(cost),
+            user_id=billing_user_id,
+            tariff_id=tariff_id,
+        )
+        from database.keys import invalidate_keys_list
+
+        await invalidate_keys_list(session, billing_user_id)
+
+        new_dev = tariff.get("device_limit")
+        new_trf = tariff.get("traffic_limit")
+        last_tariff_change_at = datetime.now(UTC).replace(tzinfo=None) if is_switch else None
+
+        if tariff.get("configurable"):
             await update_key_renewal_snapshot(
                 session,
                 key_email,
                 tariff_id=tariff_id,
-                selected_device_limit=final_device,
-                current_device_limit=carried_device,
-                selected_traffic_limit=final_traffic,
-                current_traffic_limit=carried_traffic,
-                apply_limits=True,
+                apply_limits=False,
+                last_tariff_change_at=last_tariff_change_at,
             )
-        elif has_device or has_traffic:
-            await reset_key_current_limits_to_selected(session, effective_client_id, user_id=billing_user_id)
+        else:
+            await update_key_renewal_snapshot(
+                session,
+                key_email,
+                tariff_id=tariff_id,
+                selected_device_limit=None if new_dev is None else new_dev,
+                current_device_limit=None if new_dev is None else carried_device,
+                selected_traffic_limit=None if new_trf is None else new_trf,
+                current_traffic_limit=None if new_trf is None else carried_traffic,
+                apply_limits=True,
+                last_tariff_change_at=last_tariff_change_at,
+            )
+        if cost:
+            debited = await update_balance(session, billing_user_id, -cost)
+            if cost > 0 and debited is None:
+                raise InsufficientFundsError("Недостаточно средств для продления. Средства не списаны.")
 
-    if coupon_id is not None:
-        await mark_coupon_used(session, coupon_id, billing_user_id)
+        if tariff.get("configurable"):
+            cfg = normalize_tariff_config(tariff)
+            raw_device_opts = cfg.get("device_options") or tariff.get("device_options") or []
+            raw_traffic_opts = cfg.get("traffic_options_gb") or tariff.get("traffic_options_gb") or []
+            has_device = len([v for v in raw_device_opts if _try_int(v) is not None]) > 1
+            has_traffic = len([v for v in raw_traffic_opts if _try_int(v) is not None]) > 1
 
-    new_balance = float(await get_balance(session, billing_user_id))
+            await save_key_config_with_mode(
+                session=session,
+                email=key_email,
+                selected_devices=final_device,
+                selected_traffic_gb=final_traffic,
+                total_price=int(selected_price_rub or cost),
+                has_device_choice=has_device,
+                has_traffic_choice=has_traffic,
+                config_mode="renewal",
+                user_id=billing_user_id,
+            )
+            if carried.has_any:
+                await update_key_renewal_snapshot(
+                    session,
+                    key_email,
+                    tariff_id=tariff_id,
+                    selected_device_limit=final_device,
+                    current_device_limit=carried_device,
+                    selected_traffic_limit=final_traffic,
+                    current_traffic_limit=carried_traffic,
+                    apply_limits=True,
+                )
+            elif has_device or has_traffic:
+                await reset_key_current_limits_to_selected(session, effective_client_id, user_id=billing_user_id)
 
-    await _notify_web_renewal(session, billing_user_id, key_email, effective_client_id, new_expiry_time)
+        new_balance = float(await get_balance(session, billing_user_id))
 
-    return RenewalResult(
-        ok=True,
-        client_id=effective_client_id,
-        tariff_id=tariff_id,
-        charged_rub=int(cost),
-        balance_rub=new_balance,
-        new_expiry_time=new_expiry_time,
-        base_price_rub=int(selected_price_rub or cost),
-        final_price_rub=int(cost),
-    )
+        await _notify_web_renewal(session, billing_user_id, key_email, effective_client_id, new_expiry_time)
+
+        return RenewalResult(
+            ok=True,
+            client_id=effective_client_id,
+            tariff_id=tariff_id,
+            charged_rub=int(cost),
+            balance_rub=new_balance,
+            new_expiry_time=new_expiry_time,
+            base_price_rub=int(selected_price_rub or cost),
+            final_price_rub=int(cost),
+        )
 
 
 async def _notify_web_renewal(

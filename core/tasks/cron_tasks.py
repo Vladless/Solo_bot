@@ -121,6 +121,7 @@ async def cleanup_web_analytics_job() -> None:
     from audit import delete_old_audit_events
     from database.models import KeyTrafficHistory
     from database.models.web import WebErrorReport, WebFlowEvent, WebPageView
+    from database.polls import cleanup_pending_answers
 
     now = datetime.now(_tz.utc)
     analytics_cutoff = now - timedelta(days=WEB_ANALYTICS_RETENTION_DAYS)
@@ -173,6 +174,7 @@ async def cleanup_web_analytics_job() -> None:
             "audit_events",
             lambda session: delete_old_audit_events(session, older_than_days=AUDIT_RETENTION_DAYS),
         ),
+        ("pending_poll_answers", cleanup_pending_answers),
     )
 
     removed: list[str] = []

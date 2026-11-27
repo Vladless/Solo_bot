@@ -1299,55 +1299,72 @@
             "name": "Happ",
             "note": "Простое приложение, подходит новичкам",
             "badge": "Рекомендуем",
-            "links": {
-              "ios": "https://apps.apple.com/app/id6504287215",
-              "android": "https://play.google.com/store/apps/details?id=com.happ.vpn"
-            },
-            "deepLink": "happ://import/{URL}",
             "platforms": [
               "ios",
               "android"
-            ]
+            ],
+            "links": {
+              "ios": "https://apps.apple.com/app/id6504287215",
+              "android": "https://play.google.com/store/apps/details?id=com.happproxy"
+            },
+            "deepLink": "happ://add/"
           },
           {
-            "id": "v2raytun",
-            "name": "v2rayTUN",
-            "note": "",
+            "id": "incy",
+            "name": "INCY",
+            "note": "Для телефона и компьютера",
             "badge": "",
-            "links": {
-              "ios": "https://apps.apple.com/app/id6476628951",
-              "macos": "https://apps.apple.com/app/id6476628951",
-              "android": "https://play.google.com/store/apps/details?id=com.v2raytun.android",
-              "windows": "https://github.com/nicetry-code/v2rayTun/releases"
-            },
-            "deepLink": "v2raytun://import/{URL}",
-            "platforms": [
-              "ios",
-              "android",
-              "windows",
-              "macos"
-            ]
-          },
-          {
-            "id": "hiddify",
-            "name": "Hiddify",
-            "note": "",
-            "badge": "",
-            "links": {
-              "ios": "https://apps.apple.com/app/id6596777532",
-              "linux": "https://github.com/hiddify/hiddify-app/releases",
-              "macos": "https://github.com/hiddify/hiddify-app/releases",
-              "android": "https://play.google.com/store/apps/details?id=app.hiddify.com",
-              "windows": "https://github.com/hiddify/hiddify-app/releases"
-            },
-            "deepLink": "hiddify://import/{URL}",
             "platforms": [
               "ios",
               "android",
               "windows",
               "macos",
               "linux"
-            ]
+            ],
+            "links": {
+              "ios": "https://apps.apple.com/app/id6756943388",
+              "android": "https://play.google.com/store/apps/details?id=llc.itdev.incy",
+              "windows": "https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-windows-setup.exe",
+              "macos": "https://apps.apple.com/app/id6756943388",
+              "linux": "https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-linux-x64.deb"
+            },
+            "deepLink": "incy://import/"
+          },
+          {
+            "id": "v2raytun",
+            "name": "v2rayTUN",
+            "note": "",
+            "badge": "",
+            "platforms": [
+              "ios",
+              "android",
+              "windows",
+              "macos"
+            ],
+            "links": {
+              "ios": "https://apps.apple.com/app/id6476628951",
+              "android": "https://play.google.com/store/apps/details?id=com.v2raytun.android",
+              "windows": "https://github.com/nicetry-code/v2rayTun/releases",
+              "macos": "https://apps.apple.com/app/id6476628951"
+            },
+            "deepLink": "v2raytun://import/"
+          },
+          {
+            "id": "uxway",
+            "name": "UXWay",
+            "note": "Для iPhone, Android и Mac с Apple silicon",
+            "badge": "",
+            "platforms": [
+              "ios",
+              "android",
+              "macos"
+            ],
+            "links": {
+              "ios": "https://apps.apple.com/app/id6762559624",
+              "android": "https://play.google.com/store/apps/details?id=com.buttone.client",
+              "macos": "https://apps.apple.com/app/id6762559624"
+            },
+            "deepLink": "uxway://add/{URL}"
           }
         ],
         "hint": "",

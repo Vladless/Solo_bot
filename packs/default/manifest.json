@@ -1,8 +1,8 @@
 {
   "id": "default",
   "name": "Стандарт",
-  "version": "1.2.10",
-  "hostApiVersion": 19,
+  "version": "1.2.11",
+  "hostApiVersion": 20,
   "entry": "bundle.js",
   "seed": "seed.json",
   "traits": {

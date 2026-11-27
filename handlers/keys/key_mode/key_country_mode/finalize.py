@@ -70,6 +70,8 @@ async def finalize_key_creation(
         expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     data = await state.get_data() if state else {}
+    if old_key_details:
+        data = {}
     is_trial = data.get("is_trial", False)
     skip_balance_charge = bool(data.get("skip_balance_charge", False))
 
@@ -166,6 +168,10 @@ async def finalize_key_creation(
         )
         if not allowed_servers or not all(is_server_configured(server) for server in allowed_servers):
             raise ValueError("Выбранный сервер недоступен для тарифа подписки")
+        if not old_key_name and price_to_charge and not skip_balance_charge:
+            debited = await update_balance(session, billing_user_id, -int(price_to_charge))
+            if debited is None:
+                raise InsufficientFundsError("Недостаточно средств на балансе")
         is_full_remnawave = await is_full_remnawave_cluster(cluster_name, session)
 
         old_server_info = None
@@ -330,6 +336,7 @@ async def finalize_key_creation(
         if old_key_name:
             update_data: dict[str, Any] = {
                 "server_id": selected_country,
+                "location_revision": str(uuid.uuid4()),
                 "key": None,
                 "remnawave_link": None,
             }
@@ -360,11 +367,6 @@ async def finalize_key_creation(
                 trial_status = await get_trial(session, billing_user_id)
                 if trial_status in [0, -1]:
                     await update_trial(session, billing_user_id, 1)
-            if price_to_charge and not skip_balance_charge:
-                debited = await update_balance(session, billing_user_id, -int(price_to_charge))
-                if debited is None:
-                    raise InsufficientFundsError("Недостаточно средств на балансе")
-
             if state:
                 await state.update_data(skip_balance_charge=False)
 
@@ -479,7 +481,7 @@ async def finalize_key_creation(
     elif tg_notify is not None:
         await bot.send_message(chat_id=tg_notify, text=message_text, reply_markup=builder.as_markup())
 
-    if state:
+    if state and not old_key_name:
         await state.clear()
 
 

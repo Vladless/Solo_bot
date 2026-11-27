@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.admin_permissions import require_admin_action
 from api.depends import get_session, verify_identity_admin
 from database.access.resolution import UserId, public_tg_id
-from database.keys import get_key_details, lock_owned_key_for_operation
+from database.keys import lock_owned_key_for_operation
 from database.models import Key, Tariff, User
 from database.tariffs import get_tariff_by_id
 from filters.permissions import (
@@ -243,6 +243,9 @@ async def sub_reset_traffic(
     """Сброс трафика подписки."""
     await require_admin_action(session, identity, PERM_KEY_TRAFFIC)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     from services.operations.traffic import reset_traffic_in_cluster
 
     try:
@@ -275,6 +278,9 @@ async def sub_change_tariff(
     if payload.get("traffic_gb") is not None:
         await require_admin_action(session, identity, PERM_KEY_TRAFFIC)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     tariff_id = int(payload.get("tariff_id") or 0)
     if tariff_id <= 0:
         raise HTTPException(status_code=400, detail="Не выбран тариф")
@@ -314,6 +320,9 @@ async def sub_set_limits(
     if "traffic_limit" in payload:
         await require_admin_action(session, identity, PERM_KEY_TRAFFIC)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     device_limit = payload.get("device_limit")
     traffic_limit = payload.get("traffic_limit")
     if device_limit is not None:
@@ -339,6 +348,9 @@ async def sub_set_alias(
     """Изменить псевдоним подписки."""
     await require_admin_action(session, identity, PERM_KEY_VIEW)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     alias = payload.get("alias")
     key.alias = (str(alias).strip() or None) if alias is not None else None
     from database.keys import invalidate_key_details_by_client_id
@@ -356,17 +368,17 @@ async def sub_freeze(
     """Заморозить подписку."""
     await require_admin_action(session, identity, PERM_KEY_FREEZE)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     from database.keys import mark_key_as_frozen
     from services.operations.toggles import toggle_client_on_cluster
 
-    rec = await get_key_details(session, key.email)
-    result = await toggle_client_on_cluster(
-        rec["server_id"], key.email, rec["client_id"], enable=False, session=session
-    )
+    result = await toggle_client_on_cluster(key.server_id, key.email, key.client_id, enable=False, session=session)
     if result.get("status") != "success":
         raise HTTPException(status_code=502, detail="Не удалось отключить клиента на панели")
-    time_left = max(0, int(rec["expiry_time"]) - int(time.time() * 1000))
-    await mark_key_as_frozen(session, UserId(key.user_id), rec["client_id"], time_left)
+    time_left = max(0, int(key.expiry_time) - int(time.time() * 1000))
+    await mark_key_as_frozen(session, UserId(key.user_id), key.client_id, time_left)
     return {"message": "Подписка заморожена"}
 
 
@@ -379,20 +391,22 @@ async def sub_unfreeze(
     """Разморозить подписку."""
     await require_admin_action(session, identity, PERM_KEY_FREEZE)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     from database.keys import mark_key_as_unfrozen
     from services.operations.toggles import toggle_client_on_cluster
 
-    rec = await get_key_details(session, key.email)
-    result = await toggle_client_on_cluster(rec["server_id"], key.email, rec["client_id"], enable=True, session=session)
+    result = await toggle_client_on_cluster(key.server_id, key.email, key.client_id, enable=True, session=session)
     if result.get("status") != "success":
         raise HTTPException(status_code=502, detail="Не удалось включить клиента на панели")
-    tariff = await get_tariff_by_id(session, rec["tariff_id"]) if rec.get("tariff_id") else None
+    tariff = await get_tariff_by_id(session, key.tariff_id) if key.tariff_id else None
     total_gb, hwid = _limits_for(key, tariff)
     now_ms = int(time.time() * 1000)
-    leftover = max(0, int(rec["expiry_time"]))
+    leftover = max(0, int(key.expiry_time))
     new_expiry = leftover if leftover > now_ms else now_ms + leftover
     await _renew_apply(session, key, new_expiry=new_expiry, total_gb=total_gb, hwid=hwid, reset_traffic=False)
-    await mark_key_as_unfrozen(session, UserId(key.user_id), rec["client_id"], new_expiry)
+    await mark_key_as_unfrozen(session, UserId(key.user_id), key.client_id, new_expiry)
     return {"message": "Подписка разморожена"}
 
 
@@ -406,6 +420,9 @@ async def sub_change_location(
     """Перенос подписки на другой кластер/страну."""
     await require_admin_action(session, identity, PERM_KEY_LOCATION)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     cluster = str(payload.get("cluster") or "").strip() or None
     country = str(payload.get("country") or "").strip() or None
     if not cluster and not country:
@@ -427,6 +444,9 @@ async def sub_reissue(
     """Перевыпуск подписки (пересборка на кластере, ссылка обновляется)."""
     await require_admin_action(session, identity, PERM_KEY_REISSUE)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     cluster = str((payload or {}).get("cluster") or "").strip() or key.server_id
     if cluster != key.server_id:
         await require_admin_action(session, identity, PERM_KEY_LOCATION)
@@ -446,9 +466,16 @@ async def sub_delete(
     """Удалить подписку с кластера и из БД."""
     await require_admin_action(session, identity, PERM_KEY_DELETE)
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     from services.operations import delete_key_from_cluster
 
-    await delete_key_from_cluster(session=session, email=key.email, client_id=key.client_id, cluster_id=key.server_id)
+    deleted = await delete_key_from_cluster(
+        session=session, email=key.email, client_id=key.client_id, cluster_id=key.server_id
+    )
+    if deleted is not True:
+        raise HTTPException(status_code=502, detail="Не удалось удалить подписку на панели")
     await session.delete(key)
     logger.info(f"[Site:Subs] Подписка {client_id} удалена")
     return {"message": "Подписка удалена"}
@@ -506,6 +533,9 @@ async def sub_hwid_unbind(
     hwid = str(payload.get("hwid") or "").strip()
     if not hwid:
         raise HTTPException(status_code=400, detail="Не указан hwid")
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     from database.servers import get_servers
     from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
@@ -536,6 +566,9 @@ async def sub_hwid_reset(
     from panels.remnawave_runtime import remnawave_api
 
     key = await _resolve(session, client_id)
+    key = await lock_owned_key_for_operation(session, key.user_id, key.client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка или её владелец изменились")
     from database.servers import get_servers
     from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 

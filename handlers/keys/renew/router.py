@@ -668,6 +668,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             selected_device_limit=pricing.selected_device_limit,
             selected_traffic_limit=pricing.selected_traffic_limit,
             selected_price_rub=int(pricing.final_price_rub),
+            coupon_id=pricing.coupon_id,
             renewal_duration_days=duration_days,
             state=state,
             expected_key_snapshot=renewal_key_snapshot(record),
@@ -903,6 +904,8 @@ async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMC
             selected_device=selected_device,
             selected_traffic=selected_traffic,
             expected_key_snapshot=renewal_key_snapshot(record),
+            coupon_id=quote.coupon_id,
+            applied_coupon_code=quote.applied_coupon_code,
         )
     except ValidationError as e:
         await callback_query.answer(e.message, show_alert=True)

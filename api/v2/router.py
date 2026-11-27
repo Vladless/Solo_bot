@@ -15,6 +15,7 @@ from api.v2.routes import (
     misc,
     moderator_permissions,
     modules,
+    news,
     notifications,
     overpay_autopay,
     partners,
@@ -90,3 +91,5 @@ router.include_router(settings.router, prefix="/api/settings", tags=["Settings"]
 router.include_router(web.router, prefix="", tags=["Web"])
 router.include_router(flows.router, prefix="/api", tags=["Flows"])
 router.include_router(notifications.router, prefix="/api", tags=["Notifications"])
+router.include_router(news.router, prefix="/api/news", tags=["News"])
+router.include_router(news.admin_router, prefix="/api/admin/news", tags=["AdminNews"])

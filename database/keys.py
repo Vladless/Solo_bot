@@ -1,4 +1,5 @@
 import inspect
+import uuid
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -102,6 +103,7 @@ async def store_key(
             "expiry_time": expiry_time,
             "key": key,
             "server_id": server_id,
+            "location_revision": str(uuid.uuid4()),
             "remnawave_link": remnawave_link,
             "tariff_id": tariff_id,
             "alias": alias,
@@ -561,6 +563,7 @@ async def update_key_expiry(
     *,
     user_id: int | None = None,
     tariff_id: int | None = None,
+    placement_changed: bool = False,
 ):
     scope = Key.client_id == client_id
     if user_id is not None:
@@ -571,7 +574,10 @@ async def update_key_expiry(
         ).first()
     except Exception:
         ctx = None
-    await session.execute(update(Key).where(scope).values(expiry_time=new_expiry_time))
+    values = {"expiry_time": new_expiry_time}
+    if placement_changed:
+        values["location_revision"] = str(uuid.uuid4())
+    await session.execute(update(Key).where(scope).values(**values))
     await invalidate_key_details_by_client_id(session, client_id)
     logger.info(f"Срок действия ключа {client_id} обновлён до {new_expiry_time}")
     if not record_event or ctx is None:

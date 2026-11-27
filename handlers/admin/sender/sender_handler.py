@@ -18,15 +18,25 @@ from database.scheduled_broadcasts import (
     create_scheduled_broadcast,
     get_scheduled_broadcast,
     list_scheduled_broadcasts,
+    mark_scheduled_broadcast_cancelled,
     mark_scheduled_broadcast_failed,
     mark_scheduled_broadcast_sent,
     start_scheduled_broadcast,
     update_scheduled_broadcast,
 )
 from database.tracking_sources import get_all_tracking_sources
-from filters.admin import IsAdminFilter
+from filters.admin import HasPermission, IsAdminFilter
+from filters.permissions import PERM_BROADCASTING
 from logger import logger
 from middlewares.session import release_session_early
+from services.broadcast_control import (
+    BroadcastRun,
+    consume_broadcast_draft,
+    finish_broadcast_run,
+    get_broadcast_run,
+    start_broadcast_run,
+    stop_broadcast_run,
+)
 from settings.config import API_TOKEN
 from utils.telegram_delivery import blocked_observation_times
 
@@ -37,6 +47,7 @@ from .keyboard import (
     AdminSenderChannelCallback,
     ScheduledBroadcastCallback,
     build_broadcast_preview_kb,
+    build_broadcast_stop_kb,
     build_channel_kb,
     build_clusters_kb,
     build_scheduled_broadcast_detail_kb,
@@ -161,16 +172,21 @@ def _scheduled_broadcasts_list_text(items: list, page: int) -> str:
 
 def _broadcast_result_text(recipients: int, stats: dict) -> str:
     """Возвращает итог завершённой рассылки."""
-    minutes = int(stats["total_duration"] // 60)
-    seconds = int(stats["total_duration"] % 60)
+    minutes = int(stats.get("total_duration", 0) // 60)
+    seconds = int(stats.get("total_duration", 0) % 60)
     duration = f"{minutes} мин {seconds} сек" if minutes else f"{seconds} сек"
 
     rows = [
         f"Получателей: {recipients}",
-        f"Доставлено: {stats['success_count']}",
-        f"Не дошло: {stats['failed_count']}",
-        f"Заблокировали: {stats['blocked_users']}",
+        f"Доставлено: {stats.get('success_count', 0)}",
+        f"Не дошло: {stats.get('failed_count', 0)}",
+        f"Заблокировали: {stats.get('blocked_users', 0)}",
     ]
+    if stats.get("stopped"):
+        rows.insert(0, "Статус: остановлена")
+        rows.append(f"Не отправлено в Telegram: {stats.get('unsent_count', 0)}")
+    if "web_sent" in stats:
+        rows.append(f"На сайт: {stats['web_sent']}")
     if "email_sent" in stats:
         rows.append(f"Писем: {stats['email_sent']}")
         if stats.get("email_failed"):
@@ -178,12 +194,8 @@ def _broadcast_result_text(recipients: int, stats: dict) -> str:
 
     return card(
         section("📤 Доставка", *rows),
-        section("⚡ Скорость", f"Время: {duration}", f"В секунду: {stats['avg_speed']:.1f}"),
+        section("⚡ Скорость", f"Время: {duration}", f"В секунду: {stats.get('avg_speed', 0):.1f}"),
     )
-
-
-from filters.admin import HasPermission
-from filters.permissions import PERM_BROADCASTING
 
 
 router = Router()
@@ -420,9 +432,87 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
     )
 
 
+async def _run_confirmed_broadcast(
+    bot, status_message, tg_ids, text_message, photo, keyboard, channel, run: BroadcastRun, total_users_for_bar: int
+) -> dict:
+    """Выполняет рассылку и не даёт прогрессу затереть её завершение."""
+    ui_lock = asyncio.Lock()
+    finalized = False
+
+    async def on_progress(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
+        async with ui_lock:
+            if finalized:
+                return
+            try:
+                await bot.edit_message_text(
+                    chat_id=status_message.chat.id,
+                    message_id=status_message.message_id,
+                    text=_broadcast_progress_text(completed, total, sent, failed, pending),
+                    reply_markup=None if run.stop_event.is_set() else build_broadcast_stop_kb(run.run_id),
+                )
+            except TelegramBadRequest as exc:
+                if "message is not modified" not in str(exc).lower():
+                    logger.debug("[Sender] Обновление прогресса: {}", exc)
+
+    try:
+        await status_message.edit_text(
+            menu_text("Рассылка", _broadcast_progress_text(0, total_users_for_bar, 0, 0)),
+            reply_markup=build_broadcast_stop_kb(run.run_id),
+        )
+        if should_run_heavy_tasks_separately():
+            main_loop = asyncio.get_running_loop()
+
+            def progress_cb(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
+                if finalized:
+                    return
+                main_loop.call_soon_threadsafe(
+                    lambda c=completed, t=total, s=sent, f=failed, p=pending: spawn(on_progress(c, t, s, f, p))
+                )
+
+            return await run_io(
+                run_broadcast_in_thread,
+                API_TOKEN,
+                tg_ids,
+                text_message,
+                photo,
+                keyboard.model_dump() if keyboard else None,
+                progress_cb,
+                channel,
+                run,
+            )
+        messages = [
+            {"user_id": int(tg_id), "text": text_message, "photo": photo, "keyboard": keyboard} for tg_id in tg_ids
+        ]
+        broadcast_service = BroadcastService(bot=bot, session=None, run=run)
+        return await broadcast_service.broadcast(
+            messages,
+            workers=5,
+            on_progress=on_progress,
+            progress_interval=2.0,
+            progress_every=200,
+            channel=channel,
+        )
+    except BaseException:
+        run.stop_event.set()
+        raise
+    finally:
+        async with ui_lock:
+            finalized = True
+            try:
+                await bot.edit_message_reply_markup(
+                    chat_id=status_message.chat.id, message_id=status_message.message_id, reply_markup=None
+                )
+            except Exception as exc:
+                logger.debug("[Sender] Не удалось убрать кнопку остановки: {}", exc)
+
+
 @router.callback_query(F.data == "send_broadcast", IsAdminFilter())
 async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    data = await state.get_data()
+    data = await consume_broadcast_draft(state, AdminSender.preview.state, ("text",))
+    if data is None:
+        await callback_query.answer("Черновик рассылки уже обработан или потерян", show_alert=True)
+        return
+    await callback_query.answer()
     text_message = data.get("text")
     photo = data.get("photo")
     keyboard_data = data.get("keyboard")
@@ -445,7 +535,6 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
                 ),
                 reply_markup=build_admin_back_kb("sender"),
             )
-            await state.clear()
             return
 
     tg_ids, total_users = await get_recipients(
@@ -461,7 +550,6 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
             menu_text("Рассылка", "⚠️ Не найдено получателей для рассылки."),
             reply_markup=build_admin_back_kb("sender"),
         )
-        await state.clear()
         return
 
     status_message = callback_query.message
@@ -470,72 +558,15 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
         total_users_for_bar = sum(1 for address in addresses.values() if is_telegram_chat_id(address["tg_id"]))
     else:
         total_users_for_bar = 0
-    await status_message.edit_text(
-        menu_text("Рассылка", _broadcast_progress_text(0, total_users_for_bar, 0, 0)),
-    )
-
     bot = callback_query.bot
-    state_keyboard_data = data.get("keyboard")
-
     await release_session_early(session)
-
-    if should_run_heavy_tasks_separately():
-        main_loop = asyncio.get_running_loop()
-
-        async def _edit_progress(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
-            text = _broadcast_progress_text(completed, total, sent, failed, pending)
-            try:
-                await bot.edit_message_text(
-                    chat_id=status_message.chat.id,
-                    message_id=status_message.message_id,
-                    text=text,
-                )
-            except TelegramBadRequest as e:
-                if "message is not modified" not in str(e).lower():
-                    logger.debug(f"[Sender] Обновление прогресса: {e}")
-
-        def progress_cb(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
-            main_loop.call_soon_threadsafe(
-                lambda c=completed, t=total, s=sent, f=failed, p=pending: spawn(_edit_progress(c, t, s, f, p))
-            )
-
-        stats = await run_io(
-            run_broadcast_in_thread,
-            API_TOKEN,
-            tg_ids,
-            text_message,
-            photo,
-            state_keyboard_data,
-            progress_cb,
-            channel,
+    run = start_broadcast_run(callback_query.from_user.id, "broadcast")
+    try:
+        stats = await _run_confirmed_broadcast(
+            bot, status_message, tg_ids, text_message, photo, keyboard, channel, run, total_users_for_bar
         )
-    else:
-        messages = []
-        for tg_id in tg_ids:
-            message_data = {"user_id": int(tg_id), "text": text_message, "photo": photo, "keyboard": keyboard}
-            messages.append(message_data)
-
-        async def on_progress(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
-            text = _broadcast_progress_text(completed, total, sent, failed, pending)
-            try:
-                await bot.edit_message_text(
-                    chat_id=status_message.chat.id,
-                    message_id=status_message.message_id,
-                    text=text,
-                )
-            except TelegramBadRequest as e:
-                if "message is not modified" not in str(e).lower():
-                    logger.debug(f"[Sender] Обновление прогресса: {e}")
-
-        broadcast_service = BroadcastService(bot=bot, session=None)
-        stats = await broadcast_service.broadcast(
-            messages,
-            workers=5,
-            on_progress=on_progress,
-            progress_interval=2.0,
-            progress_every=200,
-            channel=channel,
-        )
+    finally:
+        finish_broadcast_run(run.run_id)
 
     blocked_pairs = stats.get("blocked_user_pairs") or []
     paired_chats = {tg for _, tg in blocked_pairs}
@@ -561,7 +592,34 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
         text=menu_text("Рассылка", _broadcast_result_text(total_users, stats)),
         reply_markup=build_admin_back_kb("sender"),
     )
-    await state.clear()
+
+
+@router.callback_query(F.data.startswith("admin_sender_stop:"), IsAdminFilter(), HasPermission(PERM_BROADCASTING))
+async def handle_broadcast_stop(callback_query: CallbackQuery, session: AsyncSession) -> None:
+    """Останавливает новые отправки рассылки её владельца."""
+    run_id = (callback_query.data or "").partition(":")[2]
+    owner = callback_query.from_user.id
+    run = get_broadcast_run(run_id)
+    if run is not None and run.kind != "scheduled" and run.owner_tg_id != owner:
+        await callback_query.answer("Остановить рассылку может только её автор", show_alert=True)
+        return
+    if run is None or run.kind == "scheduled":
+        item = await get_scheduled_broadcast(session, run_id)
+        if item is None or item.status != "running":
+            await callback_query.answer("Рассылка уже завершена или остановлена", show_alert=True)
+            return
+        cancelled = await cancel_scheduled_broadcast(session, run_id)
+        await session.commit()
+        if cancelled is None:
+            await callback_query.answer("Рассылка уже завершена или остановлена", show_alert=True)
+            return
+    if run is not None:
+        if run.kind == "scheduled":
+            run.stop_event.set()
+        else:
+            stop_broadcast_run(run_id, owner)
+    await callback_query.answer("Останавливаю рассылку. Уже начатые отправки могут завершиться.")
+    await callback_query.message.edit_reply_markup(reply_markup=None)
 
 
 @router.callback_query(F.data == "schedule_broadcast", IsAdminFilter())
@@ -837,15 +895,33 @@ async def handle_scheduled_broadcast_send_now(
             reply_markup=build_admin_back_kb("sender"),
         )
         return
-    await callback_query.message.edit_text(menu_text("Рассылка", "⏳ Запускаю рассылку..."))
-    await release_session_early(session)
+    await session.commit()
+    run = start_broadcast_run(item.created_by_tg_id or callback_query.from_user.id, "scheduled", run_id=item.id)
     try:
-        result = await execute_scheduled_broadcast(item, bot=callback_query.bot)
+        await callback_query.message.edit_text(
+            menu_text("Рассылка", "⏳ Запускаю рассылку..."), reply_markup=build_broadcast_stop_kb(run.run_id)
+        )
+        await release_session_early(session)
+        result = await execute_scheduled_broadcast(item, bot=callback_query.bot, run=run)
     except Exception as exc:
         failed_item = await mark_scheduled_broadcast_failed(session, callback_data.broadcast_id, str(exc))
+        await session.commit()
         await callback_query.message.edit_text(
             menu_text("Рассылка", _scheduled_broadcast_text(failed_item)),
             reply_markup=build_scheduled_broadcast_detail_kb(failed_item, page=callback_data.page),
+        )
+        return
+    finally:
+        finish_broadcast_run(run.run_id)
+    if result.get("stopped"):
+        updated = await mark_scheduled_broadcast_cancelled(session, callback_data.broadcast_id, result)
+        await callback_query.message.edit_text(
+            menu_text("Рассылка", _scheduled_broadcast_text(updated)),
+            reply_markup=build_scheduled_broadcast_detail_kb(updated, page=callback_data.page),
+        )
+        await callback_query.message.answer(
+            menu_text("Рассылка", _broadcast_result_text(result.get("recipients", 0), result.get("stats") or {})),
+            reply_markup=build_admin_back_kb("sender"),
         )
         return
     if result.get("success"):

@@ -71,6 +71,8 @@ async def _finalize_renewal(
     selected_device: int | None,
     selected_traffic: int | None,
     expected_key_snapshot: dict | None = None,
+    coupon_id: int | None = None,
+    applied_coupon_code: str | None = None,
 ) -> None:
     """Пересчитывает баланс и завершает смену тарифа."""
     balance = round(await get_balance(session, tg_id), 2)
@@ -90,6 +92,8 @@ async def _finalize_renewal(
                 "total_gb": int(total_gb or 0),
                 "email": email,
                 "selected_price_rub": int(full_price),
+                "coupon_id": coupon_id,
+                "applied_coupon_code": applied_coupon_code,
             }
             if selected_device is not None:
                 temp_payload["selected_device_limit"] = selected_device
@@ -138,6 +142,7 @@ async def _finalize_renewal(
         state=state,
         expected_key_snapshot=expected_key_snapshot,
         renewal_duration_days=duration_days,
+        coupon_id=coupon_id,
     )
 
 
@@ -171,6 +176,8 @@ async def complete_key_renewal(
     expected_key_snapshot: dict | None = None,
     carry_addons: bool = True,
     renewal_duration_days: int | None = None,
+    coupon_id: int | None = None,
+    coupon_paid_quote: bool = False,
 ):
     """Продлевает подписку через сервис и отправляет Telegram-уведомление."""
     from services.errors import ServiceError
@@ -230,6 +237,8 @@ async def complete_key_renewal(
                 expected_key_snapshot=quoted_key_snapshot,
                 carry_addons=carry_addons,
                 renewal_duration_days=renewal_duration_days,
+                coupon_id=coupon_id,
+                coupon_paid_quote=coupon_paid_quote,
             )
             new_expiry_time = renewal_result.new_expiry_time
             renewal_applied = True

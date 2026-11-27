@@ -55,9 +55,30 @@
         ],
         "links": {
           "ios": "https://apps.apple.com/app/id6504287215",
-          "android": "https://play.google.com/store/apps/details?id=com.happ.vpn"
+          "android": "https://play.google.com/store/apps/details?id=com.happproxy"
         },
-        "deepLink": "happ://import/{URL}"
+        "deepLink": "happ://add/"
+      },
+      {
+        "id": "incy",
+        "name": "INCY",
+        "note": "Для телефона и компьютера",
+        "badge": "",
+        "platforms": [
+          "ios",
+          "android",
+          "windows",
+          "macos",
+          "linux"
+        ],
+        "links": {
+          "ios": "https://apps.apple.com/app/id6756943388",
+          "android": "https://play.google.com/store/apps/details?id=llc.itdev.incy",
+          "windows": "https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-windows-setup.exe",
+          "macos": "https://apps.apple.com/app/id6756943388",
+          "linux": "https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-linux-x64.deb"
+        },
+        "deepLink": "incy://import/"
       },
       {
         "id": "v2raytun",
@@ -76,28 +97,24 @@
           "windows": "https://github.com/nicetry-code/v2rayTun/releases",
           "macos": "https://apps.apple.com/app/id6476628951"
         },
-        "deepLink": "v2raytun://import/{URL}"
+        "deepLink": "v2raytun://import/"
       },
       {
-        "id": "hiddify",
-        "name": "Hiddify",
-        "note": "",
+        "id": "uxway",
+        "name": "UXWay",
+        "note": "Для iPhone, Android и Mac с Apple silicon",
         "badge": "",
         "platforms": [
           "ios",
           "android",
-          "windows",
-          "macos",
-          "linux"
+          "macos"
         ],
         "links": {
-          "ios": "https://apps.apple.com/app/id6596777532",
-          "android": "https://play.google.com/store/apps/details?id=app.hiddify.com",
-          "windows": "https://github.com/hiddify/hiddify-app/releases",
-          "macos": "https://github.com/hiddify/hiddify-app/releases",
-          "linux": "https://github.com/hiddify/hiddify-app/releases"
+          "ios": "https://apps.apple.com/app/id6762559624",
+          "android": "https://play.google.com/store/apps/details?id=com.buttone.client",
+          "macos": "https://apps.apple.com/app/id6762559624"
         },
-        "deepLink": "hiddify://import/{URL}"
+        "deepLink": "uxway://add/{URL}"
       }
     ],
     "steps": [
@@ -355,9 +372,30 @@
         ],
         "links": {
           "ios": "https://apps.apple.com/app/id6504287215",
-          "android": "https://play.google.com/store/apps/details?id=com.happ.vpn"
+          "android": "https://play.google.com/store/apps/details?id=com.happproxy"
         },
-        "deepLink": "happ://import/{URL}"
+        "deepLink": "happ://add/"
+      },
+      {
+        "id": "incy",
+        "name": "INCY",
+        "note": "Для телефона и компьютера",
+        "badge": "",
+        "platforms": [
+          "ios",
+          "android",
+          "windows",
+          "macos",
+          "linux"
+        ],
+        "links": {
+          "ios": "https://apps.apple.com/app/id6756943388",
+          "android": "https://play.google.com/store/apps/details?id=llc.itdev.incy",
+          "windows": "https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-windows-setup.exe",
+          "macos": "https://apps.apple.com/app/id6756943388",
+          "linux": "https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-linux-x64.deb"
+        },
+        "deepLink": "incy://import/"
       },
       {
         "id": "v2raytun",
@@ -376,28 +414,24 @@
           "windows": "https://github.com/nicetry-code/v2rayTun/releases",
           "macos": "https://apps.apple.com/app/id6476628951"
         },
-        "deepLink": "v2raytun://import/{URL}"
+        "deepLink": "v2raytun://import/"
       },
       {
-        "id": "hiddify",
-        "name": "Hiddify",
-        "note": "",
+        "id": "uxway",
+        "name": "UXWay",
+        "note": "Для iPhone, Android и Mac с Apple silicon",
         "badge": "",
         "platforms": [
           "ios",
           "android",
-          "windows",
-          "macos",
-          "linux"
+          "macos"
         ],
         "links": {
-          "ios": "https://apps.apple.com/app/id6596777532",
-          "android": "https://play.google.com/store/apps/details?id=app.hiddify.com",
-          "windows": "https://github.com/hiddify/hiddify-app/releases",
-          "macos": "https://github.com/hiddify/hiddify-app/releases",
-          "linux": "https://github.com/hiddify/hiddify-app/releases"
+          "ios": "https://apps.apple.com/app/id6762559624",
+          "android": "https://play.google.com/store/apps/details?id=com.buttone.client",
+          "macos": "https://apps.apple.com/app/id6762559624"
         },
-        "deepLink": "hiddify://import/{URL}"
+        "deepLink": "uxway://add/{URL}"
       }
     ],
     "steps": [

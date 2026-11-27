@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -63,4 +64,23 @@ class PollVote(DictLikeMixin, Base):
         nullable=False,
         default=lambda: datetime.now(UTC),
         server_default=sql_text("now()"),
+    )
+
+
+class PollAnswerState(DictLikeMixin, Base):
+    __tablename__ = "poll_answer_states"
+    __table_args__ = (Index("ix_poll_answer_states_poll_user", "poll_id", "tg_id"),)
+
+    telegram_poll_id = Column(String(64), primary_key=True)
+    tg_id = Column(BigInteger, primary_key=True)
+    poll_id = Column(String(36), ForeignKey("polls.id", ondelete="CASCADE"), nullable=True)
+    option_ids = Column(JSONB, nullable=False)
+    update_id = Column(BigInteger, nullable=True)
+    applied = Column(Boolean, nullable=False, server_default=sql_text("false"))
+    received_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=sql_text("now()"),
+        index=True,
     )

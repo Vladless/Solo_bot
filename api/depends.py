@@ -25,10 +25,12 @@ from database.access.resolution import (
     resolve_actor_from_identity,
     telegram_chat_id,
 )
+from database.admins import get_admin_by_tg_id, is_configured_web_admin
 from database.models import Admin, Identity
 from filters.admin_actions import granular_permissions_enabled
 from logger import logger
 from settings.cache_config import AUTH_ACTOR_CACHE_TTL_SEC
+from settings.config import ADMIN_ID
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
@@ -282,17 +284,18 @@ async def verify_identity_token(
 
 
 async def resolve_identity_role(session: AsyncSession, identity: Identity) -> str:
+    if is_configured_web_admin(identity):
+        return "admin"
     tg_id = getattr(identity, "tg_id", None)
-    if tg_id:
-        try:
-            row = (await session.execute(select(Admin).where(Admin.tg_id == int(tg_id)))).scalar_one_or_none()
-        except Exception:
-            row = None
-        if row is not None:
-            role = (getattr(row, "role", None) or "admin").strip().lower()
-            if role in ("moderator", "designer"):
-                return role
+    if tg_id is not None:
+        configured = (ADMIN_ID,) if isinstance(ADMIN_ID, int) else ADMIN_ID
+        if int(tg_id) in configured:
             return "admin"
+        row = await get_admin_by_tg_id(session, int(tg_id))
+        if row is None:
+            return "user"
+        role = (getattr(row, "role", None) or "admin").strip().lower()
+        return role if role in ("moderator", "designer") else "admin"
     if getattr(identity, "is_admin", False):
         return "admin"
     return "user"
@@ -311,7 +314,7 @@ async def verify_identity_admin(
     if not identity.is_admin:
         raise HTTPException(status_code=403, detail="Forbidden")
     await require_admin_action(session, identity)
-    if await resolve_identity_role(session, identity) in ("moderator", "designer"):
+    if await resolve_identity_role(session, identity) != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
     await bind_identity_actor(request, session, identity)
     await mark_site_initialized(session)
@@ -363,10 +366,10 @@ async def verify_identity_admin_short(
     async with async_session_maker() as session:
         identity = await _identity_from_cookie(session, request)
         if identity:
+            if await resolve_identity_role(session, identity) != "admin":
+                raise HTTPException(status_code=403, detail="Forbidden")
             if granular_permissions_enabled():
                 await require_admin_action(session, identity)
-                if await resolve_identity_role(session, identity) in ("moderator", "designer"):
-                    raise HTTPException(status_code=403, detail="Forbidden")
             actor = await resolve_actor_from_identity(session, identity)
         await session.commit()
     if not identity:

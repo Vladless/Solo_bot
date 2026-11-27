@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 
 from core.settings.management_config import MANAGEMENT_SETTING_KEY
-from database.admins import get_admin_by_tg_id
+from database.admins import get_admin_by_tg_id, is_configured_web_admin
 from database.models import Admin
 from filters.admin_actions import AdminActionAccess, granular_permissions_enabled
 from filters.permissions import (
@@ -77,6 +77,8 @@ LEGACY_RESOURCE_PERMISSIONS = {
 
 async def _admin_access(session, principal) -> tuple[AdminActionAccess, frozenset[str]]:
     """Читает актуальную роль и права по Telegram администратора."""
+    if is_configured_web_admin(principal):
+        return AdminActionAccess(True, frozenset()), frozenset()
     tg_id = getattr(principal, "tg_id", None)
     configured = (ADMIN_ID,) if isinstance(ADMIN_ID, int) else ADMIN_ID
     if tg_id is not None and int(tg_id) in configured:

@@ -40,7 +40,7 @@ async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[
     try:
         timeout = aiohttp.ClientTimeout(total=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url, ssl=False) as response:
+            async with session.get(url) as response:
                 if response.status == 200:
                     content = await response.text()
                     lines = base64.b64decode(content).decode("utf-8").split("\n")

@@ -65,19 +65,24 @@ async def host_telegram_animation(bot, file_id: str | None) -> str | None:
         return None
 
 
-async def host_telegram_photo(bot, file_id: str | None) -> str | None:
+async def host_telegram_photo(bot, file_id: str | None, *, file_name: str | None = None) -> str | None:
+    """Сохраняет фото с ограничением размера и времени загрузки."""
     if not file_id:
         return None
     try:
-        tg_file = await bot.get_file(file_id)
-        file_path = tg_file.file_path or ""
-        ext = Path(file_path).suffix.lower()
-        if ext not in _ALLOWED_IMAGE_EXT:
-            ext = ".jpg"
-
-        buffer = io.BytesIO()
-        await bot.download_file(file_path, destination=buffer)
-        data = buffer.getvalue()
+        async with asyncio.timeout(30):
+            tg_file = await bot.get_file(file_id)
+            if tg_file.file_size and int(tg_file.file_size) > MAX_UPLOAD_BYTES:
+                return None
+            file_path = tg_file.file_path or ""
+            if not file_path:
+                return None
+            ext = Path(file_name or file_path).suffix.lower()
+            if ext not in _ALLOWED_IMAGE_EXT:
+                ext = ".jpg"
+            with _BoundedUpload() as buffer:
+                await bot.download_file(file_path, destination=buffer, timeout=30)
+                data = buffer.getvalue()
         if not data:
             return None
 
@@ -86,15 +91,15 @@ async def host_telegram_photo(bot, file_id: str | None) -> str | None:
             from utils.cpu_tasks import optimize_image_bytes
 
             data = await run_cpu(optimize_image_bytes, data, ext)
-        except Exception:
-            pass
+        except Exception as error:
+            logger.debug("[Site:Files] Фото сохранится без оптимизации: {}", type(error).__name__)
 
         WEB_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         name = f"{uuid.uuid4().hex}{ext}"
         await run_io((WEB_UPLOAD_DIR / name).write_bytes, data)
         return f"/api/web/uploads/{name}"
-    except Exception as e:
-        logger.warning(f"[Site:Files] Не удалось разместить медиа рассылки на сайте: {e}")
+    except Exception as error:
+        logger.warning("[Site:Files] Не удалось разместить фото на сайте: {}", type(error).__name__)
         return None
 
 

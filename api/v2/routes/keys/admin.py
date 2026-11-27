@@ -1,8 +1,11 @@
+import uuid
+
 from api.admin_permissions import (
     require_admin_action,
     require_key_update_permissions,
 )
 from database.access.resolution import TelegramId, UserId
+from database.keys import lock_owned_key_for_operation
 from filters.permissions import (
     PERM_KEY_CREATE,
     PERM_KEY_DELETE,
@@ -26,6 +29,9 @@ async def delete_key_by_email(
     result = await session.execute(select(Key).where(Key.email == email))
     db_key = result.scalar_one_or_none()
     if not db_key:
+        raise HTTPException(status_code=404, detail="Ключ не найден")
+    db_key = await lock_owned_key_for_operation(session, db_key.user_id, db_key.client_id, db_key.email)
+    if db_key is None:
         raise HTTPException(status_code=404, detail="Ключ не найден")
     try:
         await delete_key_from_cluster(
@@ -58,6 +64,10 @@ async def freeze_key_by_email(
     record = await get_key_details(session, email)
     if not record:
         raise HTTPException(status_code=404, detail="Ключ не найден")
+    locked = await lock_owned_key_for_operation(session, record["user_id"], record["client_id"], email)
+    if locked is None:
+        raise HTTPException(status_code=404, detail="Ключ не найден")
+    record = {field: getattr(locked, field, None) for field in ("user_id", "client_id", "server_id", "expiry_time")}
     result = await toggle_client_on_cluster(
         record["server_id"], email, record["client_id"], enable=False, session=session
     )
@@ -85,6 +95,21 @@ async def unfreeze_key_by_email(
     record = await get_key_details(session, email)
     if not record:
         raise HTTPException(status_code=404, detail="Ключ не найден")
+    locked = await lock_owned_key_for_operation(session, record["user_id"], record["client_id"], email)
+    if locked is None:
+        raise HTTPException(status_code=404, detail="Ключ не найден")
+    record = {
+        field: getattr(locked, field, None)
+        for field in (
+            "user_id",
+            "client_id",
+            "server_id",
+            "expiry_time",
+            "tariff_id",
+            "current_traffic_limit",
+            "current_device_limit",
+        )
+    }
     result = await toggle_client_on_cluster(
         record["server_id"], email, record["client_id"], enable=True, session=session
     )
@@ -153,6 +178,9 @@ async def edit_key_by_email(
     db_key = result.scalar_one_or_none()
     if not db_key:
         raise HTTPException(status_code=404, detail="Ключ не найден")
+    db_key = await lock_owned_key_for_operation(session, db_key.user_id, db_key.client_id, db_key.email)
+    if db_key is None:
+        raise HTTPException(status_code=404, detail="Ключ не найден")
     for field, value in key_update.model_dump(exclude_unset=True).items():
         if field == "expiry_time" and value is not None:
             if isinstance(value, int):
@@ -164,6 +192,8 @@ async def edit_key_by_email(
             setattr(db_key, field, ms)
         else:
             setattr(db_key, field, value)
+        if field == "server_id":
+            db_key.location_revision = str(uuid.uuid4())
     try:
         new_expiry_time = db_key.expiry_time
         renewed = await renew_key_in_cluster(

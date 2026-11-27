@@ -1,5 +1,7 @@
 import time
 
+from database.keys import lock_owned_key_for_operation
+
 from .._common import *
 from .._common import (
     _extract_key_actions_from_markup,
@@ -373,6 +375,9 @@ async def user_key_delete(
     db_key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
+    if db_key is None:
+        raise HTTPException(status_code=404, detail="Подписка не найдена")
+    db_key = await lock_owned_key_for_operation(session, billing_user_id, client_id, db_key.email)
     if db_key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     cluster_id = str(getattr(db_key, "server_id", "") or "")

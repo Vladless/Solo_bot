@@ -9,7 +9,7 @@ from database.migrations.kassai_autopay import migrate_kassai_autopay
 from database.migrations.overpay_autopay import migrate_overpay_autopay
 from database.migrations.partners import migrate_partner_owners
 from database.migrations.payhot_autopay import migrate_payhot_autopay
-from database.migrations.schema_upgrade import apply_all_migrations
+from database.migrations.schema_upgrade import apply_all_migrations, finalize_yoomoney_operation_cutoffs
 from database.migrations.yookassa_autopay import migrate_yookassa_autopay
 from database.models import Admin, Base, User
 from database.setup.module_models import import_module_models
@@ -25,6 +25,8 @@ async def run_schema_setup() -> None:
         async with engine.begin() as conn:
             await apply_all_migrations(conn)
             await apply_model_changes(conn, Base.metadata, report)
+            if conn.dialect.name == "postgresql":
+                await finalize_yoomoney_operation_cutoffs(conn)
             await migrate_partner_owners(conn)
             await migrate_yookassa_autopay(conn)
             await migrate_kassai_autopay(conn)

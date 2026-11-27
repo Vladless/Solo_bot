@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Identity
 from logger import logger
-from utils.cpu_tasks import hash_password
+from utils.cpu_tasks import BCRYPT_MAX_PASSWORD_BYTES, hash_password
 
 
 async def ensure_web_admin(session: AsyncSession) -> None:
@@ -23,10 +23,21 @@ async def ensure_web_admin(session: AsyncSession) -> None:
             )
         return
 
+    if not isinstance(password, str):
+        logger.error("[web-admin] WEB_ADMIN_PASSWORD должен быть строкой; синхронизация пропущена")
+        return
+    try:
+        password_hash = hash_password(password)
+    except ValueError:
+        logger.error(
+            "[web-admin] WEB_ADMIN_PASSWORD должен занимать не более {} байт UTF-8; синхронизация пропущена",
+            BCRYPT_MAX_PASSWORD_BYTES,
+        )
+        return
+
     email = login.lower()
     result = await session.execute(select(Identity).where(Identity.email == email))
     identity = result.scalar_one_or_none()
-    password_hash = hash_password(password)
     if identity is None:
         identity = Identity(
             email=email,

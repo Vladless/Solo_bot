@@ -14,6 +14,7 @@ from .emoji import router as emoji_router
 from .gifts import router as gifts_router
 from .management import router as management_router
 from .module import router as modules_router
+from .news import router as news_router
 from .panel import router as panel_router
 from .restart import router as restart_router
 from .sender import router as sender_router
@@ -39,6 +40,7 @@ router.include_routers(
     stats_router,
     backups_router,
     sender_router,
+    news_router,
     coupons_router,
     emoji_router,
     restart_router,

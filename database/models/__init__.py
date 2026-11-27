@@ -8,12 +8,14 @@ from .identity import Identity
 from .identity_notif_prefs import IdentityNotifPref
 from .identity_session import IdentitySession
 from .kassai_autopay import KassaIAutopayAttempt, KassaISavedMethod, KassaISubscription
+from .key_panel_cleanup import KeyPanelCleanup
 from .keys import Key, KeyTrafficHistory, KeyTrafficHourly
+from .news import News
 from .notifications import Notification, ScheduledBroadcast
 from .overpay_autopay import OverPayAutopayAttempt, OverPayAutopayLog, OverPaySavedMethod, OverPaySubscription
 from .payhot_autopay import PayHotAutopayAttempt, PayHotAutopayLog, PayHotSavedMethod, PayHotSubscription
-from .payments import Payment
-from .polls import Poll, PollMessage, PollVote
+from .payments import Payment, PaymentOperationReceipt
+from .polls import Poll, PollAnswerState, PollMessage, PollVote
 from .rate_limit import RateLimitCounter
 from .referrals import Referral
 from .remnawave_install import RemnawaveInstall
@@ -62,6 +64,7 @@ __all__ = [
     "TelegramChatStatus",
     "TrackingSource",
     "Key",
+    "KeyPanelCleanup",
     "KeyTrafficHistory",
     "KeyTrafficHourly",
     "SubscriptionEvent",
@@ -76,18 +79,21 @@ __all__ = [
     "ServerSubgroup",
     "ServerSpecialgroup",
     "Payment",
+    "PaymentOperationReceipt",
     "DailyBonusClaim",
     "Coupon",
     "CouponUsage",
     "CouponHold",
     "Referral",
     "Notification",
+    "News",
     "ScheduledBroadcast",
     "TrafficNotificationState",
     "Poll",
     "RateLimitCounter",
     "PollMessage",
     "PollVote",
+    "PollAnswerState",
     "Gift",
     "GiftUsage",
     "AuditEvent",

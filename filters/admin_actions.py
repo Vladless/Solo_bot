@@ -115,6 +115,8 @@ def callback_action_permissions(value: str | None, state_data: dict | None = Non
     value = value or ""
     state_data = state_data or {}
     parts = value.split(":")
+    if parts[0] == "admin_news":
+        return (FULL_ADMIN,)
     if parts[0] in ("admin_user", "admin_users") and len(parts) > 1:
         action = parts[1]
         if action.startswith("users_balance_"):
@@ -135,6 +137,7 @@ def callback_action_permissions(value: str | None, state_data: dict | None = Non
             "restore_db",
             "restore_db_local",
             "backups",
+            "news",
         ) or action.startswith((
             "add_role|",
             "admin_menu|",
@@ -202,7 +205,7 @@ def state_action_permissions(state: str | None, data: dict) -> tuple[str, ...]:
     """Проверяет разрешения продолжения сохранённого сценария."""
     if state == "UserEditorState:waiting_for_balance":
         return (PERM_USER_BALANCE,)
-    if state and state.startswith(("AdminState:", "DatabaseState:", "FileUploadState:")):
+    if state and state.startswith(("AdminState:", "DatabaseState:", "FileUploadState:", "AdminNewsState:")):
         return (FULL_ADMIN,)
     if state == "AdminClusterStates:waiting_for_days_input":
         return (PERM_KEY_EXPIRY,)

@@ -25,6 +25,7 @@ from database.scheduled_broadcasts import (
     create_scheduled_broadcast,
     get_scheduled_broadcast,
     list_scheduled_broadcasts,
+    mark_scheduled_broadcast_cancelled,
     mark_scheduled_broadcast_failed,
     mark_scheduled_broadcast_sent,
     start_scheduled_broadcast,
@@ -264,12 +265,16 @@ async def send_broadcast_schedule_now(
     item = await start_scheduled_broadcast(session, broadcast_id)
     if item is None:
         raise HTTPException(status_code=409, detail="Scheduled broadcast can no longer be sent now")
+    await session.commit()
     try:
         result = await execute_scheduled_broadcast(item, bot=get_broadcast_bot())
     except Exception as exc:
         await mark_scheduled_broadcast_failed(session, broadcast_id, str(exc))
+        await session.commit()
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    if result.get("success"):
+    if result.get("stopped"):
+        item = await mark_scheduled_broadcast_cancelled(session, broadcast_id, result)
+    elif result.get("success"):
         item = await mark_scheduled_broadcast_sent(session, broadcast_id, result)
     else:
         item = await mark_scheduled_broadcast_failed(session, broadcast_id, result.get("message", "Broadcast failed"))

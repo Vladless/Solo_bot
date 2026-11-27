@@ -147,6 +147,7 @@ def merge_design_theme_tokens(base: dict, overlay: dict) -> dict:
         "pageChrome",
         "cabinetNavTemplate",
         "splashEnabled",
+        "splashTarget",
         "splashVariant",
         "splashLogoUrl",
         "splashDurationMs",

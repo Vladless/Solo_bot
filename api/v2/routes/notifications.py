@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_token
 from api.shared.billing_actor import resolve_billing_user_id
 from database import web_notifications as wn_db
 from database.models import Identity
+from services.web_push import validate_push_endpoint
 
 
 router = APIRouter()
@@ -14,6 +15,12 @@ router = APIRouter()
 class PushSubscribeRequest(BaseModel):
     endpoint: str
     keys: dict
+
+    @field_validator("endpoint")
+    @classmethod
+    def check_endpoint(cls, value: str) -> str:
+        """Проверяет адрес до сохранения подписки."""
+        return validate_push_endpoint(value)
 
 
 class NotificationItem(BaseModel):

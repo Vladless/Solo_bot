@@ -31,6 +31,7 @@ class Key(DictLikeMixin, Base):
     expiry_time = Column(BigInteger, index=True)
     key = Column(String)
     server_id = Column(String, index=True)
+    location_revision = Column(String(36), nullable=True)
     remnawave_link = Column(String)
     tariff_id = Column(Integer, ForeignKey("tariffs.id", ondelete="SET NULL"), index=True)
     is_frozen = Column(Boolean, default=False)

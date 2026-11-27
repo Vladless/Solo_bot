@@ -162,6 +162,7 @@ class AccountKeyChangeLocationRequest(BaseModel):
 
 
 class AccountKeyChangeLocationResponse(AccountKeyActionResponse):
+    cleanup_pending: bool = False
     client_id: str
     server_id: str = ""
     link: str = ""

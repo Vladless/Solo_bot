@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -178,7 +180,9 @@ async def update_server_name_with_keys(session: AsyncSession, old_name: str, new
     stmt_server = update(Server).where(Server.server_name == old_name).values(server_name=new_name)
     await session.execute(stmt_server)
 
-    stmt_keys = update(Key).where(Key.server_id == old_name).values(server_id=new_name)
+    stmt_keys = (
+        update(Key).where(Key.server_id == old_name).values(server_id=new_name, location_revision=str(uuid.uuid4()))
+    )
     await session.execute(stmt_keys)
 
     await _invalidate_servers_cache(session)
@@ -206,7 +210,11 @@ async def update_server_cluster(session: AsyncSession, server_name: str, new_clu
     remaining_servers = result.scalar_one()
 
     if remaining_servers == 0:
-        stmt_update_keys = update(Key).where(Key.server_id == old_cluster).values(server_id=new_cluster)
+        stmt_update_keys = (
+            update(Key)
+            .where(Key.server_id == old_cluster)
+            .values(server_id=new_cluster, location_revision=str(uuid.uuid4()))
+        )
         await session.execute(stmt_update_keys)
 
     stmt_new_cluster = select(Server.tariff_group).where(Server.cluster_name == new_cluster).limit(1)

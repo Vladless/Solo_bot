@@ -1,3 +1,8 @@
+from aiogram.fsm.storage.memory import MemoryStorage
+
+from core.rate_limit import check_and_increment
+from core.redis_cache import cache_incr_checked
+from database.gifts import get_gift_usage
 from database.servers import get_servers
 from services.cluster_access import resolve_tariff_servers
 from services.errors import ServiceError
@@ -51,6 +56,8 @@ async def key_country_mode(
     tg_notify = await notify_telegram_chat_id(session, tg_id)
 
     data = await state.get_data() if state else {}
+    if state:
+        await state.update_data(country_purchase=None)
 
     forced_cluster = await process_cluster_override(
         tg_id=tg_notify,
@@ -113,6 +120,47 @@ async def key_country_mode(
 
     builder = InlineKeyboardBuilder()
     ts = int(expiry_time.timestamp())
+    request_id = None
+    if not old_key_name:
+        if not state or not plan:
+            return
+        request_id = uuid.uuid4().hex[:10]
+        checkout = {
+            name: data.get(name)
+            for name in (
+                "is_trial",
+                "config_selected_device_limit",
+                "selected_device_limit",
+                "config_selected_traffic_gb",
+                "selected_traffic_limit_gb",
+                "config_selected_price_rub",
+                "selected_price_rub",
+            )
+        }
+        checkout["tariff_id"] = int(plan)
+        checkout["skip_balance_charge"] = bool(skip_balance_charge)
+        checkout["selected_price_rub"] = (
+            selected_price_rub
+            if selected_price_rub is not None
+            else data.get("selected_price_rub")
+            if data.get("selected_price_rub") is not None
+            else tariff.get("price_rub")
+        )
+        await state.update_data(
+            country_purchase={
+                "request_id": request_id,
+                "telegram_id": tg_notify,
+                "expiry_time": ts,
+                "valid_until": None
+                if checkout["skip_balance_charge"]
+                else int(datetime.now(moscow_tz).timestamp()) + 900,
+                "tariff_id": int(plan),
+                "servers": available_servers,
+                "checkout": checkout,
+                "gift_receipt": data.get("country_gift_receipt") if checkout["skip_balance_charge"] else None,
+            }
+        )
+        await state.update_data(country_gift_receipt=None)
 
     for i in range(0, len(available_servers), 2):
         row_buttons = []
@@ -121,9 +169,9 @@ async def key_country_mode(
                 callback_data = f"select_country|{server_name}|{ts}|{old_key_name}"
             else:
                 if plan:
-                    callback_data = f"select_country|{server_name}|{ts}||{plan}"
+                    callback_data = f"select_country|{server_name}|{request_id}||{plan}"
                 else:
-                    callback_data = f"select_country|{server_name}|{ts}"
+                    callback_data = f"select_country|{server_name}|{request_id}"
             row_buttons.append(InlineKeyboardButton(text=server_name, callback_data=callback_data))
         builder.row(*row_buttons)
 
@@ -151,21 +199,31 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
         return
 
     selected_country = data[1]
-    try:
-        ts = int(data[2])
-    except ValueError:
-        await callback_query.message.answer("❌ Некорректное время истечения. Попробуйте снова.")
-        return
-
     old_key_name = data[3] if len(data) > 3 and data[3] else None
     try:
         tariff_id = int(data[4]) if len(data) > 4 and data[4] else None
     except (ValueError, IndexError):
-        tariff_id = None
+        await callback_query.message.answer("❌ Некорректные данные. Попробуйте снова.")
+        return
 
     tg_id = TelegramId(callback_query.from_user.id)
 
     fsm_data = await state.get_data()
+    purchase = fsm_data.get("country_purchase")
+    if not old_key_name:
+        if (
+            not isinstance(purchase, dict)
+            or purchase.get("request_id") != data[2]
+            or purchase.get("telegram_id") != callback_query.from_user.id
+            or purchase.get("tariff_id") != tariff_id
+            or selected_country not in purchase.get("servers", [])
+            or (
+                purchase.get("valid_until") is not None
+                and purchase["valid_until"] < int(datetime.now(moscow_tz).timestamp())
+            )
+        ):
+            await callback_query.message.answer("❌ Некорректные данные. Попробуйте снова.")
+            return
     if fsm_data.get("creating_key"):
         try:
             await callback_query.answer("⏳ Уже обрабатываю…")
@@ -173,7 +231,36 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
             pass
         return
 
-    await state.update_data(creating_key=True)
+    if old_key_name:
+        expiry_time = datetime.now(moscow_tz)
+        await state.update_data(creating_key=True)
+    else:
+        receipt = purchase.get("gift_receipt")
+        if receipt:
+            owner = await resolve_user_optional(session, tg_id)
+            usage = (
+                await get_gift_usage(session, receipt["gift_id"], owner.id)
+                if owner is not None and owner.id == receipt.get("user_id")
+                else None
+            )
+            if (
+                usage is None
+                or usage.used_at is None
+                or usage.used_at.isoformat(timespec="microseconds") != receipt.get("used_at")
+            ):
+                await callback_query.message.answer("❌ Некорректные данные. Попробуйте снова.")
+                return
+        claim_key = f"country_purchase:{int(tg_id)}:{data[2]}"
+        if isinstance(state.storage, MemoryStorage):
+            already_used = check_and_increment(claim_key, 1, 900) > 1
+        else:
+            count, redis_ok = await cache_incr_checked(claim_key, 900)
+            already_used = not redis_ok or count > 1
+        if already_used:
+            await callback_query.message.answer("❌ Некорректные данные. Попробуйте снова.")
+            return
+        expiry_time = datetime.fromtimestamp(purchase["expiry_time"], tz=moscow_tz)
+        await state.update_data(**purchase["checkout"], creating_key=True, country_purchase=None)
 
     try:
         await callback_query.answer("Обрабатываю…")
@@ -183,7 +270,6 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
         pass
 
     try:
-        expiry_time = datetime.fromtimestamp(ts, tz=moscow_tz)
         await finalize_key_creation(
             tg_id=tg_id,
             expiry_time=expiry_time,

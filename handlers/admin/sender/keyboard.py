@@ -48,7 +48,7 @@ def build_sender_kb(include_scheduled: bool = True) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_polls_menu_kb(polls: list) -> InlineKeyboardMarkup:
+def build_polls_menu_kb(polls: list, page: int = 0, *, has_next: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -66,6 +66,17 @@ def build_polls_menu_kb(polls: list) -> InlineKeyboardMarkup:
                 callback_data=AdminPollCallback(action="view", poll_id=poll.id).pack(),
             )
         )
+    navigation = []
+    if page > 0:
+        navigation.append(
+            InlineKeyboardButton(text="◀️ Назад", callback_data=AdminPollCallback(action="menu", page=page - 1).pack())
+        )
+    if has_next:
+        navigation.append(
+            InlineKeyboardButton(text="▶️ Далее", callback_data=AdminPollCallback(action="menu", page=page + 1).pack())
+        )
+    if navigation:
+        builder.row(*navigation)
     builder.row(
         InlineKeyboardButton(
             text="◀️ Назад",
@@ -73,6 +84,13 @@ def build_polls_menu_kb(polls: list) -> InlineKeyboardMarkup:
         )
     )
     return builder.as_markup()
+
+
+def build_broadcast_stop_kb(run_id: str) -> InlineKeyboardMarkup:
+    """Добавляет остановку запущенной рассылки."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="⏹ Остановить", callback_data=f"admin_sender_stop:{run_id}")]]
+    )
 
 
 POLL_AUDIENCES = [
@@ -113,8 +131,14 @@ def build_poll_audience_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_poll_detail_kb(poll_id: str, is_open: bool) -> InlineKeyboardMarkup:
+def build_poll_detail_kb(poll_id: str, is_open: bool, *, is_anonymous: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    if not is_anonymous:
+        builder.row(
+            InlineKeyboardButton(
+                text="📥 Выгрузить CSV", callback_data=AdminPollCallback(action="export", poll_id=poll_id).pack()
+            )
+        )
     builder.button(text="🔄 Обновить", callback_data=AdminPollCallback(action="view", poll_id=poll_id).pack())
     if is_open:
         builder.button(text="🔒 Закрыть", callback_data=AdminPollCallback(action="close", poll_id=poll_id).pack())
@@ -268,6 +292,8 @@ def build_scheduled_broadcasts_list_kb(items: list, page: int = 0) -> InlineKeyb
 
 def build_scheduled_broadcast_detail_kb(item, page: int = 0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    if item.status == "running":
+        builder.row(InlineKeyboardButton(text="⏹ Остановить", callback_data=f"admin_sender_stop:{item.id}"))
     if item.status in {"scheduled", "failed"}:
         builder.row(
             InlineKeyboardButton(

@@ -52,9 +52,9 @@ def wrap_session(session: AsyncSession, maker) -> _SessionProxy:
 
 
 @asynccontextmanager
-async def operation_session(session):
-    """Сохраняет блокировки одной операции до общего коммита."""
-    if not isinstance(session, _SessionProxy):
+async def operation_session(session, *, keep_transaction: bool = False):
+    """Сохраняет блокировки операции и при необходимости общую транзакцию."""
+    if not isinstance(session, _SessionProxy) or (keep_transaction and not session._released):
         yield session
         return
     await session.release_early()

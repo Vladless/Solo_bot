@@ -87,6 +87,9 @@ async def build_panel_kb(
         if row:
             builder.row(*row)
 
+    if admin_role.strip().lower() in ("superadmin", "admin"):
+        builder.row(build_admin_btn("📰 Новости", "news"))
+
     module_buttons = await run_hooks("admin_panel", admin_role=admin_role)
     builder = insert_hook_buttons(builder, module_buttons)
 

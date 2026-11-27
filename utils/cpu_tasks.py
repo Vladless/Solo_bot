@@ -59,7 +59,7 @@ def generate_qr_file(payload: str, path: str) -> str:
 def _password_bytes(password: str) -> bytes:
     raw = password.encode("utf-8")
     if len(raw) > BCRYPT_MAX_PASSWORD_BYTES:
-        return raw[:BCRYPT_MAX_PASSWORD_BYTES]
+        raise ValueError(f"Пароль должен занимать не более {BCRYPT_MAX_PASSWORD_BYTES} байт UTF-8")
     return raw
 
 
@@ -77,6 +77,7 @@ def check_password(password: str, password_hash: str | None) -> bool:
     try:
         import bcrypt
 
-        return bcrypt.checkpw(_password_bytes(password), password_hash.encode("ascii"))
+        raw = password.encode("utf-8")[:BCRYPT_MAX_PASSWORD_BYTES]
+        return bcrypt.checkpw(raw, password_hash.encode("ascii"))
     except Exception:
         return False

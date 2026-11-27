@@ -33,6 +33,9 @@ async def upsert_push_subscription(
     keys_json: dict,
 ) -> WebPushSubscription:
     """Сохраняет push-подписку по уникальному endpoint."""
+    from services.web_push import validate_push_endpoint
+
+    endpoint = validate_push_endpoint(endpoint)
     stmt = (
         pg_insert(WebPushSubscription)
         .values(

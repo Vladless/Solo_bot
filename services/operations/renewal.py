@@ -386,6 +386,7 @@ async def renew_key_in_cluster(
                 new_expiry_time,
                 user_id=billing_user_id,
                 tariff_id=None if expiry_only else plan,
+                placement_changed=True,
             )
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
                 await delete_notification(session, billing_user_id, f"{email}_{prefix}", commit=False)
@@ -457,6 +458,7 @@ async def renew_key_in_cluster(
                 new_expiry_time,
                 user_id=billing_user_id,
                 tariff_id=None if expiry_only else plan,
+                placement_changed=not expiry_only and not scope.preserve_placement,
             )
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
                 await delete_notification(session, billing_user_id, f"{email}_{prefix}", commit=False)

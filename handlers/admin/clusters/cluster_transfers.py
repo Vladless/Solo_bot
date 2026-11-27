@@ -1,3 +1,5 @@
+import uuid
+
 from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -25,7 +27,11 @@ async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContex
         user_data = await state.get_data()
         cluster_name = user_data.get("cluster_name")
 
-        await session.execute(update(Key).where(Key.server_id == old_server_name).values(server_id=new_server_name))
+        await session.execute(
+            update(Key)
+            .where(Key.server_id == old_server_name)
+            .values(server_id=new_server_name, location_revision=str(uuid.uuid4()))
+        )
 
         await session.execute(
             delete(Server).where(
@@ -69,8 +75,16 @@ async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMConte
         user_data = await state.get_data()
         cluster_name = user_data.get("cluster_name")
 
-        await session.execute(update(Key).where(Key.server_id == old_server_name).values(server_id=new_cluster_name))
-        await session.execute(update(Key).where(Key.server_id == old_cluster_name).values(server_id=new_cluster_name))
+        await session.execute(
+            update(Key)
+            .where(Key.server_id == old_server_name)
+            .values(server_id=new_cluster_name, location_revision=str(uuid.uuid4()))
+        )
+        await session.execute(
+            update(Key)
+            .where(Key.server_id == old_cluster_name)
+            .values(server_id=new_cluster_name, location_revision=str(uuid.uuid4()))
+        )
 
         await session.execute(
             delete(Server).where(

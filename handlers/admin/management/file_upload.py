@@ -1,4 +1,6 @@
 import os
+import stat
+import tempfile
 
 from aiogram import F
 from aiogram.fsm.context import FSMContext
@@ -20,6 +22,32 @@ from .keyboard import AdminPanelCallback
 class FileUploadState(StatesGroup):
     waiting_for_target = State()
     waiting_for_file = State()
+
+
+async def _download_file_atomic(bot, document, destination: str) -> None:
+    """Заменяет файл только после полной загрузки новой копии."""
+    descriptor, temporary = tempfile.mkstemp(prefix=".solobot-upload-", dir=os.path.dirname(destination))
+    os.close(descriptor)
+    try:
+        await bot.download(document, destination=temporary)
+
+        def replace() -> None:
+            try:
+                previous = os.stat(destination, follow_symlinks=False)
+            except FileNotFoundError:
+                previous = None
+            if previous is not None and stat.S_ISREG(previous.st_mode):
+                os.chmod(temporary, stat.S_IMODE(previous.st_mode))
+            with open(temporary, "rb") as downloaded:
+                os.fsync(downloaded.fileno())
+            os.replace(temporary, destination)
+
+        await run_io(replace)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "upload_file"), HasPermission(PERM_MANAGEMENT))
@@ -95,7 +123,7 @@ async def handle_admin_file_upload(message: Message, state: FSMContext):
         return
 
     try:
-        await message.bot.download(document, destination=dest_path)
+        await _download_file_atomic(message.bot, document, dest_path)
 
         back_kb = build_admin_back_kb("management")
         kb = InlineKeyboardBuilder()

@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 
 from datetime import datetime, timezone
 from typing import Any
@@ -526,6 +527,11 @@ async def handle_sync_server(
                         )
 
                         if success:
+                            await session.execute(
+                                update(Key)
+                                .where(Key.user_id == key["user_id"], Key.client_id == key["client_id"])
+                                .values(location_revision=str(uuid.uuid4()))
+                            )
                             try:
                                 sub = await remna.get_subscription_by_username(key["email"])
                                 if sub:
@@ -756,6 +762,7 @@ async def handle_sync_cluster(
 
                 semaphore = asyncio.Semaphore(SYNC_CONCURRENCY)
                 pending_db_updates: list[dict] = []
+                pending_revisions: list[dict] = []
                 pending_lock = asyncio.Lock()
 
                 async def process_update(key):
@@ -795,6 +802,9 @@ async def handle_sync_cluster(
                                 stats["failed"] += 1
                                 logger.warning(f"[Sync] update_user failed for {key.get('email')}")
                                 return
+
+                            async with pending_lock:
+                                pending_revisions.append(key)
 
                             sub = await remna.get_subscription_by_username(key["email"])
                             new_link = sub.get("subscriptionUrl") if sub else None
@@ -865,6 +875,9 @@ async def handle_sync_cluster(
                                     f"[Sync] create failed for {key.get('email')}: {r.status_code} {r.text[:200]}"
                                 )
                                 return
+
+                            async with pending_lock:
+                                pending_revisions.append(key)
 
                             sub = await remna.get_subscription_by_username(key["email"])
                             new_link = sub.get("subscriptionUrl") if sub else None
@@ -988,6 +1001,12 @@ async def handle_sync_cluster(
                             except Exception as e:
                                 logger.error(f"[Sync] Fallback ошибка {upd['client_id']}: {e}")
                                 await session.rollback()
+                for key in pending_revisions:
+                    await session.execute(
+                        update(Key)
+                        .where(Key.user_id == key["user_id"], Key.client_id == key["client_id"])
+                        .values(location_revision=str(uuid.uuid4()))
+                    )
             finally:
                 await remna.aclose()
 
@@ -1104,6 +1123,11 @@ async def handle_sync_cluster(
                             await remna.aclose()
                     if not confirmations or not all(result is True for result in confirmations):
                         raise ValueError("Синхронизация подтверждена не на всех разрешённых серверах")
+                    await session.execute(
+                        update(Key)
+                        .where(Key.user_id == key["user_id"], Key.client_id == key["client_id"])
+                        .values(location_revision=str(uuid.uuid4()))
+                    )
                     if new_remnawave_link != key.get("remnawave_link"):
                         await session.execute(
                             update(Key)

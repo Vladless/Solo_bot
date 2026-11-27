@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.access.resolution import TelegramId, resolve_user_optional
@@ -64,7 +64,11 @@ async def create_scheduled_broadcast(
 
 
 async def get_scheduled_broadcast(session: AsyncSession, broadcast_id: str) -> ScheduledBroadcast | None:
-    result = await session.execute(select(ScheduledBroadcast).where(ScheduledBroadcast.id == broadcast_id))
+    result = await session.execute(
+        select(ScheduledBroadcast)
+        .where(ScheduledBroadcast.id == broadcast_id)
+        .execution_options(populate_existing=True)
+    )
     return result.scalar_one_or_none()
 
 
@@ -112,7 +116,7 @@ async def cancel_scheduled_broadcast(session: AsyncSession, broadcast_id: str) -
         update(ScheduledBroadcast)
         .where(
             ScheduledBroadcast.id == broadcast_id,
-            ScheduledBroadcast.status.in_(EDITABLE_SCHEDULED_BROADCAST_STATUSES),
+            ScheduledBroadcast.status.in_({*EDITABLE_SCHEDULED_BROADCAST_STATUSES, SCHEDULED_BROADCAST_STATUS_RUNNING}),
         )
         .values(
             status=SCHEDULED_BROADCAST_STATUS_CANCELLED,
@@ -192,9 +196,12 @@ async def mark_scheduled_broadcast_sent(
     stats: dict,
 ) -> ScheduledBroadcast | None:
     now = datetime.now(timezone.utc)
-    await session.execute(
+    result = await session.execute(
         update(ScheduledBroadcast)
-        .where(ScheduledBroadcast.id == broadcast_id)
+        .where(
+            ScheduledBroadcast.id == broadcast_id,
+            ScheduledBroadcast.status == SCHEDULED_BROADCAST_STATUS_RUNNING,
+        )
         .values(
             status=SCHEDULED_BROADCAST_STATUS_SENT,
             sent_at=now,
@@ -202,6 +209,42 @@ async def mark_scheduled_broadcast_sent(
             error_text=None,
             updated_at=datetime.utcnow(),
         )
+    )
+    if not result.rowcount:
+        await session.execute(
+            update(ScheduledBroadcast)
+            .where(
+                ScheduledBroadcast.id == broadcast_id,
+                ScheduledBroadcast.status == SCHEDULED_BROADCAST_STATUS_CANCELLED,
+            )
+            .values(stats_json=stats, updated_at=datetime.utcnow())
+        )
+    return await get_scheduled_broadcast(session, broadcast_id)
+
+
+async def mark_scheduled_broadcast_cancelled(
+    session: AsyncSession,
+    broadcast_id: str,
+    stats: dict | None = None,
+) -> ScheduledBroadcast | None:
+    """Сохраняет остановку запущенной рассылки и её частичный результат."""
+    now = datetime.now(timezone.utc)
+    values = {
+        "status": SCHEDULED_BROADCAST_STATUS_CANCELLED,
+        "cancelled_at": func.coalesce(ScheduledBroadcast.cancelled_at, now),
+        "sent_at": None,
+        "error_text": None,
+        "updated_at": datetime.utcnow(),
+    }
+    if stats is not None:
+        values["stats_json"] = stats
+    await session.execute(
+        update(ScheduledBroadcast)
+        .where(
+            ScheduledBroadcast.id == broadcast_id,
+            ScheduledBroadcast.status.in_((SCHEDULED_BROADCAST_STATUS_RUNNING, SCHEDULED_BROADCAST_STATUS_CANCELLED)),
+        )
+        .values(**values)
     )
     return await get_scheduled_broadcast(session, broadcast_id)
 
@@ -213,7 +256,10 @@ async def mark_scheduled_broadcast_failed(
 ) -> ScheduledBroadcast | None:
     await session.execute(
         update(ScheduledBroadcast)
-        .where(ScheduledBroadcast.id == broadcast_id)
+        .where(
+            ScheduledBroadcast.id == broadcast_id,
+            ScheduledBroadcast.status == SCHEDULED_BROADCAST_STATUS_RUNNING,
+        )
         .values(
             status=SCHEDULED_BROADCAST_STATUS_FAILED,
             error_text=error_text,

@@ -9,7 +9,9 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Admin
+from database.access.identity_cache import invalidate_identity_cache
+from database.admins import is_configured_web_admin
+from database.models import Admin, Identity
 from filters.admin import HasPermission, invalidate_admin_cache
 from filters.admin_actions import granular_permissions_enabled
 from filters.permissions import (
@@ -21,6 +23,7 @@ from filters.permissions import (
     action_permissions,
     normalize_permissions,
 )
+from settings.config import ADMIN_ID
 
 from ..panel.headers import menu_text, quote, section
 from . import router
@@ -274,8 +277,17 @@ async def toggle_admin_permission(callback: CallbackQuery, callback_data: AdminP
 @router.callback_query(AdminPanelCallback.filter(F.action.startswith("delete_admin|")), HasPermission(PERM_ADMINS))
 async def delete_admin(callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
     tg_id = int(callback_data.action.split("|")[1])
-
+    configured = (ADMIN_ID,) if isinstance(ADMIN_ID, int) else ADMIN_ID
+    if tg_id in configured:
+        await callback.answer("Главного администратора из конфигурации удалить нельзя", show_alert=True)
+        return
+    identities = (await session.execute(select(Identity).where(Identity.tg_id == tg_id))).scalars().all()
+    identity_ids = tuple(identity.id for identity in identities)
     await session.execute(delete(Admin).where(Admin.tg_id == tg_id))
+    for identity in identities:
+        if not is_configured_web_admin(identity):
+            identity.is_admin = False
+    await invalidate_identity_cache(session, identity_ids=identity_ids, tg_ids=(tg_id,))
     await session.commit()
     invalidate_admin_cache(tg_id)
 

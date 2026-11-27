@@ -1,19 +1,24 @@
 import html
 
+from contextlib import aclosing
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.polls import close_poll, create_poll, delete_poll, get_poll, get_poll_stats, list_polls
-from filters.admin import IsAdminFilter
+from filters.admin import HasPermission, IsAdminFilter
+from filters.permissions import PERM_BROADCASTING
 from logger import logger
 from middlewares.session import release_session_early
+from utils.csv_export import iter_poll_votes_csv
 
 from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import (
     AdminPollCallback,
+    build_broadcast_stop_kb,
     build_poll_audience_kb,
     build_poll_delete_confirm_kb,
     build_poll_detail_kb,
@@ -26,11 +31,14 @@ from .sender_utils import get_recipients
 
 
 router = Router(name="admin_polls")
+router.callback_query.filter(HasPermission(PERM_BROADCASTING))
+router.message.filter(HasPermission(PERM_BROADCASTING))
 
 MAX_QUESTION = 300
 MAX_OPTION = 100
 MIN_OPTIONS = 2
 MAX_OPTIONS = 12
+POLL_PAGE_SIZE = 10
 
 
 def _esc(value) -> str:
@@ -77,20 +85,25 @@ def _stats_text(poll, stats: dict) -> str:
     return "\n".join(lines)
 
 
-async def _render_menu(session: AsyncSession):
-    polls = await list_polls(session, limit=10)
+async def _render_menu(session: AsyncSession, page: int = 0):
+    page = max(0, page)
+    polls = await list_polls(session, limit=POLL_PAGE_SIZE + 1, offset=page * POLL_PAGE_SIZE)
+    has_next = len(polls) > POLL_PAGE_SIZE
+    polls = polls[:POLL_PAGE_SIZE]
     text = menu_text(
         "Опросы",
-        f"В списке: <b>{len(polls)}</b>",
+        f"Страница: <b>{page + 1}</b> · На странице: <b>{len(polls)}</b>",
         quote("Родные опросы Telegram: рассылаются всем клиентам, статистика собирается общая."),
     )
-    return text, build_polls_menu_kb(polls)
+    return text, build_polls_menu_kb(polls, page, has_next=has_next)
 
 
 @router.callback_query(AdminPollCallback.filter(F.action == "menu"), IsAdminFilter())
-async def open_polls_menu(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+async def open_polls_menu(
+    callback: CallbackQuery, callback_data: AdminPollCallback, state: FSMContext, session: AsyncSession
+) -> None:
     await state.clear()
-    text, kb = await _render_menu(session)
+    text, kb = await _render_menu(session, callback_data.page)
     await callback.message.edit_text(menu_text("Опросы", text), reply_markup=kb)
     await callback.answer()
 
@@ -189,8 +202,13 @@ async def poll_audience(callback: CallbackQuery) -> None:
 async def poll_send(
     callback: CallbackQuery, callback_data: AdminPollCallback, state: FSMContext, session: AsyncSession
 ) -> None:
+    from services.broadcast_control import consume_broadcast_draft, finish_broadcast_run, start_broadcast_run
+
     send_to = callback_data.value or "all"
-    data = await state.get_data()
+    data = await consume_broadcast_draft(state, AdminPoll.preview.state, ("question", "options"))
+    if data is None:
+        await callback.answer("Опрос уже обрабатывается или данные потеряны", show_alert=True)
+        return
     question = data.get("question")
     options = data.get("options")
     is_anonymous = data.get("is_anonymous", False)
@@ -209,7 +227,6 @@ async def poll_send(
     poll_id = poll.id
     tg_ids, _ = await get_recipients(session, send_to, None, telegram_only=True)
     await session.commit()
-    await state.clear()
 
     if not tg_ids:
         await callback.message.edit_text(
@@ -219,25 +236,31 @@ async def poll_send(
         await callback.answer()
         return
 
-    await callback.message.edit_text(menu_text("Опросы", f"📤 Отправляю опрос… 0/{len(tg_ids)}"))
-    await callback.answer()
-    await release_session_early(session)
-
     bot = callback.bot
     status_chat = callback.message.chat.id
     status_mid = callback.message.message_id
+    run = start_broadcast_run(callback.from_user.id, "poll")
+    stop_keyboard = build_broadcast_stop_kb(run.run_id)
 
     async def on_progress(done: int, total: int, sent: int, failed: int) -> None:
+        if run.stop_event.is_set():
+            return
         try:
             await bot.edit_message_text(
                 chat_id=status_chat,
                 message_id=status_mid,
                 text=f"📤 Отправка опроса…\n\n{done}/{total}   ✅ {sent}   ❌ {failed}",
+                reply_markup=stop_keyboard,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[Polls] Не удалось обновить прогресс рассылки: {}", exc)
 
     try:
+        await callback.message.edit_text(
+            menu_text("Опросы", f"📤 Отправляю опрос… 0/{len(tg_ids)}"), reply_markup=stop_keyboard
+        )
+        await callback.answer()
+        await release_session_early(session)
         result = await broadcast_poll(
             bot,
             poll_id=poll_id,
@@ -247,6 +270,7 @@ async def poll_send(
             is_anonymous=is_anonymous,
             tg_ids=tg_ids,
             on_progress=on_progress,
+            run=run,
         )
     except Exception as exc:
         logger.error("[Polls] Ошибка рассылки опроса: {}", exc)
@@ -254,19 +278,33 @@ async def poll_send(
             chat_id=status_chat,
             message_id=status_mid,
             text=f"❌ Ошибка рассылки опроса: <code>{_esc(exc)}</code>",
-            reply_markup=build_poll_detail_kb(poll_id, True),
+            reply_markup=build_poll_detail_kb(poll_id, True, is_anonymous=is_anonymous),
         )
         return
+    finally:
+        finish_broadcast_run(run.run_id)
 
+    current = await get_poll(session, poll_id)
+    stopped = result.get("stopped", False) or current is None or current.status != "open"
+    result_keyboard = (
+        build_poll_detail_kb(poll_id, current.status == "open", is_anonymous=is_anonymous)
+        if current is not None
+        else build_admin_back_kb("sender")
+    )
     await bot.edit_message_text(
         chat_id=status_chat,
         message_id=status_mid,
         text=menu_text(
-            "Опрос отправлен",
-            "Статистика обновляется по мере голосования.",
-            section("📤 Доставка", f"Дошло: {result['sent']}", f"Не дошло: {result['failed']}"),
+            "Рассылка опроса остановлена" if stopped else "Опрос отправлен",
+            "Статистика обновляется по мере голосования." if current is not None and current.status == "open" else "",
+            section(
+                "📤 Доставка",
+                f"Дошло: {result['sent']}",
+                f"Не дошло: {result['failed']}",
+                f"Не отправлено: {max(0, len(tg_ids) - result['sent'] - result['failed'])}",
+            ),
         ),
-        reply_markup=build_poll_detail_kb(poll_id, True),
+        reply_markup=result_keyboard,
     )
 
 
@@ -279,9 +317,25 @@ async def poll_view(callback: CallbackQuery, callback_data: AdminPollCallback, s
     stats = await get_poll_stats(session, poll.id)
     await callback.message.edit_text(
         menu_text("Опросы", _stats_text(poll, stats)),
-        reply_markup=build_poll_detail_kb(poll.id, poll.status == "open"),
+        reply_markup=build_poll_detail_kb(poll.id, poll.status == "open", is_anonymous=poll.is_anonymous),
     )
     await callback.answer()
+
+
+@router.callback_query(AdminPollCallback.filter(F.action == "export"), IsAdminFilter(), flags={"popup": True})
+async def poll_export(callback: CallbackQuery, callback_data: AdminPollCallback, session: AsyncSession) -> None:
+    """Отправляет администратору ответы клиентов в CSV."""
+    poll = await get_poll(session, callback_data.poll_id)
+    if poll is None:
+        await callback.answer("Опрос не найден", show_alert=True)
+        return
+    if poll.is_anonymous:
+        await callback.answer("У анонимного опроса нельзя посмотреть, кто проголосовал", show_alert=True)
+        return
+    await callback.answer()
+    async with aclosing(iter_poll_votes_csv(session, poll)) as documents:
+        async for document in documents:
+            await callback.message.answer_document(document=document, caption="📊 Ответы клиентов на опрос в CSV")
 
 
 @router.callback_query(AdminPollCallback.filter(F.action == "close"), IsAdminFilter(), flags={"popup": True})
@@ -296,7 +350,7 @@ async def poll_close(callback: CallbackQuery, callback_data: AdminPollCallback, 
     stats = await get_poll_stats(session, poll.id)
     await callback.message.edit_text(
         menu_text("Опросы", _stats_text(poll, stats)),
-        reply_markup=build_poll_detail_kb(poll.id, False),
+        reply_markup=build_poll_detail_kb(poll.id, False, is_anonymous=poll.is_anonymous),
     )
     await callback.answer(menu_text("Опросы", "Опрос закрыт — новые голоса не учитываются"))
 

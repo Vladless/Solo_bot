@@ -12,6 +12,7 @@ from database import identity_sessions as _idsess
 from database.access.identity_cache import invalidate_identity_cache
 from database.access.resolution import TelegramId, UserId, get_user_by_tg_id
 from database.access.tg_mirror import freeze_legacy_tg_owner, refresh_tg_mirrors_for_user, release_tg_mirrors
+from database.admins import is_configured_web_admin
 from database.kassai_autopay import transfer_recurring_user_data as transfer_kassai_recurring_user_data
 from database.models import (
     Admin,
@@ -52,7 +53,7 @@ from database.users import (
 )
 from database.yookassa_autopay import transfer_recurring_user_data
 from logger import logger
-from settings.config import API_TOKEN_TTL_DAYS
+from settings.config import ADMIN_ID, API_TOKEN_TTL_DAYS
 from utils.cpu_tasks import check_password, hash_password
 
 
@@ -89,6 +90,8 @@ async def create_identity(
     tg_id: int | None = None,
 ) -> Identity:
     """Создаёт идентичность; можно задать email и/или tg_id."""
+    if email and email.strip():
+        await _lock_identity_channel(session, "email", email.strip().lower())
     if tg_id:
         await _lock_identity_channel(session, "tg", tg_id)
         billing_user = (
@@ -145,35 +148,7 @@ async def get_or_create_identity_for_google(
     email: str | None = None,
 ) -> Identity:
     """Находит или создаёт идентичность для входа через Google."""
-    identity = await get_identity_by_google_sub(session, google_sub)
-    if identity:
-        if email and not identity.email:
-            email_clean = email.strip().lower()
-            if email_clean and not await get_identity_by_email(session, email_clean):
-                identity.email = email_clean
-                identity.email_verified = True
-                await session.flush()
-        return identity
-
-    if email:
-        email_clean = email.strip().lower()
-        existing_by_email = await get_identity_by_email(session, email_clean)
-        if existing_by_email and existing_by_email.google_sub is None:
-            existing_by_email.google_sub = google_sub
-            existing_by_email.email_verified = True
-            await session.flush()
-            await session.refresh(existing_by_email)
-            return existing_by_email
-
-    identity = Identity(
-        google_sub=google_sub,
-        email=(email.strip().lower() if email else None),
-        email_verified=bool(email),
-    )
-    session.add(identity)
-    await session.flush()
-    await session.refresh(identity)
-    return identity
+    return await _get_or_create_oauth_identity(session, "google", google_sub, email)
 
 
 async def get_identity_by_yandex_sub(session: AsyncSession, yandex_sub: str) -> Identity | None:
@@ -190,31 +165,80 @@ async def get_or_create_identity_for_yandex(
     email: str | None = None,
 ) -> Identity:
     """Находит или создаёт идентичность для входа через Яндекс."""
-    identity = await get_identity_by_yandex_sub(session, yandex_sub)
-    if identity:
-        if email and not identity.email:
-            email_clean = email.strip().lower()
-            if email_clean and not await get_identity_by_email(session, email_clean):
-                identity.email = email_clean
-                identity.email_verified = True
-                await session.flush()
-        return identity
+    return await _get_or_create_oauth_identity(session, "yandex", yandex_sub, email)
 
-    if email:
-        email_clean = email.strip().lower()
-        existing_by_email = await get_identity_by_email(session, email_clean)
-        if existing_by_email and existing_by_email.yandex_sub is None:
-            existing_by_email.yandex_sub = yandex_sub
-            existing_by_email.email_verified = True
-            await session.flush()
-            await session.refresh(existing_by_email)
-            return existing_by_email
 
-    identity = Identity(
-        yandex_sub=yandex_sub,
-        email=(email.strip().lower() if email else None),
-        email_verified=bool(email),
+async def _confirm_independent_email_ownership(session: AsyncSession, identity: Identity) -> None:
+    """Отзывает доступ, выданный до независимого подтверждения почты."""
+    await invalidate_identity_cache(session, identity_ids=(identity.id,))
+    identity.password_hash = None
+    identity.api_token_hash = None
+    identity.token_issued_at = None
+    await session.execute(delete(IdentitySession).where(IdentitySession.identity_id == identity.id))
+    await session.execute(
+        delete(WebPushSubscription).where(
+            (WebPushSubscription.identity_id == identity.id)
+            | WebPushSubscription.user_id.in_(select(User.id).where(User.identity_id == identity.id))
+        )
     )
+    identity.email_verified = True
+
+
+async def _release_unverified_email(session: AsyncSession, identity: Identity) -> None:
+    """Освобождает неподтверждённую почту без переноса чужих каналов."""
+    await invalidate_identity_cache(session, identity_ids=(identity.id,))
+    identity.email = None
+    identity.email_verified = False
+    await session.flush()
+
+
+async def _claim_verified_email(session: AsyncSession, email: str) -> Identity:
+    """Возвращает аккаунт подтверждённого владельца почты."""
+    identity = await get_identity_by_email(session, email)
+    if identity is not None:
+        identity = (await _lock_identities(session, identity.id)).get(identity.id)
+        if identity is not None and identity.email != email:
+            identity = None
+    if identity is not None and not identity.email_verified:
+        if identity.tg_id is not None or identity.google_sub or identity.yandex_sub:
+            await _release_unverified_email(session, identity)
+            identity = None
+        else:
+            await _confirm_independent_email_ownership(session, identity)
+    if identity is None:
+        identity = Identity(email=email, email_verified=True)
+        session.add(identity)
+    await session.flush()
+    return identity
+
+
+async def _get_or_create_oauth_identity(
+    session: AsyncSession,
+    provider: str,
+    subject: str,
+    email: str | None,
+) -> Identity:
+    """Привязывает проверенный OAuth-канал с блокировкой владельца."""
+    await _lock_identity_channel(session, provider, subject)
+    email_clean = (email or "").strip().lower() or None
+    if email_clean:
+        await _lock_identity_channel(session, "email", email_clean)
+    field = f"{provider}_sub"
+    identity = (await session.execute(select(Identity).where(getattr(Identity, field) == subject))).scalar_one_or_none()
+    if identity is not None:
+        identity = (await _lock_identities(session, identity.id)).get(identity.id)
+        if identity is not None and getattr(identity, field) != subject:
+            identity = None
+    if identity is not None:
+        if email_clean and not identity.email and not await get_identity_by_email(session, email_clean):
+            identity.email = email_clean
+            identity.email_verified = True
+            await session.flush()
+        return identity
+    identity = await _claim_verified_email(session, email_clean) if email_clean else Identity()
+    if getattr(identity, field) not in (None, subject):
+        raise ValueError("Email is already linked to another OAuth account")
+    setattr(identity, field, subject)
     session.add(identity)
     await session.flush()
     await session.refresh(identity)
@@ -295,14 +319,11 @@ async def login_by_email(
 async def login_by_verified_email(session: AsyncSession, email: str, *, request=None) -> tuple[Identity, str] | None:
     """Выдаёт сессию владельцу подтверждённой почты."""
     email_clean = email.strip().lower()
+    await _lock_identity_channel(session, "email", email_clean)
     identity = await get_identity_by_email(session, email_clean)
     if identity is None:
         return None
-    identity = (await _lock_identities(session, identity.id)).get(identity.id)
-    if identity is None or identity.email != email_clean:
-        return None
-    identity.email_verified = True
-    await session.flush()
+    identity = await _claim_verified_email(session, email_clean)
     token = await issue_token_for_identity(session, identity, request=request)
     return identity, token
 
@@ -938,6 +959,16 @@ async def attach_email(
         return None
     if only_if_unbound and identity.email:
         return None
+    if (
+        existing
+        and existing.id != identity_id
+        and allow_merge
+        and verified
+        and not existing.email_verified
+        and (existing.tg_id is not None or existing.google_sub or existing.yandex_sub)
+    ):
+        await _release_unverified_email(session, existing)
+        existing = None
     if existing and existing.id != identity_id:
         if not allow_merge:
             return None
@@ -954,6 +985,8 @@ async def attach_email(
         )
         if any(user.tg_id is not None and user.tg_id > 0 and user.tg_id != existing.tg_id for user in src_users):
             return None
+        if verified and not existing.email_verified:
+            await _confirm_independent_email_ownership(session, existing)
         dst_uid = await ensure_billing_user_for_identity(session, identity)
         for src_user in src_users:
             await _combine_billing_users(session, int(src_user.id), int(dst_uid), identity_id)
@@ -1012,8 +1045,10 @@ async def attach_telegram(session: AsyncSession, identity_id: str, tg_id: int) -
         return None
     identity.tg_id = tg_id
     admin_row = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
-    if admin_row.scalar_one_or_none():
-        identity.is_admin = True
+    configured = (ADMIN_ID,) if isinstance(ADMIN_ID, int) else ADMIN_ID
+    identity.is_admin = (
+        is_configured_web_admin(identity) or tg_id in configured or admin_row.scalar_one_or_none() is not None
+    )
     await session.execute(User.__table__.update().where(User.tg_id == tg_id).values(identity_id=identity_id))
     billing_user = await get_user_by_tg_id(session, tg_id)
     if billing_user is not None:
@@ -1072,13 +1107,18 @@ async def detach_telegram(session: AsyncSession, identity_id: str) -> Identity |
 async def get_or_create_identity_for_tg(session: AsyncSession, tg_id: int) -> Identity:
     """Находит или создаёт идентичность для Telegram."""
     await _lock_identity_channel(session, "tg", tg_id)
-    is_admin = (await session.execute(select(Admin).where(Admin.tg_id == tg_id))).scalar_one_or_none() is not None
+    configured = (ADMIN_ID,) if isinstance(ADMIN_ID, int) else ADMIN_ID
+    is_admin = (
+        tg_id in configured
+        or (await session.execute(select(Admin).where(Admin.tg_id == tg_id))).scalar_one_or_none() is not None
+    )
     identity = await get_identity_by_tg_id(session, tg_id)
     if identity:
         identity = (await _lock_identities(session, identity.id)).get(identity.id)
     if identity is not None and identity.tg_id == tg_id:
-        if is_admin and not identity.is_admin:
-            identity.is_admin = True
+        is_admin = is_admin or is_configured_web_admin(identity)
+        if is_admin != identity.is_admin:
+            identity.is_admin = is_admin
             await session.flush()
             await session.refresh(identity)
         return identity

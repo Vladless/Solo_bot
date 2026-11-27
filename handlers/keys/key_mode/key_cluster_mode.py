@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from datetime import datetime
@@ -41,8 +42,9 @@ from hooks.processors import (
     process_remnawave_webapp_override,
 )
 from logger import logger
+from middlewares.session import operation_session
 from services.errors import InsufficientFundsError, ServiceError
-from services.operations import create_key_on_cluster
+from services.operations import create_key_on_cluster, delete_key_from_cluster
 from services.tariffs.tariff_display import (
     build_key_created_message,
     get_effective_limits_for_key,
@@ -251,6 +253,8 @@ async def key_cluster_mode(
     client_id = str(uuid.uuid4())
     email = key_name.lower()
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
+    provision_attempted = False
+    created_client_id = client_id
 
     try:
         owner = await resolve_user_optional(session, tg_id)
@@ -322,48 +326,65 @@ async def key_cluster_mode(
         else:
             price_to_charge = await resolve_price_to_charge(session, data)
 
-        await create_key_on_cluster(
-            cluster_id=least_loaded_cluster,
-            tg_id=billing_user_id,
-            client_id=client_id,
-            email=email,
-            expiry_timestamp=expiry_timestamp,
-            plan=effective_tariff_id,
-            session=session,
-            hwid_limit=device_limit,
-            traffic_limit_bytes=traffic_limit_bytes,
-            is_trial=is_trial,
-        )
+        async with operation_session(session, keep_transaction=True) as operation:
+            if price_to_charge and not skip_balance_charge:
+                debited = await update_balance(operation, billing_user_id, -int(price_to_charge))
+                if debited is None:
+                    raise InsufficientFundsError("Недостаточно средств на балансе")
 
-        logger.info(f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}")
-
-        await session.execute(
-            update(Key)
-            .where(Key.user_id == uid, Key.email == email)
-            .values(
-                selected_device_limit=selected_device_limit,
-                selected_traffic_limit=selected_traffic_gb,
-                selected_price_rub=price_to_charge,
+            provision_attempted = True
+            await create_key_on_cluster(
+                cluster_id=least_loaded_cluster,
+                tg_id=billing_user_id,
+                client_id=client_id,
+                email=email,
+                expiry_timestamp=expiry_timestamp,
+                plan=effective_tariff_id,
+                session=operation,
+                hwid_limit=device_limit,
+                traffic_limit_bytes=traffic_limit_bytes,
+                is_trial=is_trial,
             )
-        )
 
-        key_record = await get_key_details(session, email)
-        if not key_record:
-            raise ValueError(f"Ключ не найден после создания: {email}")
+            logger.info(f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}")
 
-        final_link = key_record.get("link", "")
+            await operation.execute(
+                update(Key)
+                .where(Key.user_id == uid, Key.email == email)
+                .values(
+                    selected_device_limit=selected_device_limit,
+                    selected_traffic_limit=selected_traffic_gb,
+                    selected_price_rub=price_to_charge,
+                )
+            )
 
-        if is_trial:
-            trial_status = await get_trial(session, billing_user_id)
-            if trial_status in [0, -1]:
-                await update_trial(session, billing_user_id, 1)
+            key_record = await get_key_details(operation, email)
+            if not key_record:
+                raise ValueError(f"Ключ не найден после создания: {email}")
+            created_client_id = key_record.get("client_id") or client_id
 
-        if price_to_charge and not skip_balance_charge:
-            debited = await update_balance(session, billing_user_id, -int(price_to_charge))
-            if debited is None:
-                raise InsufficientFundsError("Недостаточно средств на балансе")
+            final_link = key_record.get("link", "")
 
-    except Exception as e:
+            if is_trial:
+                trial_status = await get_trial(operation, billing_user_id)
+                if trial_status in [0, -1]:
+                    await update_trial(operation, billing_user_id, 1)
+
+    except (Exception, asyncio.CancelledError) as e:
+        await session.rollback()
+        if provision_attempted:
+            try:
+                async with operation_session(session, keep_transaction=True) as operation:
+                    await delete_key_from_cluster(least_loaded_cluster, email, created_client_id, operation)
+            except Exception as cleanup_error:
+                logger.error(
+                    "[Key Creation] Не удалось удалить неоплаченную подписку {} на кластере {}: {}",
+                    email,
+                    least_loaded_cluster,
+                    cleanup_error,
+                )
+        if isinstance(e, asyncio.CancelledError):
+            raise
         logger.error(f"[Error] Ошибка при создании ключа для пользователя {tg_id}: {e}")
         error_message = "❌ Произошла ошибка при создании подписки. Пожалуйста, попробуйте снова."
 

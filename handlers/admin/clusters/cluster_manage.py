@@ -1,3 +1,5 @@
+import uuid
+
 from datetime import datetime
 
 from aiogram import F, types
@@ -339,7 +341,9 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
 
         if keys_count > 0:
             await session.execute(
-                update(Key).where(Key.server_id == old_cluster_name).values(server_id=new_cluster_name)
+                update(Key)
+                .where(Key.server_id == old_cluster_name)
+                .values(server_id=new_cluster_name, location_revision=str(uuid.uuid4()))
             )
 
         await message.answer(
@@ -455,7 +459,11 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
         )
 
         if keys_count > 0:
-            await session.execute(update(Key).where(Key.server_id == old_server_name).values(server_id=new_server_name))
+            await session.execute(
+                update(Key)
+                .where(Key.server_id == old_server_name)
+                .values(server_id=new_server_name, location_revision=str(uuid.uuid4()))
+            )
 
         await message.answer(
             text=(menu_text("Кластер", f"✅ Сервер <b>{old_server_name}</b> теперь <b>{new_server_name}</b>.")),

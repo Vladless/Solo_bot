@@ -55,6 +55,7 @@ from core.tasks.loop_tasks import (
 )
 from core.tasks.module_tasks import discover_module_loop_tasks
 from core.tasks.periodic_manager import periodic_task_manager
+from services.key_panel_cleanup import key_panel_cleanup_loop
 
 
 _TASKS_REGISTERED = False
@@ -87,6 +88,7 @@ def register_periodic_tasks() -> None:
         periodic_task_manager.register_thread_loop_task("backup", backup_thread_loop)
 
     periodic_task_manager.register_loop_task("blocked_drain", blocked_drain_loop)
+    periodic_task_manager.register_loop_task("key_panel_cleanup", key_panel_cleanup_loop)
 
     if process_budget > 0:
         periodic_task_manager.register_process_loop_task("server_checks", server_checks_loop)

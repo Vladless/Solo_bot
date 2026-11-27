@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy import text
+from datetime import UTC, datetime
+
+from sqlalchemy import exists, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from database.migrations.errors import is_dependency_error
@@ -1190,6 +1192,50 @@ async def _migration_v56_drop_low_cardinality_indexes(conn: AsyncConnection) -> 
             logger.debug(f"[schema_upgrade] v56: снят {index_name}")
 
 
+async def _migration_v57_recount_poll_deliveries(conn: AsyncConnection) -> None:
+    """Восстанавливает счётчики по сохранённым доставкам опросов."""
+    if not await _table_exists(conn, "polls") or not await _table_exists(conn, "poll_messages"):
+        return
+    await conn.execute(
+        text(
+            "UPDATE polls SET sent_count = (SELECT COUNT(*) FROM poll_messages WHERE poll_messages.poll_id = polls.id)"
+        )
+    )
+
+
+async def finalize_yoomoney_operation_cutoffs(conn: AsyncConnection) -> None:
+    """Фиксирует границу учёта переводов у ранее оплаченных счетов."""
+    if not await _table_exists(conn, "payments"):
+        return
+    if not await _column_exists(conn, "payments", "metadata"):
+        return
+    from database.models import Payment, PaymentOperationReceipt
+    from database.payments import YOOMONEY_OPERATIONS_SINCE
+
+    query = select(Payment.id, Payment.metadata_.label("metadata")).where(
+        func.lower(Payment.payment_system) == "yoomoney",
+        Payment.status.in_(("success", "refunded", "chargebacked")),
+        Payment.metadata_[YOOMONEY_OPERATIONS_SINCE].as_string().is_(None),
+    )
+    if await _table_exists(conn, "payment_operation_receipts"):
+        query = query.where(~exists().where(PaymentOperationReceipt.invoice_payment_id == Payment.id))
+    cutoff = datetime.now(UTC).isoformat()
+    result = await conn.stream(query.with_for_update())
+    try:
+        async for rows in result.mappings().partitions(500):
+            for row in rows:
+                metadata = dict(row["metadata"] or {})
+                metadata.setdefault(YOOMONEY_OPERATIONS_SINCE, cutoff)
+                await conn.execute(update(Payment).where(Payment.id == row["id"]).values(metadata_=metadata))
+    finally:
+        await result.close()
+
+
+async def _migration_v58_mark_yoomoney_operation_cutoff(conn: AsyncConnection) -> None:
+    """Подготавливает ранее оплаченные счета к учёту переводов."""
+    await finalize_yoomoney_operation_cutoffs(conn)
+
+
 _MIGRATIONS = [
     (1, "Добавление users.id", _migration_v1_add_users_id),
     (2, "Добавление user_id колонок", _migration_v2_add_user_id_columns),
@@ -1210,6 +1256,8 @@ _MIGRATIONS = [
     (53, "Очистка самореферальных связей", _migration_v53_drop_self_referrals),
     (55, "Снятие дублирующих индексов users/audit_events", _migration_v55_drop_duplicate_indexes),
     (56, "Снятие индексов audit_events по низкой кардинальности", _migration_v56_drop_low_cardinality_indexes),
+    (57, "Сверка счётчиков доставок опросов", _migration_v57_recount_poll_deliveries),
+    (58, "Граница учёта переводов по оплаченным счетам YooMoney", _migration_v58_mark_yoomoney_operation_cutoff),
 ]
 
 

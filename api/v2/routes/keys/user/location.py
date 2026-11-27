@@ -1,13 +1,48 @@
+import asyncio
+
 from fastapi import HTTPException
 
-from database.access.resolution import subscription_owner_ref
-from settings.config import SUPERNODE
+from database.access.resolution import UserId, panel_identity_fields, subscription_owner_ref
+from database.cache_purge import flush_purges
+from database.keys import invalidate_key_details, invalidate_keys_list, lock_owned_key_for_operation
+from panels.remnawave_runtime import remnawave_api
+from services.key_panel_cleanup import (
+    key_placement_configuration,
+    panel_server_snapshot,
+    prepare_key_panel_cleanup,
+    reconcile_key_panel_cleanup,
+    record_key_panel_target,
+)
 
-from .._common import *
 from .._common import (
+    GB,
+    REMNAWAVE_LOGIN,
+    REMNAWAVE_PASSWORD,
+    AccountKeyChangeLocationRequest,
+    AccountKeyChangeLocationResponse,
+    AccountKeyLocationOptionResponse,
+    AccountKeyLocationsResponse,
+    AsyncSession,
+    Depends,
+    Key,
+    Query,
+    Request,
+    Server,
     _key_actions_config,
     _resolve_available_location_servers,
+    check_server_name_by_cluster,
+    create_client_on_server,
+    datetime,
+    get_session,
+    get_tariff_by_id,
+    get_vless_link_for_remnawave_by_username,
+    logger,
+    make_aggregated_link,
+    resolve_billing_user_id,
+    select,
+    timezone,
     user_router,
+    verify_identity_token,
 )
 
 
@@ -36,6 +71,133 @@ async def user_key_locations(
     )
 
 
+def _location_limits(key, tariff: dict | None) -> tuple[int, int]:
+    """Берёт актуальные лимиты заблокированной подписки."""
+    traffic = key.current_traffic_limit
+    if traffic is None:
+        traffic = key.selected_traffic_limit
+    if traffic is None:
+        traffic = (tariff or {}).get("traffic_limit") or 0
+    devices = key.current_device_limit
+    if devices is None:
+        devices = key.selected_device_limit
+    if devices is None:
+        devices = (tariff or {}).get("device_limit") or 0
+    return int(traffic) * GB, int(devices)
+
+
+async def _remnawave_placement(server, key) -> dict:
+    """Сохраняет все сквады общей записи перед сменой локации."""
+    async with remnawave_api(server.api_url) as api:
+        if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+            raise HTTPException(status_code=502, detail="Не удалось авторизоваться в Remnawave")
+        profile = await api.get_user_by_uuid(key.client_id, username=key.email)
+    if (
+        not isinstance(profile, dict)
+        or str(profile.get("vlessUuid") or profile.get("uuid") or "") != key.client_id
+        or not isinstance(profile.get("activeInternalSquads"), list)
+    ):
+        raise HTTPException(status_code=502, detail="Не удалось сохранить текущее размещение подписки")
+    squads = []
+    for squad in profile["activeInternalSquads"]:
+        value = squad.get("uuid") or squad.get("id") if isinstance(squad, dict) else squad
+        if not isinstance(value, str) or not value:
+            raise HTTPException(status_code=502, detail="Не удалось сохранить текущее размещение подписки")
+        squads.append(value)
+    return {"active_user_inbounds": squads, "external_squad_uuid": profile.get("externalSquadUuid") or ""}
+
+
+async def _provision_location(
+    session, key, old_server, target, tariff, traffic_bytes: int, devices: int, intent_id: str
+):
+    """Создаёт или переносит запись без удаления исходной подписки."""
+    panel = str(target.panel_type or "").lower()
+    if panel == "3x-ui":
+        confirmed = await create_client_on_server(
+            {**panel_server_snapshot(target), "enabled": True},
+            UserId(key.user_id),
+            key.client_id,
+            key.email,
+            int(key.expiry_time or 0),
+            asyncio.Semaphore(1),
+            plan=key.tariff_id,
+            session=session,
+            is_trial=False,
+            total_traffic_limit_bytes=traffic_bytes,
+            device_limit_value=devices,
+        )
+        if confirmed is not True:
+            raise HTTPException(status_code=502, detail="Не удалось создать подписку в новой локации")
+        await record_key_panel_target(intent_id, key.client_id, creation_finished=True)
+        return None
+    if panel != "remnawave":
+        raise HTTPException(status_code=400, detail="Панель выбранной локации не поддерживается")
+    same_api = str(old_server.panel_type or "").lower() == "remnawave" and str(old_server.api_url or "").rstrip(
+        "/"
+    ) == str(target.api_url or "").rstrip("/")
+    expire_at = datetime.fromtimestamp(int(key.expiry_time or 0) / 1000, timezone.utc).isoformat()
+    external_squad = (tariff or {}).get("external_squad") or ""
+    async with remnawave_api(target.api_url) as api:
+        if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+            raise HTTPException(status_code=502, detail="Не удалось авторизоваться в Remnawave")
+        if same_api:
+            confirmed = await api.update_user(
+                uuid=key.client_id,
+                lookup_username=key.email,
+                expire_at=expire_at,
+                active_user_inbounds=[target.inbound_id],
+                traffic_limit_bytes=traffic_bytes,
+                hwid_device_limit=devices,
+                external_squad_uuid=external_squad,
+            )
+        else:
+            telegram_id, real_email = await panel_identity_fields(session, UserId(key.user_id))
+            payload = {
+                "username": key.email,
+                "uuid": key.client_id,
+                "trafficLimitStrategy": "NO_RESET",
+                "expireAt": expire_at,
+                "activeInternalSquads": [target.inbound_id],
+                "trafficLimitBytes": traffic_bytes,
+                "hwidDeviceLimit": devices,
+                "description": f"location-operation:{intent_id}",
+            }
+            if telegram_id is not None:
+                payload["telegramId"] = telegram_id
+            if real_email:
+                payload["email"] = real_email
+            if external_squad:
+                payload["externalSquadUuid"] = external_squad
+            result = await api.create_user(payload)
+            if isinstance(result, dict) and result.get("username") == key.email:
+                actual_id = str(result.get("vlessUuid") or result.get("uuid") or "")
+                if actual_id and actual_id != key.client_id:
+                    await record_key_panel_target(intent_id, actual_id, creation_finished=True)
+            confirmed = (
+                isinstance(result, dict)
+                and str(result.get("vlessUuid") or result.get("uuid") or "") == key.client_id
+                and str(result.get("username") or "") == key.email
+            )
+        if confirmed is not True:
+            raise HTTPException(status_code=502, detail="Не удалось создать подписку в новой локации")
+        await record_key_panel_target(intent_id, key.client_id, creation_finished=True)
+        if bool((tariff or {}).get("vless")):
+            link = await get_vless_link_for_remnawave_by_username(api, key.email, key.email)
+            if link:
+                return link
+        subscription = await api.get_subscription_by_username(key.email)
+        return subscription.get("subscriptionUrl") if isinstance(subscription, dict) else None
+
+
+async def _reconcile_location_cleanup(intent_id: str) -> bool:
+    """Продолжает очистку сразу, сохраняя очередь при временной ошибке."""
+    try:
+        return await reconcile_key_panel_cleanup(intent_id, allow_early=True)
+    except Exception as error:
+        logger.warning("[Site:Subs] Очистка смены локации {} отложена: {}", intent_id, error)
+        return False
+
+
 @user_router.post("/{client_id}/change-location", response_model=AccountKeyChangeLocationResponse)
 async def user_key_change_location(
     client_id: str,
@@ -52,217 +214,89 @@ async def user_key_change_location(
     if not target_server:
         raise HTTPException(status_code=400, detail="Укажите целевую локацию")
     billing_user_id = await resolve_billing_user_id(request, identity, session)
-    db_key = (
+    key = (
         await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
     ).scalar_one_or_none()
-    if db_key is None:
+    if key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
-    if bool(getattr(db_key, "is_frozen", False)):
+    if key.is_frozen:
         raise HTTPException(status_code=400, detail="Сначала разморозьте подписку для смены локации")
-    current_server = str(getattr(db_key, "server_id", "") or "")
-    if not current_server:
-        raise HTTPException(status_code=400, detail="У подписки не указан текущий сервер")
-    if current_server == target_server:
+    key = await lock_owned_key_for_operation(session, billing_user_id, client_id, key.email)
+    if key is None:
+        raise HTTPException(status_code=409, detail="Подписка изменилась. Обновите страницу.")
+    if key.is_frozen:
+        raise HTTPException(status_code=400, detail="Сначала разморозьте подписку для смены локации")
+    if key.server_id == target_server:
         raise HTTPException(status_code=400, detail="Подписка уже в этой локации")
-    available_names = await _resolve_available_location_servers(session, db_key)
-    if target_server not in available_names:
+    if target_server not in await _resolve_available_location_servers(session, key):
         raise HTTPException(status_code=400, detail="Выбранная локация недоступна")
-    email = str(getattr(db_key, "email", "") or "")
-    if not email:
-        raise HTTPException(status_code=400, detail="У подписки отсутствует email")
-    key_details = await get_key_details(session, email)
-    if not key_details:
-        raise HTTPException(status_code=404, detail="Подписка не найдена")
-    old_server_info = (
-        await session.execute(select(Server).where(Server.server_name == current_server).limit(1))
-    ).scalar_one_or_none()
-    target_server_info = (
-        await session.execute(select(Server).where(Server.server_name == target_server).limit(1))
-    ).scalar_one_or_none()
-    if target_server_info is None:
-        raise HTTPException(status_code=404, detail="Целевая локация не найдена")
-    tariff_id = getattr(db_key, "tariff_id", None)
-    tariff = await get_tariff_by_id(session, int(tariff_id)) if tariff_id else None
-    need_vless_key = bool(tariff.get("vless")) if tariff else False
-    external_squad_uuid = (tariff.get("external_squad") if tariff else None) or None
-    selected_traffic_gb = getattr(db_key, "current_traffic_limit", None)
-    if selected_traffic_gb is None:
-        selected_traffic_gb = getattr(db_key, "selected_traffic_limit", None)
-    selected_device_limit = getattr(db_key, "current_device_limit", None)
-    if selected_device_limit is None:
-        selected_device_limit = getattr(db_key, "selected_device_limit", None)
-    if selected_traffic_gb is not None:
-        traffic_limit_bytes = int(selected_traffic_gb) * GB
-    else:
-        raw_traffic_limit = int(tariff.get("traffic_limit") or 0) if tariff else 0
-        traffic_limit_bytes = raw_traffic_limit * GB if raw_traffic_limit > 0 else 0
-    if selected_device_limit is not None:
-        device_limit = int(selected_device_limit)
-    else:
-        device_limit = int(tariff.get("device_limit") or 0) if tariff else 0
-    key_client_id = str(getattr(db_key, "client_id", "") or "")
-    expiry_timestamp = int(getattr(db_key, "expiry_time", 0) or 0)
-    target_cluster_info = await check_server_name_by_cluster(session, target_server)
-    target_cluster_name = str((target_cluster_info or {}).get("cluster_name") or "")
-    full_remnawave_cluster = (
-        await is_full_remnawave_cluster(target_cluster_name, session) if target_cluster_name else False
+    old_server = await session.scalar(select(Server).where(Server.server_name == key.server_id))
+    target = await session.scalar(select(Server).where(Server.server_name == target_server))
+    if old_server is None or target is None:
+        raise HTTPException(status_code=409, detail="Данные локации изменились. Обновите страницу.")
+    if str(target.panel_type or "").lower() not in {"3x-ui", "remnawave"}:
+        raise HTTPException(status_code=400, detail="Панель выбранной локации не поддерживается")
+    tariff = await get_tariff_by_id(session, int(key.tariff_id)) if key.tariff_id else None
+    traffic_bytes, devices = _location_limits(key, tariff)
+    old_snapshot = panel_server_snapshot(old_server)
+    old_snapshot["key_configuration"] = key_placement_configuration(key)
+    if (
+        str(old_server.panel_type or "").lower() == "remnawave"
+        and str(target.panel_type or "").lower() == "remnawave"
+        and str(old_server.api_url or "").rstrip("/") == str(target.api_url or "").rstrip("/")
+    ):
+        old_snapshot["remnawave_placement"] = await _remnawave_placement(old_server, key)
+    intent_id = await prepare_key_panel_cleanup(
+        user_id=billing_user_id,
+        client_id=key.client_id,
+        email=key.email,
+        old_server=old_snapshot,
+        target_server=panel_server_snapshot(target),
+        previous_revision=key.location_revision,
     )
-    panel_type = str(getattr(target_server_info, "panel_type", "") or "").lower()
-    old_panel_type = str(getattr(old_server_info, "panel_type", "") or "").lower()
-    same_api = bool(old_server_info) and (
-        str(getattr(old_server_info, "api_url", "") or "").rstrip("/")
-        == str(getattr(target_server_info, "api_url", "") or "").rstrip("/")
-    )
-    same_panel_client = (
-        same_api
-        and old_panel_type == panel_type
-        and (
-            panel_type == "remnawave"
-            or (
-                not SUPERNODE
-                and str(getattr(old_server_info, "inbound_id", "") or "")
-                == str(getattr(target_server_info, "inbound_id", "") or "")
-            )
+    key_email = key.email
+    try:
+        remnawave_link = await _provision_location(
+            session, key, old_server, target, tariff, traffic_bytes, devices, intent_id
         )
-    )
-    remnawave_link = None
-    if panel_type == "remnawave" or full_remnawave_cluster:
-        remna = RemnawaveAPI(str(getattr(target_server_info, "api_url", "") or ""))
-        if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-            raise HTTPException(status_code=502, detail="Не удалось авторизоваться в Remnawave")
-        expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
-        user_data: dict[str, Any] = {
-            "username": email,
-            "trafficLimitStrategy": "NO_RESET",
-            "expireAt": expire_at,
-            "activeInternalSquads": [getattr(target_server_info, "inbound_id", None)],
-            "uuid": key_client_id,
-        }
-        _identity_tg = getattr(identity, "tg_id", None)
-        if _identity_tg and int(_identity_tg) > 0:
-            user_data["telegramId"] = int(_identity_tg)
-        _real_email = getattr(identity, "email", None)
-        if _real_email:
-            user_data["email"] = _real_email
-        if traffic_limit_bytes > 0:
-            user_data["trafficLimitBytes"] = traffic_limit_bytes
-        if device_limit > 0:
-            user_data["hwidDeviceLimit"] = device_limit
-        if external_squad_uuid:
-            user_data["externalSquadUuid"] = external_squad_uuid
-        if same_api and old_panel_type == "remnawave":
-            updated = await remna.update_user(
-                uuid=key_client_id,
-                lookup_username=email,
-                expire_at=expire_at,
-                active_user_inbounds=user_data["activeInternalSquads"],
-                traffic_limit_bytes=traffic_limit_bytes,
-                hwid_device_limit=device_limit,
-                external_squad_uuid=external_squad_uuid,
-            )
-            result = {"uuid": key_client_id, "username": email} if updated else None
-        else:
-            result = await remna.create_user(user_data)
-        if not result:
-            raise HTTPException(status_code=502, detail="Не удалось создать подписку в новой локации")
-        key_client_id = str(result.get("vlessUuid") or result.get("uuid") or key_client_id)
-        if need_vless_key:
-            try:
-                remnawave_link = await get_vless_link_for_remnawave_by_username(remna, email, email)
-            except Exception:
-                remnawave_link = None
-        if not remnawave_link:
-            try:
-                sub = await remna.get_subscription_by_username(email)
-            except Exception:
-                sub = None
-            if sub:
-                links = sub.get("links") or []
-                remnawave_link = (
-                    next(
-                        (link for link in links if isinstance(link, str) and link.lower().startswith("vless://")),
-                        None,
-                    )
-                    if need_vless_key
-                    else None
-                )
-                if not remnawave_link:
-                    remnawave_link = sub.get("subscriptionUrl")
-    if panel_type == "3x-ui":
-        confirmed = await create_client_on_server(
-            {
-                "api_url": str(getattr(target_server_info, "api_url", "") or ""),
-                "inbound_id": getattr(target_server_info, "inbound_id", None),
-                "server_name": str(getattr(target_server_info, "server_name", "") or ""),
-                "panel_type": str(getattr(target_server_info, "panel_type", "") or ""),
-            },
-            billing_user_id,
-            key_client_id,
-            email,
-            expiry_timestamp,
-            asyncio.Semaphore(1),
-            plan=int(tariff_id) if tariff_id else None,
+        cluster_info = await check_server_name_by_cluster(session, target_server)
+        public_link = await make_aggregated_link(
             session=session,
-            is_trial=False,
-            total_traffic_limit_bytes=traffic_limit_bytes,
-            device_limit_value=device_limit,
+            cluster_all=[{**panel_server_snapshot(target), "enabled": True, "max_keys": target.max_keys}],
+            cluster_id=str((cluster_info or {}).get("cluster_name") or target_server),
+            email=key.email,
+            client_id=key.client_id,
+            tg_id=await subscription_owner_ref(session, billing_user_id),
+            subgroup_code=(tariff or {}).get("subgroup_title") or None,
+            remna_link_override=remnawave_link,
+            plan=key.tariff_id,
         )
-        if confirmed is not True:
-            raise HTTPException(status_code=502, detail="Не удалось создать подписку в новой локации")
-    subgroup_code = tariff.get("subgroup_title") if tariff and tariff.get("subgroup_title") else None
-    public_link = await make_aggregated_link(
-        session=session,
-        cluster_all=[
-            {
-                "server_name": str(getattr(target_server_info, "server_name", "") or ""),
-                "api_url": str(getattr(target_server_info, "api_url", "") or ""),
-                "panel_type": str(getattr(target_server_info, "panel_type", "") or ""),
-                "inbound_id": getattr(target_server_info, "inbound_id", None),
-                "enabled": True,
-                "max_keys": getattr(target_server_info, "max_keys", None),
-            }
-        ],
-        cluster_id=target_cluster_name or target_server,
-        email=email,
-        client_id=key_client_id,
-        tg_id=await subscription_owner_ref(session, billing_user_id),
-        subgroup_code=subgroup_code,
-        remna_link_override=remnawave_link,
-        plan=int(tariff_id) if tariff_id else None,
-    )
-    if old_server_info and not same_panel_client:
-        old_panel_type = str(getattr(old_server_info, "panel_type", "") or "").lower()
-        try:
-            if old_panel_type == "3x-ui":
-                xui = await get_xui_instance(str(getattr(old_server_info, "api_url", "") or ""))
-                panel_email = f"{email}_{old_server_info.server_name.lower()}" if SUPERNODE else email
-                await delete_client(
-                    xui,
-                    int(getattr(old_server_info, "inbound_id", 0) or 0),
-                    panel_email,
-                    str(getattr(db_key, "client_id", "") or ""),
-                )
-            elif old_panel_type == "remnawave":
-                remna_del = RemnawaveAPI(str(getattr(old_server_info, "api_url", "") or ""))
-                if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    await remna_del.delete_user(
-                        str(getattr(db_key, "client_id", "") or ""),
-                        username=str(getattr(db_key, "email", "") or "") or None,
-                    )
-        except Exception as exc:
-            logger.warning(
-                f"[Site:Subs] Не удалось снести подписку {getattr(db_key, 'client_id', '')} "
-                f"со старой панели {old_panel_type} при смене локации: {exc}"
-            )
-    db_key.server_id = target_server
-    db_key.client_id = key_client_id
-    db_key.key = public_link if isinstance(public_link, str) and public_link.strip() else None
-    db_key.remnawave_link = remnawave_link
-    return AccountKeyChangeLocationResponse(
-        ok=True,
-        message="Локация успешно изменена",
-        client_id=str(getattr(db_key, "client_id", "") or ""),
-        server_id=str(getattr(db_key, "server_id", "") or ""),
-        link=str(getattr(db_key, "key", "") or ""),
-        remnawave_link=getattr(db_key, "remnawave_link", None),
-    )
+        if not isinstance(public_link, str) or not public_link.strip():
+            raise HTTPException(status_code=502, detail="Не удалось подготовить ссылку новой локации")
+        key.server_id = target_server
+        key.location_revision = intent_id
+        key.key = public_link
+        key.remnawave_link = remnawave_link
+        await invalidate_keys_list(session, billing_user_id)
+        await invalidate_key_details(key_email)
+        response = AccountKeyChangeLocationResponse(
+            ok=True,
+            message="Локация успешно изменена",
+            client_id=key.client_id,
+            server_id=key.server_id,
+            link=key.key,
+            remnawave_link=key.remnawave_link,
+        )
+        await session.commit()
+    except BaseException:
+        await session.rollback()
+        await asyncio.shield(_reconcile_location_cleanup(intent_id))
+        raise
+    try:
+        await flush_purges(session)
+    except Exception as error:
+        logger.warning("[Site:Subs] Кэш смены локации {} не обновлён: {}", client_id, error)
+    if not await _reconcile_location_cleanup(intent_id):
+        response.cleanup_pending = True
+        response.message = "Локация изменена. Удаление прежней подписки будет повторено автоматически."
+    return response

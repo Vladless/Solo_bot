@@ -1,9 +1,22 @@
 from settings.texts import MY_DEVICES_UNAVAILABLE_TEXT
 
-from .._common import *
 from .._common import (
+    AccountKeyResetHwidResponse,
+    AsyncSession,
+    Depends,
+    HTTPException,
+    Key,
+    Query,
+    Request,
     _key_actions_config,
+    get_session,
+    invalidate_remnawave_profile,
+    logger,
+    resolve_billing_user_id,
+    select,
     user_router,
+    verify_identity_token,
+    with_remnawave_api,
 )
 
 
@@ -46,9 +59,14 @@ async def user_key_reset_hwid(
             return 0, 0
         reset_local = 0
         for device in devices:
-            hwid = device.get("hwid")
-            if hwid and await api.delete_user_hwid_device(client_id, hwid, username=key_email):
-                reset_local += 1
+            hwid = device.get("hwid") if isinstance(device, dict) else None
+            if not hwid:
+                continue
+            try:
+                if await api.delete_user_hwid_device(client_id, hwid, username=key_email) is True:
+                    reset_local += 1
+            except Exception as error:
+                logger.warning("[Site:Subs] Не удалось отвязать устройство подписки {}: {}", client_id, error)
         return len(devices), reset_local
 
     reset_result = await with_remnawave_api(
@@ -73,9 +91,19 @@ async def user_key_reset_hwid(
     from core.redis_cache import cache_delete, cache_key
 
     await cache_delete(cache_key("key_devices", client_id))
+    if total_devices > 0 and reset_devices == 0:
+        raise HTTPException(status_code=502, detail="Не удалось отвязать устройства. Повторите попытку.")
+    complete = reset_devices == total_devices
+    message = (
+        "Устройства не были привязаны"
+        if total_devices == 0
+        else "Устройства сброшены"
+        if complete
+        else f"Сброшена часть устройств: {reset_devices} из {total_devices}. Остальные устройства не удалось отвязать."
+    )
     return AccountKeyResetHwidResponse(
-        ok=True,
-        message="Устройства сброшены" if total_devices > 0 else "Устройства не были привязаны",
+        ok=complete,
+        message=message,
         total_devices=int(total_devices),
         reset_devices=int(reset_devices),
     )

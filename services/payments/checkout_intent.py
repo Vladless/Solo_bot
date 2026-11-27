@@ -567,6 +567,7 @@ async def apply_checkout_intent(
             selected_traffic_limit=_optional_int(data.get("selected_traffic_limit")),
             selected_price_rub=int(data.get("selected_price_rub") or cost),
             coupon_id=_optional_int(data.get("coupon_id")),
+            coupon_paid_quote=True,
             expected_expiry_time=normalize_expiry_ms(key.expiry_time),
             expected_key_snapshot=intent.get("key_snapshot") or checkout_key_snapshot(key),
             renewal_duration_days=_optional_int(

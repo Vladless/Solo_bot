@@ -1,6 +1,19 @@
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
+
+from utils.cpu_tasks import BCRYPT_MAX_PASSWORD_BYTES
+
+
+def _validate_password_bytes(value: str) -> str:
+    """Проверяет размер нового пароля до вычисления хеша."""
+    if len(value.encode("utf-8")) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError(f"Пароль должен занимать не более {BCRYPT_MAX_PASSWORD_BYTES} байт UTF-8")
+    return value
+
+
+NewPassword = Annotated[str, Field(min_length=8), AfterValidator(_validate_password_bytes)]
 
 
 class IdentityCreate(BaseModel):
@@ -30,7 +43,7 @@ class IdentityResponse(BaseModel):
 
 class RegisterByEmailRequest(BaseModel):
     email: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=8, description="Пароль (минимум 8 символов)")
+    password: NewPassword = Field(..., description="Пароль (минимум 8 символов, не более 72 байт UTF-8)")
     referral_code: str | None = Field(None, min_length=1)
     turnstile_token: str | None = Field(default=None, description="Cloudflare Turnstile CAPTCHA token")
 
@@ -45,14 +58,14 @@ class LoginRequest(BaseModel):
 
 
 class SetPasswordRequest(BaseModel):
-    password: str = Field(..., min_length=8, description="Новый пароль (минимум 8 символов)")
-    password_confirm: str = Field(..., min_length=8)
+    password: NewPassword = Field(..., description="Новый пароль (минимум 8 символов, не более 72 байт UTF-8)")
+    password_confirm: NewPassword
 
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(...)
-    password: str = Field(..., min_length=8, description="Новый пароль (минимум 8 символов)")
-    password_confirm: str = Field(..., min_length=8)
+    password: NewPassword = Field(..., description="Новый пароль (минимум 8 символов, не более 72 байт UTF-8)")
+    password_confirm: NewPassword
 
 
 class LoginResponse(BaseModel):
@@ -77,8 +90,8 @@ class LoginByCodeRequest(BaseModel):
 class ConfirmPasswordResetRequest(BaseModel):
     email: str = Field(..., min_length=1)
     code: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=8)
-    password_confirm: str = Field(..., min_length=8)
+    password: NewPassword
+    password_confirm: NewPassword
 
 
 class LoginTelegramRequest(BaseModel):

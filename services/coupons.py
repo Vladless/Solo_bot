@@ -11,7 +11,9 @@ from database.coupons import (
     create_coupon_usage,
     get_coupon_by_code_ci,
     get_coupon_hold,
+    lock_coupon_for_usage,
     release_coupon_slot,
+    reserve_coupon_usage,
     set_coupon_hold,
 )
 from database.keys import count_active_keys_for_user
@@ -105,6 +107,24 @@ async def _check_percent_coupon(session: AsyncSession, coupon: Coupon, billing_u
 
     if bool(getattr(coupon, "new_users_only", False)):
         await _check_new_user(session, billing_user_id)
+
+
+async def reserve_percent_coupon(
+    session: AsyncSession, coupon_id: int, billing_user_id: UserId, *, paid_quote: bool = False
+) -> None:
+    """Закрепляет одно использование скидки до обращения к панели."""
+    coupon = await lock_coupon_for_usage(session, coupon_id)
+    if coupon is None:
+        raise NotFoundError("Купон не найден")
+    if paid_quote:
+        if coupon.percent is None:
+            raise ValidationError("Поддерживаются только процентные купоны")
+        if await check_coupon_usage(session, coupon_id, billing_user_id):
+            raise LimitExceededError("Вы уже использовали этот купон")
+    else:
+        await _check_percent_coupon(session, coupon, billing_user_id)
+    if not await reserve_coupon_usage(session, coupon_id, billing_user_id, honor_paid_quote=paid_quote):
+        raise LimitExceededError("Купон уже использован или лимит активаций исчерпан")
 
 
 class CouponHoldResult:
