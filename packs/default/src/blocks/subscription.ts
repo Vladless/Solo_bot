@@ -283,6 +283,7 @@ export const DEFAULT_SUBSCRIPTION_BLOCKS: ElementDefinition[] = [
   },
   {
     type: "defaultInvoiceList",
+    roles: ["billing"],
     label: "Стандарт: история платежей",
     pack: PACK,
     defaultData: {

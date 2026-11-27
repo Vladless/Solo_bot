@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { rolesFromSource } from "./roles.mjs";
 
 /** Файл набора рядом с импортёром: локальные модули не уходят на мост хоста. */
 function resolveLocal(dir, spec) {
@@ -39,22 +40,6 @@ module.exports = host.require(${JSON.stringify(args.path)});`,
       }));
     },
   };
-}
-
-/** Роли блоков объявлены в наборе один раз: манифест забирает их из того же файла. */
-function rolesFromSource(src) {
-  for (const rel of ["blocks/meta.ts", "meta.ts", "blocks.ts"]) {
-    const file = join(src, rel);
-    if (!existsSync(file)) continue;
-    const source = readFileSync(file, "utf8");
-    const marker = "const ROLES: Record<string, string[]> = ";
-    const at = source.indexOf(marker);
-    if (at === -1) continue;
-    const literal = source.slice(at + marker.length);
-    const raw = literal.slice(0, literal.indexOf(";\n"));
-    return JSON.parse(raw.replace(/(\w+):/g, '"$1":').replace(/,(\s*[}\]])/g, "$1"));
-  }
-  return {};
 }
 
 /** Собирает набор: бандл через мост хоста, манифест с ролями, сид и файлы рядом. */

@@ -75,6 +75,18 @@ class BlockLocation:
         self.tab_id = tab_id
         self.data = data or {}
 
+    @property
+    def screen_group(self) -> str | None:
+        """Группа внутреннего экрана блока."""
+        value = self.data.get("screenGroup")
+        return (value.strip() or None) if isinstance(value, str) else None
+
+    @property
+    def screen_id(self) -> str | None:
+        """Имя внутреннего экрана блока."""
+        value = self.data.get("screenId")
+        return (value.strip() or None) if isinstance(value, str) else None
+
 
 async def find_block_locations(session: AsyncSession, types: list[str]) -> list[BlockLocation]:
     """Первое место для каждого из типов блоков, приоритет — активный вариант страницы."""
@@ -131,6 +143,8 @@ def block_location_href(location: BlockLocation, params: dict[str, str] | None =
     query: dict[str, str] = {}
     if location.tab_id and path == "/dashboard":
         query["tab"] = location.tab_id
+    if location.screen_group and location.screen_id:
+        query["screen"] = f"{location.screen_group}:{location.screen_id}"
     for name, value in (params or {}).items():
         if value:
             query[name] = value

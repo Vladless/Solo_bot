@@ -78,6 +78,7 @@ packs/_shared/**
 !packs/_shared/**/*.ts
 !packs/_shared/**/*.tsx
 !packs/_shared/build.mjs
+!packs/_shared/roles.mjs
 !packs/_shared/defaults.mjs
 !packs/_shared/measure.mjs
 !packs/_shared/pack.mjs

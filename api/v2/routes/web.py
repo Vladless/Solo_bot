@@ -339,6 +339,8 @@ class BlockLocationItem(BaseModel):
     slug: str
     tab_group: str | None = None
     tab_id: str | None = None
+    screen_group: str | None = None
+    screen_id: str | None = None
 
 
 class BlockLocationsResponse(BaseModel):
@@ -404,7 +406,7 @@ async def get_block_locations(
     types: str = Query(..., max_length=512),
     session: AsyncSession = Depends(get_session),
 ):
-    """Возвращает страницы и вкладки кабинета, на которых размещены указанные типы блоков."""
+    """Возвращает страницы, вкладки и экраны указанных блоков."""
     wanted = [item.strip() for item in types.split(",") if item.strip()][:20]
     if not wanted:
         return BlockLocationsResponse(locations=[])
@@ -413,7 +415,7 @@ async def get_block_locations(
     from database.site_revision import get_site_revision
 
     rev = await get_site_revision(session)
-    ckey = cache_key("web_block_locations", ",".join(sorted(wanted)), rev)
+    ckey = cache_key("web_block_locations_screens", ",".join(sorted(wanted)), rev)
     cached = await cache_get(ckey)
     if isinstance(cached, dict):
         return BlockLocationsResponse.model_validate(cached)
@@ -421,7 +423,14 @@ async def get_block_locations(
     locations = await find_block_locations(session, wanted)
     response = BlockLocationsResponse(
         locations=[
-            BlockLocationItem(type=item.type, slug=item.slug, tab_group=item.tab_group, tab_id=item.tab_id)
+            BlockLocationItem(
+                type=item.type,
+                slug=item.slug,
+                tab_group=item.tab_group,
+                tab_id=item.tab_id,
+                screen_group=item.screen_group,
+                screen_id=item.screen_id,
+            )
             for item in locations
         ]
     )
